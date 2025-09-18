@@ -1,0 +1,36 @@
+{
+  "name": "Role",
+  "tableName": "roles",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 50,
+      "unique": true,
+      "required": true
+    },
+    {
+      "name": "permissions",
+      "type": "jsonb",
+      "required": true
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToMany",
+      "name": "users",
+      "target": "User",
+      "through": "user_roles",
+      "foreignKey": "role_id",
+      "targetForeignKey": "user_id"
+    }
+  ],
+  "timestamps": true
+}

@@ -1,0 +1,50 @@
+{
+  "name": "UserProfile",
+  "tableName": "user_profiles",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "userId",
+      "type": "uuid",
+      "unique": true,
+      "required": true,
+      "references": {
+        "model": "User",
+        "field": "id",
+        "onDelete": "CASCADE"
+      }
+    },
+    {
+      "name": "bio",
+      "type": "text"
+    },
+    {
+      "name": "avatarUrl",
+      "type": "string",
+      "maxLength": 500
+    },
+    {
+      "name": "socialLinks",
+      "type": "jsonb"
+    },
+    {
+      "name": "preferences",
+      "type": "jsonb"
+    }
+  ],
+  "relationships": [
+    {
+      "type": "oneToOne",
+      "name": "user",
+      "target": "User",
+      "foreignKey": "userId"
+    }
+  ],
+  "timestamps": true
+}

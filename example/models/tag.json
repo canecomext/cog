@@ -1,0 +1,36 @@
+{
+  "name": "Tag",
+  "tableName": "tags",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 50,
+      "unique": true,
+      "required": true
+    },
+    {
+      "name": "color",
+      "type": "string",
+      "maxLength": 7
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToMany",
+      "name": "posts",
+      "target": "Post",
+      "through": "post_tags",
+      "foreignKey": "tag_id",
+      "targetForeignKey": "post_id"
+    }
+  ],
+  "timestamps": true
+}

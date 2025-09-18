@@ -1,0 +1,40 @@
+{
+  "name": "Category",
+  "tableName": "categories",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 100,
+      "unique": true,
+      "required": true
+    },
+    {
+      "name": "slug",
+      "type": "string",
+      "maxLength": 100,
+      "unique": true,
+      "required": true
+    },
+    {
+      "name": "description",
+      "type": "text"
+    }
+  ],
+  "relationships": [
+    {
+      "type": "oneToMany",
+      "name": "posts",
+      "target": "Post",
+      "foreignKey": "categoryId"
+    }
+  ],
+  "timestamps": true
+}
