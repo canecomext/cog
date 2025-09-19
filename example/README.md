@@ -16,69 +16,138 @@ example/
 │   ├── role.json        # User roles (many-to-many with users)
 │   └── userprofile.json # User profiles (one-to-one with users)
 │
-├── run-demo.ts          # All-in-one demonstration script
-└── README.md           # This file
+├── generated/           # Generated code (after running generate.ts)
+│   ├── db/             # Database schemas and migrations
+│   ├── domain/         # Domain API layer
+│   └── rest/           # REST endpoints
+│
+├── .env.template       # Database configuration template
+├── generate.ts         # Code generation script
+├── run-backend.ts      # Backend server with test scenario
+└── README.md          # This file
 ```
 
 ## 🚀 Quick Start
 
-This example is a complete, self-contained demonstration of the CRUD Operations Generator.
+This example demonstrates real-world usage of the CRUD Operations Generator with an actual PostgreSQL database.
 
-### Running the Example
+### Prerequisites
 
-From the project root:
+1. **PostgreSQL** with PostGIS extension installed and running
+2. **Deno** runtime installed
+3. A PostgreSQL database created for testing
+
+### Setup Instructions
+
+#### Step 1: Generate the Backend Code
 ```bash
 cd example
-deno run --allow-all run-demo.ts
+deno run --allow-read --allow-write generate.ts
 ```
 
-Or using the npm-style task:
+This generates all the backend code from the model definitions in `models/`.
+
+#### Step 2: Configure Database Connection
 ```bash
-deno task example
+cp .env.template .env
+# Edit .env with your database credentials
 ```
 
-### What Happens When You Run It
+Configure either:
+- `DATABASE_URL` for a connection string, or
+- Individual parameters (`DB_HOST`, `DB_PORT`, etc.)
+- SSL certificates if required by your database
 
-1. **Code Generation Phase**
-   - Reads the 8 model definitions from `models/` directory
-   - Generates complete backend code in `generated/` directory
-   - Shows progress and file creation
+#### Step 3: Run the Backend with Tests
+```bash
+deno run --allow-all run-backend.ts
+```
 
-2. **Feature Demonstration Phase**
-   - Demonstrates the three-tier hooks system
-   - Shows all data types in action
-   - Executes all relationship types
-   - Performs PostGIS spatial queries
-   - Shows transaction flow
+This will:
+1. Connect to your database
+2. Run migrations to create tables
+3. Execute a comprehensive test scenario
+4. Start an HTTP server with REST endpoints
 
-3. **Output Structure Display**
-   - Shows the complete generated file structure
-   - Explains what each file contains
+### What the Example Demonstrates
 
-### Understanding the Example
+#### 1. **Real Database Operations**
+- Creates actual database tables via migrations
+- Performs real INSERT, SELECT, UPDATE, DELETE operations
+- Shows transaction management with commits and rollbacks
 
-#### Model Files (`models/`)
-- `user.json` - Demonstrates all data types and multiple relationships
-- `post.json` - Shows foreign keys and many-to-many relationships
-- `location.json` - PostGIS types and self-referential relationships
-- `comment.json` - Simple many-to-one relationships
-- `category.json` - One-to-many relationship
-- `tag.json` - Many-to-many via junction table
-- `role.json` - User roles with permissions
-- `userprofile.json` - One-to-one relationship
+#### 2. **Complete Feature Set**
+- **All Data Types**: strings, numbers, booleans, dates, JSON, arrays, bigint
+- **All Relationships**: one-to-one, one-to-many, many-to-many
+- **PostGIS Spatial**: points, polygons, spatial queries
+- **Hooks System**: pre-hooks, post-hooks (in transaction), after-hooks (async)
 
-#### Generated Code (`generated/`)
-After running, explore the generated code to see:
-- Type-safe Drizzle schemas
-- Domain APIs with hooks
-- REST endpoints
-- Transaction management
+#### 3. **Production Patterns**
+- Domain API layer with business logic
+- REST endpoints with proper routing
+- Transaction management in middleware
+- Error handling and rollback scenarios
+
+### Project Structure
+
+```
+example/
+├── models/              # Model definitions
+│   ├── user.json       # User model with all data types
+│   ├── post.json       # Blog posts with relationships
+│   ├── comment.json    # Comments with foreign keys
+│   ├── category.json   # Post categories
+│   ├── tag.json        # Tags for many-to-many
+│   ├── location.json   # PostGIS spatial data
+│   ├── role.json       # User roles
+│   └── userprofile.json # One-to-one profiles
+├── generated/          # Generated code (after running generate.ts)
+│   ├── db/            # Database schemas and migrations
+│   ├── domain/        # Domain API layer
+│   └── rest/          # REST endpoints
+├── .env.template      # Database configuration template
+├── generate.ts        # Code generation script
+└── run-backend.ts     # Backend server with test scenario
+```
+
+### Understanding the Test Scenario
+
+The `run-backend.ts` script creates a complete test scenario:
+
+1. **Users & Roles** - Creates users with different roles (admin, user)
+2. **Profiles** - One-to-one user profiles with social links
+3. **Posts & Categories** - Blog posts in different categories
+4. **Tags** - Many-to-many relationships via junction table
+5. **Comments** - Nested comments on posts
+6. **Locations** - Spatial data with PostGIS points and polygons
+7. **Transactions** - Demonstrates commits and rollbacks
+8. **Hooks** - Shows pre, post, and after hook execution
+
+### API Endpoints
+
+Once running, the server provides REST endpoints for all entities:
+
+- `GET /api/users` - List all users
+- `POST /api/users` - Create a user
+- `GET /api/users/:id` - Get specific user
+- `PUT /api/users/:id` - Update user
+- `DELETE /api/users/:id` - Delete user
+
+Similar endpoints are available for:
+- `/api/posts`
+- `/api/comments`
+- `/api/categories`
+- `/api/tags`
+- `/api/locations`
+- `/api/roles`
+- `/api/profiles`
 
 ### Customizing the Example
 
-1. **Modify Models**: Edit any JSON file in `models/` and re-run
-2. **Add Hooks**: Modify the hooks in `run-demo.ts` to see different behaviors
-3. **Test Queries**: Add custom queries in the demo script
+1. **Modify Models**: Edit JSON files in `models/` and regenerate
+2. **Add Hooks**: Modify hooks in `run-backend.ts` for custom logic
+3. **Test Queries**: Add your own test scenarios
+4. **API Testing**: Use curl or Postman to test the REST endpoints
 
 ## 🎯 Features Demonstrated
 
@@ -314,15 +383,32 @@ WHERE ST_DWithin(
 6. **Relationship Loading**: Supports eager loading via include parameters
 7. **Spatial Indexing**: PostGIS fields automatically get GiST indexes
 
-## 🎬 Running the Demo
+## 🎬 Running the Example
 
-When you run `run-demo.ts`, you'll see:
+Follow these steps to run the complete example:
 
-1. **Code Generation Output**: Shows all files being generated
-2. **Feature Demonstrations**: Live examples of each feature
-3. **Database Operations**: Simulated SQL showing what would execute
-4. **Hook Execution**: Visual flow of pre/post/after hooks
-5. **File Structure**: Complete overview of generated code
+### 1. Generate the Code
+```bash
+deno run --allow-read --allow-write generate.ts
+```
+This generates all backend code from the model definitions.
+
+### 2. Configure Database
+```bash
+cp .env.template .env
+# Edit .env with your database credentials
+```
+
+### 3. Run the Backend
+```bash
+deno run --allow-all run-backend.ts
+```
+
+This will:
+- Connect to your PostgreSQL database
+- Run migrations to create tables
+- Execute a comprehensive test scenario
+- Start an HTTP server with REST API endpoints
 
 ## 📚 Next Steps
 
@@ -333,12 +419,12 @@ After running the demo:
 3. Use the generated code in a real backend application
 4. Connect to a real PostgreSQL database with PostGIS
 
-## 🛠️ Customization
+## 🛐️ Customization
 
 You can customize the generation by modifying:
 - Model definitions in `models/*.json`
-- Generator options in `run-demo.ts`
-- Database type (PostgreSQL vs CockroachDB)
+- Hook implementations in `run-backend.ts`
+- Database configuration in `.env`
 - Feature flags (soft deletes, timestamps, etc.)
 
 ---
