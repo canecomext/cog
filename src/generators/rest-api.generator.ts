@@ -16,17 +16,17 @@ export class RestAPIGenerator {
   generateRestAPIs(): Map<string, string> {
     const files = new Map<string, string>();
 
-    // Generate individual REST APIs
+    // Generate individual REST endpoints
     for (const model of this.models) {
       const restAPI = this.generateModelRestAPI(model);
-      files.set(`api/${model.name.toLowerCase()}.api.ts`, restAPI);
+      files.set(`rest/${model.name.toLowerCase()}.rest.ts`, restAPI);
     }
 
     // Generate middleware
-    files.set('api/middleware.ts', this.generateMiddleware());
+    files.set('rest/middleware.ts', this.generateMiddleware());
 
-    // Generate API registration file
-    files.set('api/index.ts', this.generateAPIIndex());
+    // Generate REST registration file
+    files.set('rest/index.ts', this.generateRestIndex());
 
     return files;
   }
@@ -39,11 +39,20 @@ export class RestAPIGenerator {
     const modelNameLower = model.name.toLowerCase();
     const modelNamePlural = this.pluralize(modelNameLower);
 
-    return `import { Hono } from '@hono/hono';
-import { ${modelName}Domain } from '../domain/${modelNameLower}.domain';
-import { transactionMiddleware } from './middleware';
+    return `import { Hono } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
+import { transactionMiddleware } from './middleware.ts';
+import type { DbTransaction } from '../db/database.ts';
 
-export const ${modelNameLower}Routes = new Hono();
+type Env = {
+  Variables: {
+    requestId?: string;
+    userId?: string;
+    transaction?: DbTransaction;
+  }
+}
+
+export const ${modelNameLower}Routes = new Hono<Env>();
 
 /**
  * GET /${modelNamePlural}
@@ -139,7 +148,7 @@ ${modelNameLower}Routes.put('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json(result);
-  } catch (error) {
+  } catch (error: any) {
     if (error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
@@ -167,7 +176,7 @@ ${modelNameLower}Routes.patch('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json(result);
-  } catch (error) {
+  } catch (error: any) {
     if (error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
@@ -193,7 +202,7 @@ ${modelNameLower}Routes.delete('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json({ message: '${modelName} deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     if (error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
@@ -219,16 +228,17 @@ ${this.generateRelationshipEndpoints(model)}
 
     for (const rel of model.relationships) {
       if (rel.type === 'oneToMany') {
-        const relNamePlural = this.pluralize(rel.name);
+        // Relationship names are typically already plural (e.g., "posts", "comments")
+        const relName = rel.name;
         endpoints.push(`
 /**
- * GET /${modelNamePlural}/:id/${relNamePlural}
- * Get ${rel.name} for a ${model.name}
+ * GET /${modelNamePlural}/:id/${relName}
+ * Get ${relName} for a ${model.name}
  */
-${modelNameLower}Routes.get('/:id/${relNamePlural}', async (c) => {
+${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   const id = c.req.param('id');
   
-  const result = await ${modelNameLower}Domain.get${this.capitalize(rel.name)}(id);
+  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
   
   return c.json(result);
 });`);
@@ -242,13 +252,21 @@ ${modelNameLower}Routes.get('/:id/${relNamePlural}', async (c) => {
    * Generate middleware file
    */
   private generateMiddleware(): string {
-  return `import { MiddlewareHandler } from '@hono/hono';
-import { getDatabase } from '../db/database';
+  return `import { MiddlewareHandler } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+import { getDatabase, type DbTransaction } from '../db/database.ts';
+
+type Env = {
+  Variables: {
+    requestId?: string;
+    userId?: string;
+    transaction?: DbTransaction;
+  }
+}
 
 /**
  * Transaction middleware for operations that modify data
  */
-export const transactionMiddleware: MiddlewareHandler = async (c, next) => {
+export const transactionMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   const db = getDatabase();
   
   try {
@@ -266,7 +284,7 @@ export const transactionMiddleware: MiddlewareHandler = async (c, next) => {
 /**
  * Request ID middleware
  */
-export const requestIdMiddleware: MiddlewareHandler = async (c, next) => {
+export const requestIdMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   const requestId = c.req.header('x-request-id') || crypto.randomUUID();
   c.set('requestId', requestId);
   c.header('x-request-id', requestId);
@@ -276,7 +294,7 @@ export const requestIdMiddleware: MiddlewareHandler = async (c, next) => {
 /**
  * Error handling middleware
  */
-export const errorMiddleware: MiddlewareHandler = async (c, next) => {
+export const errorMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   try {
     await next();
   } catch (error) {
@@ -305,7 +323,7 @@ export const errorMiddleware: MiddlewareHandler = async (c, next) => {
 /**
  * CORS middleware
  */
-export const corsMiddleware: MiddlewareHandler = async (c, next) => {
+export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-id');
@@ -320,23 +338,33 @@ export const corsMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   /**
-   * Generate API index file
+   * Generate REST index file
    */
-  private generateAPIIndex(): string {
-    let code = `import { Hono } from '@hono/hono';
-import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware';
+  private generateRestIndex(): string {
+    let code = `import { Hono } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware.ts';
+import type { DbTransaction } from '../db/database.ts';
 `;
 
     // Import all route files
     for (const model of this.models) {
-      code += `import { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.api';\n`;
+      code += `import { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
     code += `
+
+type Env = {
+  Variables: {
+    requestId?: string;
+    userId?: string;
+    transaction?: DbTransaction;
+  }
+}
+
 /**
- * Register all API routes
+ * Register all REST routes
  */
-export function registerAPIRoutes(app: Hono) {
+export function registerRestRoutes(app: Hono<Env>) {
   // Apply global middleware
   app.use('*', corsMiddleware);
   app.use('*', requestIdMiddleware);
@@ -374,7 +402,7 @@ ${this.models.map(m => {
 `;
 
     for (const model of this.models) {
-      code += `export { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.api';\n`;
+      code += `export { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
     return code;
@@ -384,10 +412,21 @@ ${this.models.map(m => {
    * Simple pluralization
    */
   private pluralize(word: string): string {
-    if (word.endsWith('y')) {
+    // Check if already plural (simple heuristic)
+    if (word.endsWith('ies') || word.endsWith('ses') || word.endsWith('xes') || 
+        word.endsWith('ches') || word.endsWith('shes')) {
+      return word;
+    }
+    // Check if word already ends with 's' but not 'ss' (likely already plural)
+    if (word.endsWith('s') && !word.endsWith('ss')) {
+      return word;
+    }
+    // Handle common patterns
+    if (word.endsWith('y') && !['ay', 'ey', 'iy', 'oy', 'uy'].some(ending => word.endsWith(ending))) {
       return word.slice(0, -1) + 'ies';
     }
-    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('ch')) {
+    if (word.endsWith('ss') || word.endsWith('x') || 
+        word.endsWith('ch') || word.endsWith('sh')) {
       return word + 'es';
     }
     return word + 's';

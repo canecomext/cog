@@ -58,6 +58,17 @@ export class DrizzleSchemaGenerator {
       drizzleImports.add('pgSchema');
     }
     
+    // Check if this table has self-referential foreign keys
+    const hasSelfReference = model.fields.some(field => 
+      field.references && 
+      field.references.model.toLowerCase() === model.name.toLowerCase()
+    );
+    
+    // Add AnyPgColumn for self-referential tables
+    if (hasSelfReference) {
+      drizzleImports.add('AnyPgColumn');
+    }
+    
     // Add field type imports based on model fields
     for (const field of model.fields) {
       const importType = this.getDrizzleImportForType(field);
@@ -65,19 +76,40 @@ export class DrizzleSchemaGenerator {
         drizzleImports.add(importType);
       }
     }
-    
-    // Add index imports if needed
-    if (model.indexes && model.indexes.length > 0) {
-      drizzleImports.add('index');
-      drizzleImports.add('uniqueIndex');
+
+    // Check if we need customType for PostGIS
+    if (this.hasPostGISFields(model)) {
+      drizzleImports.add('customType');
+    }
+
+    // Ensure timestamp is imported when generated timestamp columns are present
+    if (model.timestamps || model.softDelete) {
+      drizzleImports.add('timestamp');
     }
     
-    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'drizzle-orm/pg-core';\n`;
-    imports += `import { sql } from 'drizzle-orm';\n`;
+    // Base imports from pg-core and drizzle-orm
+    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
     
-    // Add PostGIS imports if needed
-    if (this.hasPostGISFields(model)) {
-      imports += `import { geometry, geography } from 'drizzle-orm/pg-core';\n`;
+    // Add index imports separately if needed (modern approach)
+    if (model.indexes && model.indexes.length > 0) {
+      imports += `import { index, uniqueIndex } from 'npm:drizzle-orm/pg-core';\n`;
+    }
+    
+    imports += `import { sql } from 'npm:drizzle-orm';\n`;
+
+    // Import other tables referenced by foreign keys in this schema
+    const referencedModels = new Set<string>();
+    for (const field of model.fields) {
+      if (field.references && field.references.model) {
+        const refModel = field.references.model;
+        if (refModel && refModel.toLowerCase() !== model.name.toLowerCase()) {
+          referencedModels.add(refModel);
+        }
+      }
+    }
+    for (const refModel of referencedModels) {
+      const refLower = refModel.toLowerCase();
+      imports += `import { ${refLower}Table } from './${refLower}.schema.ts';\n`;
     }
     
     return imports;
@@ -98,14 +130,15 @@ export class DrizzleSchemaGenerator {
       'uuid': 'uuid',
       'json': 'json',
       'jsonb': 'jsonb',
-      'point': 'geometry',
-      'linestring': 'geometry',
-      'polygon': 'geometry',
-      'multipoint': 'geometry',
-      'multilinestring': 'geometry',
-      'multipolygon': 'geometry',
-      'geometry': 'geometry',
-      'geography': 'geography'
+      // PostGIS types don't have direct imports, they use customType
+      'point': null,
+      'linestring': null,
+      'polygon': null,
+      'multipoint': null,
+      'multilinestring': null,
+      'multipolygon': null,
+      'geometry': null,
+      'geography': null
     };
     
     return typeMap[field.type] || null;
@@ -122,7 +155,7 @@ export class DrizzleSchemaGenerator {
       code += `const ${model.schema}Schema = pgSchema('${model.schema}');\n\n`;
     }
     
-    // Start table definition
+    // Start table definition (no type annotation needed)
     const tableFunction = model.schema ? `${model.schema}Schema.table` : 'pgTable';
     code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.tableName}', {\n`;
     
@@ -130,7 +163,7 @@ export class DrizzleSchemaGenerator {
     const fieldDefinitions: string[] = [];
     
     for (const field of model.fields) {
-      fieldDefinitions.push(this.generateFieldDefinition(field));
+      fieldDefinitions.push(this.generateFieldDefinition(field, model));
     }
     
     // Add timestamp fields if enabled
@@ -144,18 +177,28 @@ export class DrizzleSchemaGenerator {
       fieldDefinitions.push(`  deletedAt: timestamp('deleted_at')`);
     }
     
-    code += fieldDefinitions.join(',\n') + '\n';
-    code += '}';
+    code += fieldDefinitions.map((def, idx) => {
+      // Check if this is the last field overall
+      const isLast = idx === fieldDefinitions.length - 1 && !model.timestamps && !model.softDelete;
+      
+      // If comment exists, the comma is already in the definition before the comment
+      if (def.includes(' // Self-reference:')) {
+        // For self-ref fields, we need to insert comma before the comment
+        const parts = def.split(' // ');
+        return isLast ? def : parts[0] + ', // ' + parts[1];
+      }
+      // For normal fields, just add comma if not last
+      return isLast ? def : def + ',';
+    }).join('\n') + '\n';
+    code += '});\n';
     
-    // Add indexes
+    // Generate indexes separately (modern approach)
     if (model.indexes && model.indexes.length > 0) {
-      code += ', (table) => {\n  return {\n';
-      const indexDefinitions = model.indexes.map(idx => this.generateIndexDefinition(idx));
-      code += indexDefinitions.join(',\n');
-      code += '\n  };\n}';
+      code += '\n';
+      for (const idx of model.indexes) {
+        code += this.generateModernIndexDefinition(model.name.toLowerCase(), idx) + '\n';
+      }
     }
-    
-    code += ');\n';
     
     return code;
   }
@@ -163,8 +206,9 @@ export class DrizzleSchemaGenerator {
   /**
    * Generate field definition
    */
-  private generateFieldDefinition(field: FieldDefinition): string {
+  private generateFieldDefinition(field: FieldDefinition, model: ModelDefinition): string {
     let definition = `  ${field.name}: `;
+    let comment = '';
     
     // Generate the field type
     switch (field.type) {
@@ -207,13 +251,9 @@ export class DrizzleSchemaGenerator {
       case 'multipoint':
       case 'multilinestring':
       case 'multipolygon':
-        definition += this.generatePostGISField(field);
-        break;
       case 'geometry':
-        definition += `geometry('${this.toSnakeCase(field.name)}', { type: '${field.geometryType || 'geometry'}', srid: ${field.srid || 4326} })`;
-        break;
       case 'geography':
-        definition += `geography('${this.toSnakeCase(field.name)}', { type: '${field.geometryType || 'geometry'}', srid: ${field.srid || 4326} })`;
+        definition += this.generatePostGISField(field);
         break;
       default:
         definition += `text('${this.toSnakeCase(field.name)}')`;
@@ -246,14 +286,21 @@ export class DrizzleSchemaGenerator {
     }
     
     if (field.references) {
-      modifiers.push(`.references(() => ${field.references.model.toLowerCase()}Table.${field.references.field})`);
+      // Check if this is a self-reference
+      if (field.references.model.toLowerCase() === model.name.toLowerCase()) {
+        // Use AnyPgColumn type hint for self-references
+        modifiers.push(`.references((): AnyPgColumn => ${field.references.model.toLowerCase()}Table.${field.references.field})`);
+        comment = ' // Self-reference: AnyPgColumn breaks circular type dependency';
+      } else {
+        modifiers.push(`.references(() => ${field.references.model.toLowerCase()}Table.${field.references.field})`);
+      }
     }
     
     if (field.array) {
       modifiers.push('.array()');
     }
     
-    definition += modifiers.join('');
+    definition += modifiers.join('') + comment;
     
     return definition;
   }
@@ -262,17 +309,24 @@ export class DrizzleSchemaGenerator {
    * Generate PostGIS field definition
    */
   private generatePostGISField(field: FieldDefinition): string {
-    const geometryType = field.type.toUpperCase();
+    const fieldName = this.toSnakeCase(field.name);
+    const geometryType = field.geometryType || field.type.toUpperCase();
     const srid = field.srid || 4326;
-    const dimensions = field.dimensions || 2;
+    const isGeography = field.type === 'geography';
+    const columnType = isGeography ? 'geography' : 'geometry';
     
-    if (this.isCockroachDB) {
-      // CockroachDB PostGIS format
-      return `geometry('${this.toSnakeCase(field.name)}', { type: '${geometryType}', srid: ${srid} })`;
-    } else {
-      // Standard PostGIS format
-      return `geometry('${this.toSnakeCase(field.name)}', { type: '${geometryType}', srid: ${srid}, dimensions: ${dimensions} })`;
+    // Use customType for PostGIS fields since Drizzle doesn't have native support
+    return `customType<any>({
+    dataType() {
+      return '${columnType}(${geometryType}, ${srid})';
+    },
+    toDriver(value) {
+      return value;
+    },
+    fromDriver(value) {
+      return value;
     }
+  })('${fieldName}')`;
   }
 
   /**
@@ -303,19 +357,20 @@ export class DrizzleSchemaGenerator {
   }
 
   /**
-   * Generate index definition
+   * Generate modern index definition (outside of table definition)
    */
-  private generateIndexDefinition(idx: any): string {
-    const indexName = idx.name || `idx_${idx.fields.join('_')}`;
+  private generateModernIndexDefinition(tableName: string, idx: any): string {
+    const indexName = idx.name || `idx_${tableName}_${idx.fields.join('_')}`;
     const indexType = idx.unique ? 'uniqueIndex' : 'index';
-    const fields = idx.fields.map((f: string) => `table.${f}`).join(', ');
+    const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`).join(', ');
     
-    let definition = `    ${indexName}: ${indexType}('${indexName}').on(${fields})`;
+    let definition = `export const ${indexName} = ${indexType}('${indexName}').on(${fields})`;
     
     if (idx.where) {
       definition += `.where(sql\`${idx.where}\`)`;
     }
     
+    definition += ';';
     return definition;
   }
 
@@ -323,11 +378,11 @@ export class DrizzleSchemaGenerator {
    * Generate relations file
    */
   private generateRelations(): string {
-    let code = `import { relations } from 'drizzle-orm';\n`;
+    let code = `import { relations } from 'npm:drizzle-orm';\n`;
     
     // Import all tables
     for (const model of this.models) {
-      code += `import { ${model.name.toLowerCase()}Table } from './${model.name.toLowerCase()}.schema';\n`;
+      code += `import { ${model.name.toLowerCase()}Table } from './${model.name.toLowerCase()}.schema.ts';\n`;
     }
     
     code += '\n';
@@ -364,10 +419,19 @@ export class DrizzleSchemaGenerator {
     references: [${rel.target.toLowerCase()}Table.id]
   })`;
       case 'oneToOne':
-        return `  ${rel.name}: one(${rel.target.toLowerCase()}Table, {
+        // Check if the foreign key is on this model's table
+        const hasFK = model.fields.some(f => f.name === rel.foreignKey);
+        if (hasFK) {
+          // Foreign key is on this table - we own the relationship
+          return `  ${rel.name}: one(${rel.target.toLowerCase()}Table, {
     fields: [${model.name.toLowerCase()}Table.${rel.foreignKey}],
     references: [${rel.target.toLowerCase()}Table.id]
   })`;
+        } else {
+          // Foreign key is on the target table - inverse relationship
+          // For inverse oneToOne, we don't specify fields/references in Drizzle
+          return `  ${rel.name}: one(${rel.target.toLowerCase()}Table)`;
+        }
       case 'manyToMany':
         // Many-to-many relationships are handled through a junction table
         return `  ${rel.name}: many(${rel.target.toLowerCase()}Table)`;
@@ -394,10 +458,10 @@ export class DrizzleSchemaGenerator {
     let code = '// Export all schemas and relations\n';
     
     for (const model of this.models) {
-      code += `export * from './${model.name.toLowerCase()}.schema';\n`;
+      code += `export * from './${model.name.toLowerCase()}.schema.ts';\n`;
     }
     
-    code += `export * from './relations';\n`;
+    code += `export * from './relations.ts';\n`;
     
     return code;
   }

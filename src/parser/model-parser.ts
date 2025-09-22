@@ -32,7 +32,7 @@ export class ModelParser {
       };
     } catch (error) {
       this.errors.push({
-        message: `Failed to parse models directory: ${error.message}`,
+        message: `Failed to parse models directory: ${error instanceof Error ? error.message : String(error)}`,
         severity: 'error'
       });
       return {
@@ -64,7 +64,7 @@ export class ModelParser {
       }
     } catch (error) {
       this.errors.push({
-        message: `Failed to parse file ${filePath}: ${error.message}`,
+        message: `Failed to parse file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
         severity: 'error'
       });
     }

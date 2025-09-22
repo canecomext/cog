@@ -14,9 +14,19 @@ export class DatabaseInitGenerator {
    * Generate database initialization file
    */
   generateDatabaseInit(): string {
-    return `import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from '../schema';
+    return `import { drizzle } from 'npm:drizzle-orm/postgres-js';
+import type { ExtractTablesWithRelations } from 'npm:drizzle-orm';
+import type { PgTransaction } from 'npm:drizzle-orm/pg-core';
+import type { PostgresJsQueryResultHKT } from 'npm:drizzle-orm/postgres-js';
+import postgres from 'npm:postgres';
+import * as schema from '../schema/index.ts';
+
+// Export transaction type for use in domain layer
+export type DbTransaction = PgTransaction<
+  PostgresJsQueryResultHKT,
+  Record<string, unknown>,
+  ExtractTablesWithRelations<Record<string, unknown>>
+>;
 
 export interface DatabaseConfig {
   host: string;
@@ -24,7 +34,7 @@ export interface DatabaseConfig {
   database: string;
   user: string;
   password: string;
-  ssl?: boolean | 'require' | 'prefer' | 'allow' | 'disable';
+  ssl?: boolean | 'require' | 'prefer' | 'allow' | 'verify-full' | object;
   max?: number;
   idle_timeout?: number;
 }
@@ -102,10 +112,10 @@ export async function closeDatabase() {
  * Execute in transaction
  */
 export async function withTransaction<T>(
-  callback: (tx: any) => Promise<T>
+  callback: (tx: DbTransaction) => Promise<T>
 ): Promise<T> {
   const database = getDatabase();
-  return await database.transaction(callback);
+  return await database.transaction(callback as any);
 }
 
 /**
@@ -127,8 +137,8 @@ export async function healthCheck(): Promise<boolean> {
    * Generate migration runner
    */
   generateMigrationRunner(): string {
-    return `import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { getDatabase } from './database';
+    return `import { migrate } from 'npm:drizzle-orm/postgres-js/migrator';
+import { getDatabase } from './database.ts';
 
 /**
  * Run database migrations
@@ -204,13 +214,13 @@ ${this.generateCreateTableStatements()}
       if (model.timestamps === true || model.timestamps.updatedAt) {
         columns.push('  updated_at TIMESTAMP DEFAULT NOW() NOT NULL');
       }
-      if (model.timestamps.deletedAt) {
+      if (typeof model.timestamps === 'object' && model.timestamps.deletedAt) {
         columns.push('  deleted_at TIMESTAMP');
       }
     }
 
     // Add soft delete column
-    if (model.softDelete && !model.timestamps?.deletedAt) {
+    if (model.softDelete && !(typeof model.timestamps === 'object' && model.timestamps?.deletedAt)) {
       columns.push('  deleted_at TIMESTAMP');
     }
 
