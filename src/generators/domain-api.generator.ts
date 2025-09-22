@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition } from "../types/model.types.ts";
 
 /**
  * Generates domain API layer with CRUD operations and hooks
@@ -17,7 +17,7 @@ export class DomainAPIGenerator {
     const files = new Map<string, string>();
 
     // Generate hooks types
-    files.set('domain/hooks.types.ts', this.generateHooksTypes());
+    files.set("domain/hooks.types.ts", this.generateHooksTypes());
 
     // Generate individual domain APIs
     for (const model of this.models) {
@@ -26,7 +26,7 @@ export class DomainAPIGenerator {
     }
 
     // Generate index file
-    files.set('domain/index.ts', this.generateDomainIndex());
+    files.set("domain/index.ts", this.generateDomainIndex());
 
     return files;
   }
@@ -35,7 +35,7 @@ export class DomainAPIGenerator {
    * Generate hooks types
    */
   private generateHooksTypes(): string {
-    return `import { SQL } from 'npm:drizzle-orm';
+    return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
 
 export interface HookContext {
@@ -97,9 +97,10 @@ export interface PaginationOptions {
   private generateModelDomainAPI(model: ModelDefinition): string {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
-    const primaryKeyField = model.fields.find(f => f.primaryKey)?.name || 'id';
+    const primaryKeyField = model.fields.find((f) => f.primaryKey)?.name ||
+      "id";
 
-    return `import { eq, desc, asc, sql } from 'npm:drizzle-orm';
+    return `import { eq, desc, asc, sql } from 'drizzle-orm';
 import { getDatabase, withTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
@@ -318,7 +319,7 @@ export class ${modelName}Domain {
         .update(${modelNameLower}Table)
         .set({
           ...processedInput,
-          ${model.timestamps ? 'updatedAt: new Date(),' : ''}
+          ${model.timestamps ? "updatedAt: new Date()," : ""}
         })
         .where(eq(${modelNameLower}Table.${primaryKeyField}, id))
         .returning();
@@ -366,7 +367,11 @@ export class ${modelName}Domain {
       }
 
       // Perform delete
-      ${model.softDelete ? this.generateSoftDelete(model, 'transaction') : this.generateHardDelete(model, 'transaction')}
+      ${
+      model.softDelete
+        ? this.generateSoftDelete(model, "transaction")
+        : this.generateHardDelete(model, "transaction")
+    }
 
       if (!deleted) {
         throw new Error(\`${modelName} with id \${id} not found\`);
@@ -411,17 +416,19 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   private generateRelationImports(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
-      return '';
+      return "";
     }
 
     const imports: string[] = [];
     for (const rel of model.relationships) {
       if (rel.target !== model.name) {
-        imports.push(`import { ${rel.target.toLowerCase()}Table } from '../schema/${rel.target.toLowerCase()}.schema.ts';`);
+        imports.push(
+          `import { ${rel.target.toLowerCase()}Table } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
+        );
       }
     }
 
-    return imports.join('\n');
+    return imports.join("\n");
   }
 
   /**
@@ -429,41 +436,53 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   private generateRelationshipIncludes(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
-      return '// No relationships to include';
+      return "// No relationships to include";
     }
 
     return `
       if (options?.include) {
         // Handle relationship includes
-        ${model.relationships.map(rel => `
+        ${
+      model.relationships.map((rel) => `
         if (options.include.includes('${rel.name}')) {
           // Include ${rel.name} relationship
           // This would require proper join logic based on relationship type
-        }`).join('\n')}
+        }`).join("\n")
+    }
       }`;
   }
 
   /**
    * Generate soft delete logic
    */
-  private generateSoftDelete(model: ModelDefinition, txVar: string = 'tx'): string {
+  private generateSoftDelete(
+    model: ModelDefinition,
+    txVar: string = "tx",
+  ): string {
     return `const [deleted] = await ${txVar}
         .update(${model.name.toLowerCase()}Table)
         .set({ 
           deletedAt: new Date(),
-          ${model.timestamps ? 'updatedAt: new Date()' : ''}
+          ${model.timestamps ? "updatedAt: new Date()" : ""}
         })
-        .where(eq(${model.name.toLowerCase()}Table.${model.fields.find(f => f.primaryKey)?.name || 'id'}, id))
+        .where(eq(${model.name.toLowerCase()}Table.${
+      model.fields.find((f) => f.primaryKey)?.name || "id"
+    }, id))
         .returning();`;
   }
 
   /**
    * Generate hard delete logic
    */
-  private generateHardDelete(model: ModelDefinition, txVar: string = 'tx'): string {
+  private generateHardDelete(
+    model: ModelDefinition,
+    txVar: string = "tx",
+  ): string {
     return `const [deleted] = await ${txVar}
         .delete(${model.name.toLowerCase()}Table)
-        .where(eq(${model.name.toLowerCase()}Table.${model.fields.find(f => f.primaryKey)?.name || 'id'}, id))
+        .where(eq(${model.name.toLowerCase()}Table.${
+      model.fields.find((f) => f.primaryKey)?.name || "id"
+    }, id))
         .returning();`;
   }
 
@@ -472,13 +491,13 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   private generateRelationshipMethods(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
-      return '';
+      return "";
     }
 
     const methods: string[] = [];
 
     for (const rel of model.relationships) {
-      if (rel.type === 'oneToMany') {
+      if (rel.type === "oneToMany") {
         methods.push(`
   /**
    * Get ${rel.name} for ${model.name}
@@ -488,26 +507,28 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     return await db
       .select()
       .from(${rel.target.toLowerCase()}Table)
-      .where(eq(${rel.target.toLowerCase()}Table.${rel.foreignKey || model.name.toLowerCase() + 'Id'}, id));
+      .where(eq(${rel.target.toLowerCase()}Table.${
+          rel.foreignKey || model.name.toLowerCase() + "Id"
+        }, id));
   }`);
       }
     }
 
-    return methods.join('\n');
+    return methods.join("\n");
   }
 
   /**
    * Generate domain index file
    */
   private generateDomainIndex(): string {
-    let code = '// Export all domain APIs\n';
-    
+    let code = "// Export all domain APIs\n";
+
     for (const model of this.models) {
       code += `export * from './${model.name.toLowerCase()}.domain.ts';\n`;
     }
 
     code += `export * from './hooks.types.ts';\n`;
-    
+
     return code;
   }
 

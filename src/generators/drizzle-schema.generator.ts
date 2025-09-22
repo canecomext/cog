@@ -1,4 +1,8 @@
-import { ModelDefinition, FieldDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import {
+  FieldDefinition,
+  ModelDefinition,
+  RelationshipDefinition,
+} from "../types/model.types.ts";
 
 /**
  * Generates Drizzle ORM schema files from model definitions
@@ -6,8 +10,11 @@ import { ModelDefinition, FieldDefinition, RelationshipDefinition } from '../typ
 export class DrizzleSchemaGenerator {
   private models: ModelDefinition[];
   private isCockroachDB: boolean;
-  
-  constructor(models: ModelDefinition[], options: { isCockroachDB?: boolean } = {}) {
+
+  constructor(
+    models: ModelDefinition[],
+    options: { isCockroachDB?: boolean } = {},
+  ) {
     this.models = models;
     this.isCockroachDB = options.isCockroachDB || false;
   }
@@ -17,21 +24,24 @@ export class DrizzleSchemaGenerator {
    */
   generateSchemas(): Map<string, string> {
     const schemas = new Map<string, string>();
-    
+
     // Generate individual model schemas
     for (const model of this.models) {
       const schemaContent = this.generateModelSchema(model);
-      schemas.set(`schema/${model.name.toLowerCase()}.schema.ts`, schemaContent);
+      schemas.set(
+        `schema/${model.name.toLowerCase()}.schema.ts`,
+        schemaContent,
+      );
     }
-    
+
     // Generate relations file
     const relationsContent = this.generateRelations();
-    schemas.set('schema/relations.ts', relationsContent);
-    
+    schemas.set("schema/relations.ts", relationsContent);
+
     // Generate index file that exports everything
     const indexContent = this.generateIndexFile();
-    schemas.set('schema/index.ts', indexContent);
-    
+    schemas.set("schema/index.ts", indexContent);
+
     return schemas;
   }
 
@@ -42,7 +52,7 @@ export class DrizzleSchemaGenerator {
     const imports = this.generateImports(model);
     const tableDefinition = this.generateTableDefinition(model);
     const typeExports = this.generateTypeExports(model);
-    
+
     return `${imports}\n\n${tableDefinition}\n\n${typeExports}`;
   }
 
@@ -51,24 +61,24 @@ export class DrizzleSchemaGenerator {
    */
   private generateImports(model: ModelDefinition): string {
     const drizzleImports = new Set<string>();
-    
+
     // Add table import
-    drizzleImports.add('pgTable');
+    drizzleImports.add("pgTable");
     if (model.schema) {
-      drizzleImports.add('pgSchema');
+      drizzleImports.add("pgSchema");
     }
-    
+
     // Check if this table has self-referential foreign keys
-    const hasSelfReference = model.fields.some(field => 
-      field.references && 
+    const hasSelfReference = model.fields.some((field) =>
+      field.references &&
       field.references.model.toLowerCase() === model.name.toLowerCase()
     );
-    
+
     // Add AnyPgColumn for self-referential tables
     if (hasSelfReference) {
-      drizzleImports.add('AnyPgColumn');
+      drizzleImports.add("AnyPgColumn");
     }
-    
+
     // Add field type imports based on model fields
     for (const field of model.fields) {
       const importType = this.getDrizzleImportForType(field);
@@ -79,23 +89,25 @@ export class DrizzleSchemaGenerator {
 
     // Check if we need customType for PostGIS
     if (this.hasPostGISFields(model)) {
-      drizzleImports.add('customType');
+      drizzleImports.add("customType");
     }
 
     // Ensure timestamp is imported when generated timestamp columns are present
     if (model.timestamps || model.softDelete) {
-      drizzleImports.add('timestamp');
+      drizzleImports.add("timestamp");
     }
-    
+
     // Base imports from pg-core and drizzle-orm
-    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
-    
+    let imports = `import { ${
+      Array.from(drizzleImports).join(", ")
+    } } from 'drizzle-orm/pg-core';\n`;
+
     // Add index imports separately if needed (modern approach)
     if (model.indexes && model.indexes.length > 0) {
-      imports += `import { index, uniqueIndex } from 'npm:drizzle-orm/pg-core';\n`;
+      imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
     }
-    
-    imports += `import { sql } from 'npm:drizzle-orm';\n`;
+
+    imports += `import { sql } from 'drizzle-orm';\n`;
 
     // Import other tables referenced by foreign keys in this schema
     const referencedModels = new Set<string>();
@@ -109,9 +121,10 @@ export class DrizzleSchemaGenerator {
     }
     for (const refModel of referencedModels) {
       const refLower = refModel.toLowerCase();
-      imports += `import { ${refLower}Table } from './${refLower}.schema.ts';\n`;
+      imports +=
+        `import { ${refLower}Table } from './${refLower}.schema.ts';\n`;
     }
-    
+
     return imports;
   }
 
@@ -119,28 +132,28 @@ export class DrizzleSchemaGenerator {
    * Get Drizzle import type for a field type
    */
   private getDrizzleImportForType(field: FieldDefinition): string | null {
-    const typeMap: Record<string, string> = {
-      'text': 'text',
-      'string': 'varchar',
-      'integer': 'integer',
-      'bigint': 'bigint',
-      'decimal': 'decimal',
-      'boolean': 'boolean',
-      'date': 'timestamp',
-      'uuid': 'uuid',
-      'json': 'json',
-      'jsonb': 'jsonb',
+    const typeMap: Record<string, string | null> = {
+      "text": "text",
+      "string": "varchar",
+      "integer": "integer",
+      "bigint": "bigint",
+      "decimal": "decimal",
+      "boolean": "boolean",
+      "date": "timestamp",
+      "uuid": "uuid",
+      "json": "json",
+      "jsonb": "jsonb",
       // PostGIS types don't have direct imports, they use customType
-      'point': null,
-      'linestring': null,
-      'polygon': null,
-      'multipoint': null,
-      'multilinestring': null,
-      'multipolygon': null,
-      'geometry': null,
-      'geography': null
+      "point": null,
+      "linestring": null,
+      "polygon": null,
+      "multipoint": null,
+      "multilinestring": null,
+      "multipolygon": null,
+      "geometry": null,
+      "geography": null,
     };
-    
+
     return typeMap[field.type] || null;
   }
 
@@ -148,160 +161,187 @@ export class DrizzleSchemaGenerator {
    * Generate table definition
    */
   private generateTableDefinition(model: ModelDefinition): string {
-    let code = '';
-    
+    let code = "";
+
     // Handle schema if specified
     if (model.schema) {
       code += `const ${model.schema}Schema = pgSchema('${model.schema}');\n\n`;
     }
-    
+
     // Start table definition (no type annotation needed)
-    const tableFunction = model.schema ? `${model.schema}Schema.table` : 'pgTable';
-    code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.tableName}', {\n`;
-    
+    const tableFunction = model.schema
+      ? `${model.schema}Schema.table`
+      : "pgTable";
+    code +=
+      `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.tableName}', {\n`;
+
     // Add fields
     const fieldDefinitions: string[] = [];
-    
+
     for (const field of model.fields) {
       fieldDefinitions.push(this.generateFieldDefinition(field, model));
     }
-    
+
     // Add timestamp fields if enabled
     if (model.timestamps) {
       const timestampFields = this.generateTimestampFields(model.timestamps);
       fieldDefinitions.push(...timestampFields);
     }
-    
+
     // Add soft delete field if enabled
     if (model.softDelete) {
       fieldDefinitions.push(`  deletedAt: timestamp('deleted_at')`);
     }
-    
+
     code += fieldDefinitions.map((def, idx) => {
       // Check if this is the last field overall
-      const isLast = idx === fieldDefinitions.length - 1 && !model.timestamps && !model.softDelete;
-      
+      const isLast = idx === fieldDefinitions.length - 1 && !model.timestamps &&
+        !model.softDelete;
+
       // If comment exists, the comma is already in the definition before the comment
-      if (def.includes(' // Self-reference:')) {
+      if (def.includes(" // Self-reference:")) {
         // For self-ref fields, we need to insert comma before the comment
-        const parts = def.split(' // ');
-        return isLast ? def : parts[0] + ', // ' + parts[1];
+        const parts = def.split(" // ");
+        return isLast ? def : parts[0] + ", // " + parts[1];
       }
       // For normal fields, just add comma if not last
-      return isLast ? def : def + ',';
-    }).join('\n') + '\n';
-    code += '});\n';
-    
+      return isLast ? def : def + ",";
+    }).join("\n") + "\n";
+    code += "});\n";
+
     // Generate indexes separately (modern approach)
     if (model.indexes && model.indexes.length > 0) {
-      code += '\n';
+      code += "\n";
       for (const idx of model.indexes) {
-        code += this.generateModernIndexDefinition(model.name.toLowerCase(), idx) + '\n';
+        code +=
+          this.generateModernIndexDefinition(model.name.toLowerCase(), idx) +
+          "\n";
       }
     }
-    
+
     return code;
   }
 
   /**
    * Generate field definition
    */
-  private generateFieldDefinition(field: FieldDefinition, model: ModelDefinition): string {
+  private generateFieldDefinition(
+    field: FieldDefinition,
+    model: ModelDefinition,
+  ): string {
     let definition = `  ${field.name}: `;
-    let comment = '';
-    
+    let comment = "";
+
     // Generate the field type
     switch (field.type) {
-      case 'text':
+      case "text":
         definition += `text('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'string':
-        definition += `varchar('${this.toSnakeCase(field.name)}'${field.maxLength ? `, { length: ${field.maxLength} }` : ''})`;
+      case "string":
+        definition += `varchar('${this.toSnakeCase(field.name)}'${
+          field.maxLength ? `, { length: ${field.maxLength} }` : ""
+        })`;
         break;
-      case 'integer':
+      case "integer":
         definition += `integer('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'bigint':
-        definition += `bigint('${this.toSnakeCase(field.name)}', { mode: 'number' })`;
+      case "bigint":
+        definition += `bigint('${
+          this.toSnakeCase(field.name)
+        }', { mode: 'number' })`;
         break;
-      case 'decimal':
+      case "decimal":
         const decimalOpts = [];
         if (field.precision) decimalOpts.push(`precision: ${field.precision}`);
-        if (field.scale !== undefined) decimalOpts.push(`scale: ${field.scale}`);
-        definition += `decimal('${this.toSnakeCase(field.name)}'${decimalOpts.length ? `, { ${decimalOpts.join(', ')} }` : ''})`;
+        if (field.scale !== undefined) {
+          decimalOpts.push(`scale: ${field.scale}`);
+        }
+        definition += `decimal('${this.toSnakeCase(field.name)}'${
+          decimalOpts.length ? `, { ${decimalOpts.join(", ")} }` : ""
+        })`;
         break;
-      case 'boolean':
+      case "boolean":
         definition += `boolean('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'date':
-        definition += `timestamp('${this.toSnakeCase(field.name)}', { mode: 'date' })`;
+      case "date":
+        definition += `timestamp('${
+          this.toSnakeCase(field.name)
+        }', { mode: 'date' })`;
         break;
-      case 'uuid':
+      case "uuid":
         definition += `uuid('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'json':
+      case "json":
         definition += `json('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'jsonb':
+      case "jsonb":
         definition += `jsonb('${this.toSnakeCase(field.name)}')`;
         break;
-      case 'point':
-      case 'linestring':
-      case 'polygon':
-      case 'multipoint':
-      case 'multilinestring':
-      case 'multipolygon':
-      case 'geometry':
-      case 'geography':
+      case "point":
+      case "linestring":
+      case "polygon":
+      case "multipoint":
+      case "multilinestring":
+      case "multipolygon":
+      case "geometry":
+      case "geography":
         definition += this.generatePostGISField(field);
         break;
       default:
         definition += `text('${this.toSnakeCase(field.name)}')`;
     }
-    
+
     // Add modifiers
     const modifiers: string[] = [];
-    
+
     if (field.primaryKey) {
-      modifiers.push('.primaryKey()');
+      modifiers.push(".primaryKey()");
     }
-    
+
     if (field.unique) {
-      modifiers.push('.unique()');
+      modifiers.push(".unique()");
     }
-    
+
     if (field.required || field.primaryKey) {
-      modifiers.push('.notNull()');
+      modifiers.push(".notNull()");
     }
-    
+
     if (field.defaultValue !== undefined) {
-      if (typeof field.defaultValue === 'string' && field.defaultValue.includes('()')) {
+      if (
+        typeof field.defaultValue === "string" &&
+        field.defaultValue.includes("()")
+      ) {
         // SQL function
         modifiers.push(`.default(sql\`${field.defaultValue}\`)`);
-      } else if (typeof field.defaultValue === 'string') {
+      } else if (typeof field.defaultValue === "string") {
         modifiers.push(`.default('${field.defaultValue}')`);
       } else {
         modifiers.push(`.default(${field.defaultValue})`);
       }
     }
-    
+
     if (field.references) {
       // Check if this is a self-reference
       if (field.references.model.toLowerCase() === model.name.toLowerCase()) {
         // Use AnyPgColumn type hint for self-references
-        modifiers.push(`.references((): AnyPgColumn => ${field.references.model.toLowerCase()}Table.${field.references.field})`);
-        comment = ' // Self-reference: AnyPgColumn breaks circular type dependency';
+        modifiers.push(
+          `.references((): AnyPgColumn => ${field.references.model.toLowerCase()}Table.${field.references.field})`,
+        );
+        comment =
+          " // Self-reference: AnyPgColumn breaks circular type dependency";
       } else {
-        modifiers.push(`.references(() => ${field.references.model.toLowerCase()}Table.${field.references.field})`);
+        modifiers.push(
+          `.references(() => ${field.references.model.toLowerCase()}Table.${field.references.field})`,
+        );
       }
     }
-    
+
     if (field.array) {
-      modifiers.push('.array()');
+      modifiers.push(".array()");
     }
-    
-    definition += modifiers.join('') + comment;
-    
+
+    definition += modifiers.join("") + comment;
+
     return definition;
   }
 
@@ -312,9 +352,9 @@ export class DrizzleSchemaGenerator {
     const fieldName = this.toSnakeCase(field.name);
     const geometryType = field.geometryType || field.type.toUpperCase();
     const srid = field.srid || 4326;
-    const isGeography = field.type === 'geography';
-    const columnType = isGeography ? 'geography' : 'geometry';
-    
+    const isGeography = field.type === "geography";
+    const columnType = isGeography ? "geography" : "geometry";
+
     // Use customType for PostGIS fields since Drizzle doesn't have native support
     return `customType<any>({
     dataType() {
@@ -334,25 +374,39 @@ export class DrizzleSchemaGenerator {
    */
   private generateTimestampFields(timestamps: boolean | any): string[] {
     const fields: string[] = [];
-    
+
     if (timestamps === true) {
-      fields.push(`  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`);
-      fields.push(`  updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().notNull()`);
-    } else if (typeof timestamps === 'object') {
+      fields.push(
+        `  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`,
+      );
+      fields.push(
+        `  updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().notNull()`,
+      );
+    } else if (typeof timestamps === "object") {
       if (timestamps.createdAt) {
-        const fieldName = typeof timestamps.createdAt === 'string' ? timestamps.createdAt : 'created_at';
-        fields.push(`  createdAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`);
+        const fieldName = typeof timestamps.createdAt === "string"
+          ? timestamps.createdAt
+          : "created_at";
+        fields.push(
+          `  createdAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
+        );
       }
       if (timestamps.updatedAt) {
-        const fieldName = typeof timestamps.updatedAt === 'string' ? timestamps.updatedAt : 'updated_at';
-        fields.push(`  updatedAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`);
+        const fieldName = typeof timestamps.updatedAt === "string"
+          ? timestamps.updatedAt
+          : "updated_at";
+        fields.push(
+          `  updatedAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
+        );
       }
       if (timestamps.deletedAt) {
-        const fieldName = typeof timestamps.deletedAt === 'string' ? timestamps.deletedAt : 'deleted_at';
+        const fieldName = typeof timestamps.deletedAt === "string"
+          ? timestamps.deletedAt
+          : "deleted_at";
         fields.push(`  deletedAt: timestamp('${fieldName}', { mode: 'date' })`);
       }
     }
-    
+
     return fields;
   }
 
@@ -360,17 +414,20 @@ export class DrizzleSchemaGenerator {
    * Generate modern index definition (outside of table definition)
    */
   private generateModernIndexDefinition(tableName: string, idx: any): string {
-    const indexName = idx.name || `idx_${tableName}_${idx.fields.join('_')}`;
-    const indexType = idx.unique ? 'uniqueIndex' : 'index';
-    const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`).join(', ');
-    
-    let definition = `export const ${indexName} = ${indexType}('${indexName}').on(${fields})`;
-    
+    const indexName = idx.name || `idx_${tableName}_${idx.fields.join("_")}`;
+    const indexType = idx.unique ? "uniqueIndex" : "index";
+    const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`).join(
+      ", ",
+    );
+
+    let definition =
+      `export const ${indexName} = ${indexType}('${indexName}').on(${fields})`;
+
     if (idx.where) {
       definition += `.where(sql\`${idx.where}\`)`;
     }
-    
-    definition += ';';
+
+    definition += ";";
     return definition;
   }
 
@@ -378,49 +435,54 @@ export class DrizzleSchemaGenerator {
    * Generate relations file
    */
   private generateRelations(): string {
-    let code = `import { relations } from 'npm:drizzle-orm';\n`;
-    
+    let code = `import { relations } from 'drizzle-orm';\n`;
+
     // Import all tables
     for (const model of this.models) {
-      code += `import { ${model.name.toLowerCase()}Table } from './${model.name.toLowerCase()}.schema.ts';\n`;
+      code +=
+        `import { ${model.name.toLowerCase()}Table } from './${model.name.toLowerCase()}.schema.ts';\n`;
     }
-    
-    code += '\n';
-    
+
+    code += "\n";
+
     // Generate relations for each model
     for (const model of this.models) {
       if (!model.relationships || model.relationships.length === 0) continue;
-      
-      code += `export const ${model.name.toLowerCase()}Relations = relations(${model.name.toLowerCase()}Table, ({ one, many }) => ({\n`;
-      
+
+      code +=
+        `export const ${model.name.toLowerCase()}Relations = relations(${model.name.toLowerCase()}Table, ({ one, many }) => ({\n`;
+
       const relationDefinitions: string[] = [];
-      
+
       for (const rel of model.relationships) {
         relationDefinitions.push(this.generateRelationDefinition(model, rel));
       }
-      
-      code += relationDefinitions.join(',\n');
-      code += '\n}));\n\n';
+
+      code += relationDefinitions.join(",\n");
+      code += "\n}));\n\n";
     }
-    
+
     return code;
   }
 
   /**
    * Generate relation definition
    */
-  private generateRelationDefinition(model: ModelDefinition, rel: RelationshipDefinition): string {
+  private generateRelationDefinition(
+    model: ModelDefinition,
+    rel: RelationshipDefinition,
+  ): string {
     switch (rel.type) {
-      case 'oneToMany':
+      case "oneToMany":
         return `  ${rel.name}: many(${rel.target.toLowerCase()}Table)`;
-      case 'manyToOne':
+      case "manyToOne":
         return `  ${rel.name}: one(${rel.target.toLowerCase()}Table, {
     fields: [${model.name.toLowerCase()}Table.${rel.foreignKey}],
     references: [${rel.target.toLowerCase()}Table.id]
   })`;
-      case 'oneToOne':
+      case "oneToOne":
         // Check if the foreign key is on this model's table
-        const hasFK = model.fields.some(f => f.name === rel.foreignKey);
+        const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
         if (hasFK) {
           // Foreign key is on this table - we own the relationship
           return `  ${rel.name}: one(${rel.target.toLowerCase()}Table, {
@@ -432,11 +494,11 @@ export class DrizzleSchemaGenerator {
           // For inverse oneToOne, we don't specify fields/references in Drizzle
           return `  ${rel.name}: one(${rel.target.toLowerCase()}Table)`;
         }
-      case 'manyToMany':
+      case "manyToMany":
         // Many-to-many relationships are handled through a junction table
         return `  ${rel.name}: many(${rel.target.toLowerCase()}Table)`;
       default:
-        return '';
+        return "";
     }
   }
 
@@ -445,9 +507,11 @@ export class DrizzleSchemaGenerator {
    */
   private generateTypeExports(model: ModelDefinition): string {
     let code = `// Type exports\n`;
-    code += `export type ${model.name} = typeof ${model.name.toLowerCase()}Table.$inferSelect;\n`;
-    code += `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;`;
-    
+    code +=
+      `export type ${model.name} = typeof ${model.name.toLowerCase()}Table.$inferSelect;\n`;
+    code +=
+      `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;`;
+
     return code;
   }
 
@@ -455,14 +519,14 @@ export class DrizzleSchemaGenerator {
    * Generate index file
    */
   private generateIndexFile(): string {
-    let code = '// Export all schemas and relations\n';
-    
+    let code = "// Export all schemas and relations\n";
+
     for (const model of this.models) {
       code += `export * from './${model.name.toLowerCase()}.schema.ts';\n`;
     }
-    
+
     code += `export * from './relations.ts';\n`;
-    
+
     return code;
   }
 
@@ -471,17 +535,24 @@ export class DrizzleSchemaGenerator {
    */
   private hasPostGISFields(model: ModelDefinition): boolean {
     const postgisTypes = [
-      'point', 'linestring', 'polygon', 'multipoint', 
-      'multilinestring', 'multipolygon', 'geometry', 'geography'
+      "point",
+      "linestring",
+      "polygon",
+      "multipoint",
+      "multilinestring",
+      "multipolygon",
+      "geometry",
+      "geography",
     ];
-    
-    return model.fields.some(f => postgisTypes.includes(f.type));
+
+    return model.fields.some((f) => postgisTypes.includes(f.type));
   }
 
   /**
    * Convert string to snake_case
    */
   private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`).replace(/^_/, '');
+    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+      .replace(/^_/, "");
   }
 }

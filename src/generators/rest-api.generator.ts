@@ -39,7 +39,7 @@ export class RestAPIGenerator {
     const modelNameLower = model.name.toLowerCase();
     const modelNamePlural = this.pluralize(modelNameLower);
 
-    return `import { Hono } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+    return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { transactionMiddleware } from './middleware.ts';
 import type { DbTransaction } from '../db/database.ts';
@@ -148,8 +148,8 @@ ${modelNameLower}Routes.put('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json(result);
-  } catch (error: any) {
-    if (error.message.includes('not found')) {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
     throw error;
@@ -176,8 +176,8 @@ ${modelNameLower}Routes.patch('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json(result);
-  } catch (error: any) {
-    if (error.message.includes('not found')) {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
     throw error;
@@ -202,8 +202,8 @@ ${modelNameLower}Routes.delete('/:id', transactionMiddleware, async (c) => {
     );
 
     return c.json({ message: '${modelName} deleted successfully' });
-  } catch (error: any) {
-    if (error.message.includes('not found')) {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
       return c.json({ error: '${modelName} not found' }, 404);
     }
     throw error;
@@ -252,7 +252,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
    * Generate middleware file
    */
   private generateMiddleware(): string {
-  return `import { MiddlewareHandler } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+  return `import { MiddlewareHandler } from '@hono/hono';
 import { getDatabase, type DbTransaction } from '../db/database.ts';
 
 type Env = {
@@ -329,7 +329,7 @@ export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-id');
   
   if (c.req.method === 'OPTIONS') {
-    return c.text('', 204);
+    return c.body(null, 204);
   }
   
   await next();
@@ -341,7 +341,7 @@ export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
    * Generate REST index file
    */
   private generateRestIndex(): string {
-    let code = `import { Hono } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+    let code = `import { Hono } from '@hono/hono';
 import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware.ts';
 import type { DbTransaction } from '../db/database.ts';
 `;

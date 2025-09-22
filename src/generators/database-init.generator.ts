@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition } from "../types/model.types.ts";
 
 /**
  * Generates database initialization code
@@ -14,11 +14,11 @@ export class DatabaseInitGenerator {
    * Generate database initialization file
    */
   generateDatabaseInit(): string {
-    return `import { drizzle } from 'npm:drizzle-orm/postgres-js';
-import type { ExtractTablesWithRelations } from 'npm:drizzle-orm';
-import type { PgTransaction } from 'npm:drizzle-orm/pg-core';
-import type { PostgresJsQueryResultHKT } from 'npm:drizzle-orm/postgres-js';
-import postgres from 'npm:postgres';
+    return `import { drizzle } from 'drizzle-orm/postgres-js';
+import type { ExtractTablesWithRelations } from 'drizzle-orm';
+import type { PgTransaction } from 'drizzle-orm/pg-core';
+import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import * as schema from '../schema/index.ts';
 
 // Export transaction type for use in domain layer
@@ -137,7 +137,7 @@ export async function healthCheck(): Promise<boolean> {
    * Generate migration runner
    */
   generateMigrationRunner(): string {
-    return `import { migrate } from 'npm:drizzle-orm/postgres-js/migrator';
+    return `import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { getDatabase } from './database.ts';
 
 /**
@@ -184,24 +184,26 @@ ${this.generateCreateTableStatements()}
     for (const model of this.models) {
       if (model.relationships) {
         for (const rel of model.relationships) {
-          if (rel.type === 'manyToMany' && rel.through) {
+          if (rel.type === "manyToMany" && rel.through) {
             statements.push(this.generateJunctionTable(model, rel));
           }
         }
       }
     }
 
-    return statements.join('\n\n');
+    return statements.join("\n\n");
   }
 
   /**
    * Generate CREATE TABLE statement for a model
    */
   private generateCreateTable(model: ModelDefinition): string {
-    let sql = `CREATE TABLE IF NOT EXISTS ${model.schema ? `${model.schema}.` : ''}${model.tableName} (\n`;
-    
+    let sql = `CREATE TABLE IF NOT EXISTS ${
+      model.schema ? `${model.schema}.` : ""
+    }${model.tableName} (\n`;
+
     const columns: string[] = [];
-    
+
     for (const field of model.fields) {
       columns.push(this.generateColumnDefinition(field));
     }
@@ -209,27 +211,36 @@ ${this.generateCreateTableStatements()}
     // Add timestamp columns
     if (model.timestamps) {
       if (model.timestamps === true || model.timestamps.createdAt) {
-        columns.push('  created_at TIMESTAMP DEFAULT NOW() NOT NULL');
+        columns.push("  created_at TIMESTAMP DEFAULT NOW() NOT NULL");
       }
       if (model.timestamps === true || model.timestamps.updatedAt) {
-        columns.push('  updated_at TIMESTAMP DEFAULT NOW() NOT NULL');
+        columns.push("  updated_at TIMESTAMP DEFAULT NOW() NOT NULL");
       }
-      if (typeof model.timestamps === 'object' && model.timestamps.deletedAt) {
-        columns.push('  deleted_at TIMESTAMP');
+      if (typeof model.timestamps === "object" && model.timestamps.deletedAt) {
+        columns.push("  deleted_at TIMESTAMP");
       }
     }
 
     // Add soft delete column
-    if (model.softDelete && !(typeof model.timestamps === 'object' && model.timestamps?.deletedAt)) {
-      columns.push('  deleted_at TIMESTAMP');
+    if (
+      model.softDelete &&
+      !(typeof model.timestamps === "object" && model.timestamps?.deletedAt)
+    ) {
+      columns.push("  deleted_at TIMESTAMP");
     }
 
-    sql += columns.join(',\n') + '\n);';
+    sql += columns.join(",\n") + "\n);";
 
     // Add indexes
     if (model.indexes) {
       for (const index of model.indexes) {
-        sql += `\n\nCREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS ${index.name || `idx_${model.tableName}_${index.fields.join('_')}`} ON ${model.tableName} (${index.fields.join(', ')})${index.where ? ` WHERE ${index.where}` : ''};`;
+        sql += `\n\nCREATE ${
+          index.unique ? "UNIQUE " : ""
+        }INDEX IF NOT EXISTS ${
+          index.name || `idx_${model.tableName}_${index.fields.join("_")}`
+        } ON ${model.tableName} (${index.fields.join(", ")})${
+          index.where ? ` WHERE ${index.where}` : ""
+        };`;
       }
     }
 
@@ -244,76 +255,86 @@ ${this.generateCreateTableStatements()}
 
     // Map field type to PostgreSQL type
     switch (field.type) {
-      case 'text':
-        columnDef += 'TEXT';
+      case "text":
+        columnDef += "TEXT";
         break;
-      case 'string':
-        columnDef += `VARCHAR${field.maxLength ? `(${field.maxLength})` : ''}`;
+      case "string":
+        columnDef += `VARCHAR${field.maxLength ? `(${field.maxLength})` : ""}`;
         break;
-      case 'integer':
-        columnDef += 'INTEGER';
+      case "integer":
+        columnDef += "INTEGER";
         break;
-      case 'bigint':
-        columnDef += 'BIGINT';
+      case "bigint":
+        columnDef += "BIGINT";
         break;
-      case 'decimal':
-        columnDef += `DECIMAL${field.precision ? `(${field.precision}${field.scale !== undefined ? `, ${field.scale}` : ''})` : ''}`;
+      case "decimal":
+        columnDef += `DECIMAL${
+          field.precision
+            ? `(${field.precision}${
+              field.scale !== undefined ? `, ${field.scale}` : ""
+            })`
+            : ""
+        }`;
         break;
-      case 'boolean':
-        columnDef += 'BOOLEAN';
+      case "boolean":
+        columnDef += "BOOLEAN";
         break;
-      case 'date':
-        columnDef += 'TIMESTAMP';
+      case "date":
+        columnDef += "TIMESTAMP";
         break;
-      case 'uuid':
-        columnDef += 'UUID';
+      case "uuid":
+        columnDef += "UUID";
         break;
-      case 'json':
-        columnDef += 'JSON';
+      case "json":
+        columnDef += "JSON";
         break;
-      case 'jsonb':
-        columnDef += 'JSONB';
+      case "jsonb":
+        columnDef += "JSONB";
         break;
-      case 'point':
-      case 'linestring':
-      case 'polygon':
-      case 'multipoint':
-      case 'multilinestring':
-      case 'multipolygon':
-      case 'geometry':
-      case 'geography':
+      case "point":
+      case "linestring":
+      case "polygon":
+      case "multipoint":
+      case "multilinestring":
+      case "multipolygon":
+      case "geometry":
+      case "geography":
         columnDef += this.getPostGISType(field);
         break;
       default:
-        columnDef += 'TEXT';
+        columnDef += "TEXT";
     }
 
     // Add array modifier
     if (field.array) {
-      columnDef += '[]';
+      columnDef += "[]";
     }
 
     // Add constraints
     if (field.primaryKey) {
-      columnDef += ' PRIMARY KEY';
+      columnDef += " PRIMARY KEY";
     }
     if (field.unique && !field.primaryKey) {
-      columnDef += ' UNIQUE';
+      columnDef += " UNIQUE";
     }
     if (field.required || field.primaryKey) {
-      columnDef += ' NOT NULL';
+      columnDef += " NOT NULL";
     }
     if (field.defaultValue !== undefined) {
-      if (typeof field.defaultValue === 'string' && field.defaultValue.includes('()')) {
+      if (
+        typeof field.defaultValue === "string" &&
+        field.defaultValue.includes("()")
+      ) {
         columnDef += ` DEFAULT ${field.defaultValue}`;
-      } else if (typeof field.defaultValue === 'string') {
+      } else if (typeof field.defaultValue === "string") {
         columnDef += ` DEFAULT '${field.defaultValue}'`;
       } else {
         columnDef += ` DEFAULT ${field.defaultValue}`;
       }
     }
     if (field.references) {
-      columnDef += ` REFERENCES ${field.references.model.toLowerCase()}(${field.references.field})`;
+      columnDef +=
+        ` REFERENCES ${field.references.model.toLowerCase()}(${field.references.field})`;
       if (field.references.onDelete) {
         columnDef += ` ON DELETE ${field.references.onDelete}`;
       }
@@ -329,9 +350,9 @@ ${this.generateCreateTableStatements()}
    * Get PostGIS type string
    */
   private getPostGISType(field: any): string {
-    if (field.type === 'geometry' || field.type === 'geography') {
+    if (field.type === "geometry" || field.type === "geography") {
       const type = field.type.toUpperCase();
-      const geometryType = field.geometryType || 'GEOMETRY';
+      const geometryType = field.geometryType || "GEOMETRY";
       const srid = field.srid || 4326;
       return `${type}(${geometryType}, ${srid})`;
     } else {
@@ -364,6 +385,7 @@ CREATE INDEX IF NOT EXISTS idx_${tableName}_${targetFK} ON ${tableName} (${targe
    * Convert string to snake_case
    */
   private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`).replace(/^_/, '');
+    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+      .replace(/^_/, "");
   }
 }

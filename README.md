@@ -1,6 +1,10 @@
 # CRUD Operations Generator (COG)
 
-A powerful TypeScript code generator for Deno that creates production-ready CRUD backend infrastructure from JSON model definitions. COG generates type-safe Drizzle ORM schemas, domain APIs with a sophisticated three-tier hooks system, REST endpoints using Hono, and handles complex relationships including PostGIS spatial data.
+A powerful TypeScript code generator for Deno that creates production-ready CRUD
+backend infrastructure from JSON model definitions. COG generates type-safe
+Drizzle ORM schemas, domain APIs with a sophisticated three-tier hooks system,
+REST endpoints using Hono, and handles complex relationships including PostGIS
+spatial data.
 
 ## Table of Contents
 
@@ -20,27 +24,28 @@ A powerful TypeScript code generator for Deno that creates production-ready CRUD
 
 ## Architecture
 
-COG follows a clean, layered architecture that separates concerns and ensures maintainability:
+COG follows a clean, layered architecture that separates concerns and ensures
+maintainability:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   REST Layer (Hono)                 │
+│  REST Layer (Hono)                                  │
 │  • HTTP handling                                    │
 │  • Transaction middleware                           │
 │  • Request/Response formatting                      │
 ├─────────────────────────────────────────────────────┤
-│                   Domain Layer                      │
+│  Domain Layer                                       │
 │  • Business logic                                   │
 │  • CRUD operations                                  │
 │  • Three-tier hooks (pre/post/after)                │
 │  • Self-contained, reusable                         │
 ├─────────────────────────────────────────────────────┤
-│                   Schema Layer                      │
+│  Schema Layer                                       │
 │  • Drizzle ORM schemas                              │
 │  • Type definitions                                 │
 │  • Relationships                                    │
 ├─────────────────────────────────────────────────────┤
-│                   Database Layer                    │
+│  Database Layer                                     │
 │  • PostgreSQL with PostGIS                          │
 │  • Connection management                            │
 │  • Transaction handling                             │
@@ -50,11 +55,13 @@ COG follows a clean, layered architecture that separates concerns and ensures ma
 ### Execution Flow
 
 **REST Layer:**
+
 ```
 [Middleware: Start Tx] → Call Domain → [Middleware: Commit/Rollback] → [Send Response]
 ```
 
 **Domain Layer:**
+
 ```
 [Pre-Hook] → [Database Operation] → [Post-Hook] → Return → [After-Hook (async)]
 ```
@@ -62,21 +69,28 @@ COG follows a clean, layered architecture that separates concerns and ensures ma
 ## Features
 
 ### Core Features
-- ✅ **Complete CRUD Operations**: Create, Read, Update, Delete with full type safety
-- ✅ **Three-Tier Hooks System**: Pre-hooks, post-hooks, and after-hooks for flexible business logic
-- ✅ **Transaction Management**: Automatic transaction handling with proper rollback on errors
+
+- ✅ **Complete CRUD Operations**: Create, Read, Update, Delete with full type
+  safety
+- ✅ **Three-Tier Hooks System**: Pre-hooks, post-hooks, and after-hooks for
+  flexible business logic
+- ✅ **Transaction Management**: Automatic transaction handling with proper
+  rollback on errors
 - ✅ **Type Safety**: Fully typed TypeScript code with Drizzle ORM
 - ✅ **RESTful API**: Auto-generated REST endpoints with Hono
 - ✅ **Relationship Support**: All relationship types including self-referential
-- ✅ **PostGIS Integration**: Full spatial data support for both PostgreSQL and CockroachDB
+- ✅ **PostGIS Integration**: Full spatial data support for both PostgreSQL and
+  CockroachDB
 - ✅ **Soft Deletes**: Optional soft delete support with `deletedAt` timestamps
 - ✅ **Automatic Timestamps**: Optional `createdAt` and `updatedAt` fields
 - ✅ **Pagination & Filtering**: Built-in support for paginated queries
 - ✅ **Database Migrations**: Migration generation and runner
 
 ### Advanced Features
+
 - 🔧 **Domain Independence**: Domain layer can be used standalone or with REST
-- 🔧 **Custom Indexes**: Support for various index types (B-tree, GiST, GIN, etc.)
+- 🔧 **Custom Indexes**: Support for various index types (B-tree, GiST, GIN,
+  etc.)
 - 🔧 **Cascade Operations**: Configurable cascade deletes and updates
 - 🔧 **Default Values**: Support for default values and SQL functions
 - 🔧 **Array Types**: Support for array fields
@@ -86,6 +100,7 @@ COG follows a clean, layered architecture that separates concerns and ensures ma
 ## Installation
 
 ### Prerequisites
+
 - Deno 1.40+ installed
 - PostgreSQL 14+ (with PostGIS extension for spatial features)
 - Basic knowledge of TypeScript and REST APIs
@@ -93,12 +108,14 @@ COG follows a clean, layered architecture that separates concerns and ensures ma
 ### Setup
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/canecomext/cog.git
 cd cog
 ```
 
 2. Install Deno (if not already installed):
+
 ```bash
 curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
@@ -131,23 +148,23 @@ deno run --allow-read --allow-write --allow-env src/cli.ts \
 3. **Use the generated code** in your application:
 
 ```typescript
-import { Hono } from '@hono/hono';
-import { initializeGenerated } from './generated';
+import { Hono } from "@hono/hono";
+import { initializeGenerated } from "./generated";
 
 const app = new Hono();
 
 const backend = await initializeGenerated({
   database: {
-    host: 'localhost',
+    host: "localhost",
     port: 5432,
-    database: 'myapp',
-    user: 'postgres',
-    password: 'password'
+    database: "myapp",
+    user: "postgres",
+    password: "password",
   },
   app,
   hooks: {
     // Define your hooks here
-  }
+  },
 });
 
 await Deno.serve({ port: 3000 }, app.fetch);
@@ -174,7 +191,8 @@ Options:
 
 ## Model Definition
 
-Models are defined as JSON files in the models directory. Each file represents one database table/entity.
+Models are defined as JSON files in the models directory. Each file represents
+one database table/entity.
 
 ### Basic Structure
 
@@ -355,43 +373,44 @@ const hooks = {
       // Hash password
       input.passwordHash = await hashPassword(input.password);
       delete input.password;
-      
+
       // Validate email
       if (!isValidEmail(input.email)) {
-        throw new Error('Invalid email');
+        throw new Error("Invalid email");
       }
-      
+
       return { data: input, context };
     },
-    
+
     // Post-hook: Enrich output (in transaction)
     postCreate: async (input, result, tx, context) => {
       // Add computed fields
       result.profileUrl = `/users/${result.id}`;
-      
+
       // Create related records in same transaction
       await tx.insert(userProfileTable).values({
         userId: result.id,
-        bio: ''
+        bio: "",
       });
-      
+
       return { data: result, context };
     },
-    
+
     // After-hook: Async operations (outside transaction)
     afterCreate: async (result, context) => {
       // These won't block the response
       await sendWelcomeEmail(result.email);
-      await trackAnalytics('user.created', result.id);
+      await trackAnalytics("user.created", result.id);
       await indexSearchEngine(result);
-    }
-  }
+    },
+  },
 };
 ```
 
 ## Data Types
 
 ### Primitive Types
+
 - `text`: Unlimited text
 - `string`: VARCHAR with optional maxLength
 - `integer`: 32-bit integer
@@ -402,11 +421,13 @@ const hooks = {
 - `uuid`: UUID v4
 
 ### Complex Types
+
 - `json`: JSON data
 - `jsonb`: Binary JSON (PostgreSQL)
 - Arrays: Any primitive type with `array: true`
 
 ### PostGIS Types
+
 - `point`: 2D point
 - `linestring`: Line
 - `polygon`: Closed polygon
@@ -421,6 +442,7 @@ const hooks = {
 ### Supported Relationship Types
 
 1. **One-to-One**
+
 ```json
 {
   "type": "oneToOne",
@@ -431,6 +453,7 @@ const hooks = {
 ```
 
 2. **One-to-Many**
+
 ```json
 {
   "type": "oneToMany",
@@ -441,6 +464,7 @@ const hooks = {
 ```
 
 3. **Many-to-One**
+
 ```json
 {
   "type": "manyToOne",
@@ -451,6 +475,7 @@ const hooks = {
 ```
 
 4. **Many-to-Many**
+
 ```json
 {
   "type": "manyToMany",
@@ -463,6 +488,7 @@ const hooks = {
 ```
 
 5. **Self-Referential**
+
 ```json
 {
   "type": "oneToMany",
@@ -494,18 +520,20 @@ The generated code supports spatial operations:
 ```typescript
 // Find locations within radius
 const nearby = await locationDomain.findMany({
-  where: sql`ST_DWithin(point, ST_MakePoint(${lng}, ${lat})::geography, ${radius})`
+  where:
+    sql`ST_DWithin(point, ST_MakePoint(${lng}, ${lat})::geography, ${radius})`,
 });
 
 // Find locations in polygon
 const within = await locationDomain.findMany({
-  where: sql`ST_Within(point, ST_GeomFromText('POLYGON((...))', 4326))`
+  where: sql`ST_Within(point, ST_GeomFromText('POLYGON((...))', 4326))`,
 });
 ```
 
 ### CockroachDB Support
 
-The generator supports both standard PostgreSQL PostGIS and CockroachDB's implementation:
+The generator supports both standard PostgreSQL PostGIS and CockroachDB's
+implementation:
 
 ```bash
 deno task generate --dbType cockroachdb
@@ -528,13 +556,13 @@ The REST layer automatically manages transactions:
 You can also use the domain API directly with manual transactions:
 
 ```typescript
-import { withTransaction } from './generated/db/database';
+import { withTransaction } from "./generated/db/database";
 
 await withTransaction(async (tx) => {
   // All operations in same transaction
   const user = await userDomain.create(userData, context, tx);
   const profile = await profileDomain.create(profileData, context, tx);
-  
+
   // Transaction commits if all succeed
   return { user, profile };
 });
@@ -550,8 +578,10 @@ deno run --allow-all run-demo.ts
 ```
 
 This will:
+
 1. Generate code from example models
-2. Demonstrate all features including hooks, transactions, relationships, and PostGIS
+2. Demonstrate all features including hooks, transactions, relationships, and
+   PostGIS
 3. Show the generated file structure
 
 See [example/README.md](example/README.md) for detailed information.
@@ -565,19 +595,42 @@ Each model gets a domain class with these methods:
 ```typescript
 class ModelDomain {
   // Create a new record
-  async create(input: NewModel, context?: HookContext, tx?: Transaction): Promise<Model>
-  
+  async create(
+    input: NewModel,
+    context?: HookContext,
+    tx?: Transaction,
+  ): Promise<Model>;
+
   // Find by ID
-  async findById(id: string, options?: FilterOptions, context?: HookContext, tx?: Transaction): Promise<Model | null>
-  
+  async findById(
+    id: string,
+    options?: FilterOptions,
+    context?: HookContext,
+    tx?: Transaction,
+  ): Promise<Model | null>;
+
   // Find many with pagination
-  async findMany(filter?: FilterOptions, pagination?: PaginationOptions, context?: HookContext, tx?: Transaction): Promise<{ data: Model[], total: number }>
-  
+  async findMany(
+    filter?: FilterOptions,
+    pagination?: PaginationOptions,
+    context?: HookContext,
+    tx?: Transaction,
+  ): Promise<{ data: Model[]; total: number }>;
+
   // Update by ID
-  async update(id: string, input: Partial<NewModel>, context?: HookContext, tx?: Transaction): Promise<Model>
-  
+  async update(
+    id: string,
+    input: Partial<NewModel>,
+    context?: HookContext,
+    tx?: Transaction,
+  ): Promise<Model>;
+
   // Delete by ID (soft or hard)
-  async delete(id: string, context?: HookContext, tx?: Transaction): Promise<Model>
+  async delete(
+    id: string,
+    context?: HookContext,
+    tx?: Transaction,
+  ): Promise<Model>;
 }
 ```
 
@@ -606,7 +659,8 @@ Each model gets these REST endpoints:
    - Always define a primary key
    - Use UUID for primary keys for better distribution
    - Define indexes for frequently queried fields
-   - Use appropriate data types (don't use text when string with maxLength works)
+   - Use appropriate data types (don't use text when string with maxLength
+     works)
 
 2. **Hooks**
    - Keep pre/post hooks lightweight (they're in transaction)
@@ -648,6 +702,7 @@ Each model gets these REST endpoints:
 ## Contributing
 
 Contributions are welcome! Please ensure:
+
 - Code follows TypeScript best practices
 - All tests pass
 - Documentation is updated
@@ -660,6 +715,7 @@ MIT
 ## Support
 
 For issues and questions:
+
 - Create an issue on GitHub
 - Check the example project for reference
 - Review generated code for understanding

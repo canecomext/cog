@@ -1,0 +1,28 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@hono/hono@^4.6.0": "4.9.8",
+    "npm:drizzle-orm@~0.44.5": "0.44.5",
+    "npm:postgres@^3.4.7": "3.4.7"
+  },
+  "jsr": {
+    "@hono/hono@4.9.8": {
+      "integrity": "908150f13e90181a051a3af3bf15203aff00190682afedfd38824d0cb9299a95"
+    }
+  },
+  "npm": {
+    "drizzle-orm@0.44.5": {
+      "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ=="
+    },
+    "postgres@3.4.7": {
+      "integrity": "sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@hono/hono@^4.6.0",
+      "npm:drizzle-orm@~0.44.5",
+      "npm:postgres@^3.4.7"
+    ]
+  }
+}

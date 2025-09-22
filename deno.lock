@@ -1,12 +1,28 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@hono/hono@*": "4.8.10",
     "npm:drizzle-orm@*": "0.44.4_postgres@3.4.7",
+    "npm:drizzle-orm@~0.44.5": "0.44.5_postgres@3.4.7",
     "npm:postgres@*": "3.4.7"
+  },
+  "jsr": {
+    "@hono/hono@4.8.10": {
+      "integrity": "dc7c9ee5ef33bdb8b1fd0fabc8093ce8b94389ed21c4928d4ac43019d67875f3"
+    }
   },
   "npm": {
     "drizzle-orm@0.44.4_postgres@3.4.7": {
       "integrity": "sha512-ZyzKFpTC/Ut3fIqc2c0dPZ6nhchQXriTsqTNs4ayRgl6sZcFlMs9QZKPSHXK4bdOf41GHGWf+FrpcDDYwW+W6Q==",
+      "dependencies": [
+        "postgres"
+      ],
+      "optionalPeers": [
+        "postgres"
+      ]
+    },
+    "drizzle-orm@0.44.5_postgres@3.4.7": {
+      "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ==",
       "dependencies": [
         "postgres"
       ],
@@ -92,5 +108,10 @@
     "https://deno.land/x/hono@v4.0.0/utils/url.ts": "d9d307a495e7dfc6e916fbcfa74c2d8d23e8e685bddc5e6ebc9c0f784345a01a",
     "https://deno.land/x/hono@v4.0.0/validator/index.ts": "6c986e8b91dcf857ecc8164a506ae8eea8665792a4ff7215471df669c632ae7c",
     "https://deno.land/x/hono@v4.0.0/validator/validator.ts": "1a7b524292662e5219fd61a9872c2586aa23a2328800211a8fdc268b089f75f1"
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:drizzle-orm@~0.44.5"
+    ]
   }
 }

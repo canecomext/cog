@@ -6,5 +6,8 @@
   "compilerOptions": {
     "strict": true,
     "lib": ["deno.window", "dom"]
+  },
+  "imports": {
+    "drizzle-orm": "npm:drizzle-orm@^0.44.5"
   }
 }

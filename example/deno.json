@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@hono/hono": "jsr:@hono/hono@^4.6.0",
+    "drizzle-orm": "npm:drizzle-orm@^0.44.5",
+    "postgres": "npm:postgres@^3.4.7"
+  },
+  "compilerOptions": {
+    "strict": true
+  }
+}
