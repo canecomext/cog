@@ -33,8 +33,7 @@ async function main() {
       softDeletes: args.softDeletes !== false,
       timestamps: args.timestamps !== false,
       uuid: args.uuid !== false,
-      validation: args.validation !== false,
-      migration: args.migration !== false
+      validation: args.validation !== false
     }
   });
 
@@ -91,7 +90,6 @@ Options:
   --no-timestamps        Disable timestamps
   --no-uuid              Disable UUID support
   --no-validation        Disable validation
-  --no-migration         Disable migration generation
   --help                 Show this help message
 
 Example:

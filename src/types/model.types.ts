@@ -121,7 +121,6 @@ export interface GeneratorConfig {
     uuid?: boolean;
     hooks?: boolean;
     validation?: boolean;
-    migration?: boolean;
   };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';

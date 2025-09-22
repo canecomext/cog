@@ -37,7 +37,6 @@ export async function generateFromModels(
       uuid: options.features?.uuid !== false,
       hooks: true,
       validation: options.features?.validation !== false,
-      migration: options.features?.migration !== false,
     },
     naming: {
       tableNaming: "snake_case",
@@ -88,7 +87,6 @@ export async function generateFromModels(
   console.log("  🗄️  Generating database initialization...");
   const dbInitGenerator = new DatabaseInitGenerator(models);
   files.set("db/database.ts", dbInitGenerator.generateDatabaseInit());
-  files.set("db/migrations.ts", dbInitGenerator.generateMigrationRunner());
 
   // Generate domain APIs
   console.log("  🎯 Generating domain APIs...");
