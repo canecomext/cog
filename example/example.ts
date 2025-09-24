@@ -6,6 +6,7 @@ import {
 } from "./generated/index.ts";
 import { sql } from "drizzle-orm";
 import { crypto } from "@std/crypto";
+import { load } from "@std/dotenv";
 
 // Define the environment type for the Hono app
 type Env = {
@@ -21,18 +22,16 @@ const app = new Hono<Env>();
 
 // Initialize the backend
 async function startServer() {
+  await load();
   try {
     // Initialize generated backend code
     const { db } = await initializeGenerated({
       // Database configuration
       database: {
-        host: "localhost",
-        port: 5432,
-        database: "example_db",
-        user: "postgres",
-        password: "postgres",
-        ssl: false,
-        max: 10, // Connection pool size
+        connectionString: Deno.env.get("DB_URL"),
+        ssl: {
+          ca: Deno.env.get("DB_SSL_CERT_FILE"),
+        },
       },
       // Pass the Hono app instance
       app,

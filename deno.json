@@ -1,9 +1,18 @@
 {
-  "compilerOptions": {
-    "strict": true,
-    "lib": ["deno.window", "dom"]
-  },
   "imports": {
-    "drizzle-orm": "npm:drizzle-orm@^0.44.5"
+  },
+  "tasks": {
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 120,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": true
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
   }
 }

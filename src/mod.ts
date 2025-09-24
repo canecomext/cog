@@ -83,10 +83,17 @@ export async function generateFromModels(
   const schemas = schemaGenerator.generateSchemas();
   schemas.forEach((content, path) => files.set(path, content));
 
-  // Generate database initialization
-  console.log("  🗄️  Generating database initialization...");
-  const dbInitGenerator = new DatabaseInitGenerator(models);
+  // Generate database initialization and utilities
+  console.log("  🗄️  Generating database utilities...");
+  const dbInitGenerator = new DatabaseInitGenerator(models, {
+    dbType: config.database.type,
+    postgis: config.database.postgis
+  });
+  
   files.set("db/database.ts", dbInitGenerator.generateDatabaseInit());
+  files.set("db/initialize-database.ts", dbInitGenerator.generateDatabaseInitialization());
+  
+  console.log(`      Using ${config.database.type}${config.database.postgis ? ' + PostGIS' : ''}`);
 
   // Generate domain APIs
   console.log("  🎯 Generating domain APIs...");

@@ -102,10 +102,8 @@ export class DrizzleSchemaGenerator {
       Array.from(drizzleImports).join(", ")
     } } from 'drizzle-orm/pg-core';\n`;
 
-    // Add index imports separately if needed (modern approach)
-    if (model.indexes && model.indexes.length > 0) {
-      imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
-    }
+    // Always add index imports since we're using table-level definitions
+    imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
 
     imports += `import { sql } from 'drizzle-orm';\n`;
 
@@ -173,7 +171,7 @@ export class DrizzleSchemaGenerator {
       ? `${model.schema}Schema.table`
       : "pgTable";
     code +=
-      `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.tableName}', {\n`;
+      `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.name.toLowerCase()}', {\n`;
 
     // Add fields
     const fieldDefinitions: string[] = [];
@@ -193,31 +191,56 @@ export class DrizzleSchemaGenerator {
       fieldDefinitions.push(`  deletedAt: timestamp('deleted_at')`);
     }
 
-    code += fieldDefinitions.map((def, idx) => {
-      // Check if this is the last field overall
-      const isLast = idx === fieldDefinitions.length - 1 && !model.timestamps &&
-        !model.softDelete;
-
-      // If comment exists, the comma is already in the definition before the comment
-      if (def.includes(" // Self-reference:")) {
-        // For self-ref fields, we need to insert comma before the comment
-        const parts = def.split(" // ");
-        return isLast ? def : parts[0] + ", // " + parts[1];
+    code += fieldDefinitions.map((def) => {
+      // For lines with comments, put the comma before the comment
+      if (def.includes(' // ')) {
+        const [code, comment] = def.split(' // ');
+        return `${code}, // ${comment}`;
       }
-      // For normal fields, just add comma if not last
-      return isLast ? def : def + ",";
+      return def + ',';
     }).join("\n") + "\n";
-    code += "});\n";
 
-    // Generate indexes separately (modern approach)
-    if (model.indexes && model.indexes.length > 0) {
-      code += "\n";
-      for (const idx of model.indexes) {
-        code +=
-          this.generateModernIndexDefinition(model.name.toLowerCase(), idx) +
-          "\n";
+    // Close the fields object and start the table-level definitions
+    code += "}, (table) => [\n";
+
+    // Generate indexes within the table definition
+    const tableIndexes = [];
+
+    // Field-level indexes
+    for (const field of model.fields) {
+      if (field.index) {
+        const isPostGISField = ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(field.type);
+        const indexName = `idx_${model.name.toLowerCase()}_${field.name}`;
+        
+        if (isPostGISField) {
+          tableIndexes.push(`  index('${indexName}').using('gist', table.${field.name})`); 
+        } else {
+          tableIndexes.push(`  index('${indexName}').on(table.${field.name})`);  
+        }
       }
     }
+
+    // Model-level indexes
+    if (model.indexes) {
+      for (const idx of model.indexes) {
+        const indexName = idx.name || `idx_${model.name.toLowerCase()}_${idx.fields.join('_')}`;
+        const indexType = idx.unique ? 'uniqueIndex' : 'index';
+        const fields = idx.fields.map(f => `table.${f}`).join(', ');
+
+        // Check if the first field is a PostGIS field
+        const firstField = model.fields.find(f => f.name === idx.fields[0]);
+        const isPostGISField = firstField && ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
+
+        if (isPostGISField) {
+          tableIndexes.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);  
+        } else {
+          tableIndexes.push(`  ${indexType}('${indexName}').on(${fields})`);  
+        }
+      }
+    }
+
+    code += tableIndexes.join(',\n') + "\n]);"; 
+
 
     return code;
   }
@@ -416,18 +439,33 @@ export class DrizzleSchemaGenerator {
   private generateModernIndexDefinition(tableName: string, idx: any): string {
     const indexName = idx.name || `idx_${tableName}_${idx.fields.join("_")}`;
     const indexType = idx.unique ? "uniqueIndex" : "index";
-    const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`).join(
-      ", ",
-    );
+    const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`);
+    
+    // Check if any of the fields is a PostGIS type
+    const model = this.models.find(m => m.name.toLowerCase() === tableName);
+    const firstField = model?.fields.find(f => f.name === idx.fields[0]);
+    const isPostGISField = firstField && ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
 
-    let definition =
-      `export const ${indexName} = ${indexType}('${indexName}').on(${fields})`;
+    let definition = `export const ${indexName} = ${indexType}('${indexName}')`;
 
-    if (idx.where) {
-      definition += `.where(sql\`${idx.where}\`)`;
+    // For PostGIS fields, use GiST index method
+    if (isPostGISField) {
+      definition += `\n  .using('gist', ${fields.join(', ')})`;
+    } else {
+      // For normal fields, use the new .on() API
+      definition += `\n  .on(${fields.join(', ')})`;
     }
 
-    definition += ";";
+    if (idx.where) {
+      definition += `\n  .where(sql\`${idx.where}\`)`;
+    }
+
+    // Add concurrent creation for PostgreSQL (not supported in CockroachDB)
+    if (this.dbType === 'postgresql') {
+      definition += '\n  .concurrently()';
+    }
+
+    definition += ';';
     return definition;
   }
 
