@@ -1,2 +1,4 @@
 .DS_Store
-/example/generated
+**/generated
+**/*.pem
+**/.env
