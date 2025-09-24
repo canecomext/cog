@@ -1,12 +1,8 @@
-import { Hono } from "@hono/hono";
-import {
-  type DbTransaction,
-  initializeGenerated,
-  userDomain,
-} from "./generated/index.ts";
-import { sql } from "drizzle-orm";
-import { crypto } from "@std/crypto";
-import { load } from "@std/dotenv";
+import { Hono } from '@hono/hono';
+import { type DbTransaction, initializeGenerated, userDomain } from './generated/index.ts';
+import { sql } from 'drizzle-orm';
+import { crypto } from '@std/crypto';
+import { load } from '@std/dotenv';
 
 // Define the environment type for the Hono app
 type Env = {
@@ -20,17 +16,18 @@ type Env = {
 // Create Hono app instance with the correct environment type
 const app = new Hono<Env>();
 
+const env = await load();
+
 // Initialize the backend
 async function startServer() {
-  await load();
   try {
     // Initialize generated backend code
     const { db } = await initializeGenerated({
       // Database configuration
       database: {
-        connectionString: Deno.env.get("DB_URL"),
+        connectionString: env.DB_URL,
         ssl: {
-          ca: Deno.env.get("DB_SSL_CERT_FILE"),
+          ca: env.DB_SSL_CERT_FILE,
         },
       },
       // Pass the Hono app instance
@@ -40,8 +37,8 @@ async function startServer() {
         user: {
           // Pre-create hook: Validate email format
           async preCreate(input: any, context?: any) {
-            if (!input.email?.includes("@")) {
-              throw new Error("Invalid email format");
+            if (!input.email?.includes('@')) {
+              throw new Error('Invalid email format');
             }
             return { data: input, context };
           },
@@ -66,34 +63,34 @@ async function startServer() {
     });
 
     // Request ID middleware - assigns a unique ID to each request
-    app.use("*", async (c, next) => {
+    app.use('*', async (c, next) => {
       const requestId = crypto.randomUUID();
-      c.set("requestId", requestId);
+      c.set('requestId', requestId);
       // Add request ID to response headers
-      c.header("X-Request-ID", requestId);
+      c.header('X-Request-ID', requestId);
       await next();
     });
 
     // Mock authentication middleware - in real apps, this would validate tokens/sessions
-    app.use("*", async (c, next) => {
+    app.use('*', async (c, next) => {
       // For demo purposes, we'll get userId from header or generate a demo one
-      const userId = c.req.header("X-User-ID") ||
-        "demo-user-" + crypto.randomUUID().slice(0, 8);
-      c.set("userId", userId);
+      const userId = c.req.header('X-User-ID') ||
+        'demo-user-' + crypto.randomUUID().slice(0, 8);
+      c.set('userId', userId);
       await next();
     });
 
     // Add transaction middleware to automatically handle transactions
-    app.use("*", async (c, next) => {
+    app.use('*', async (c, next) => {
       await db.transaction(async (tx) => {
         // Store transaction in context
-        c.set("transaction", tx);
+        c.set('transaction', tx);
         await next();
       });
     });
 
     // Add request timing middleware
-    app.use("*", async (c, next) => {
+    app.use('*', async (c, next) => {
       const start = Date.now();
       await next();
       const end = Date.now();
@@ -101,15 +98,15 @@ async function startServer() {
     });
 
     // Add custom routes
-    app.get("/", (c) => c.json({ message: "Welcome to the example backend!" }));
+    app.get('/', (c) => c.json({ message: 'Welcome to the example backend!' }));
 
     // Example endpoint demonstrating context usage
-    app.post("/api/users/profile", async (c) => {
-      const requestId = c.get("requestId");
-      const userId = c.get("userId");
+    app.post('/api/users/profile', async (c) => {
+      const requestId = c.get('requestId');
+      const userId = c.get('userId');
 
       if (!userId) {
-        return c.json({ error: "User ID is required" }, 400);
+        return c.json({ error: 'User ID is required' }, 400);
       }
 
       try {
@@ -117,7 +114,7 @@ async function startServer() {
         const result = await userDomain.create({
           email: `${userId}@example.com`,
           username: userId,
-          fullName: `Demo User ${userId?.split("-")[2] || ""}`,
+          fullName: `Demo User ${userId?.split('-')[2] || ''}`,
           passwordHash: crypto.randomUUID(), // Just for demo purposes
         }, {
           requestId,
@@ -130,7 +127,7 @@ async function startServer() {
         );
 
         return c.json({
-          message: "Profile created successfully",
+          message: 'Profile created successfully',
           requestId,
           userId,
           profile: result,
@@ -141,7 +138,7 @@ async function startServer() {
           error,
         );
         return c.json({
-          error: "Failed to create profile",
+          error: 'Failed to create profile',
           requestId,
           userId,
         }, 500);
@@ -149,18 +146,18 @@ async function startServer() {
     });
 
     // Example endpoint demonstrating transaction usage with context
-    app.patch("/api/users/profile/name", async (c) => {
-      const requestId = c.get("requestId");
-      const userId = c.get("userId");
+    app.patch('/api/users/profile/name', async (c) => {
+      const requestId = c.get('requestId');
+      const userId = c.get('userId');
 
       if (!userId) {
-        return c.json({ error: "User ID is required" }, 400);
+        return c.json({ error: 'User ID is required' }, 400);
       }
 
       try {
         const { newName } = await c.req.json();
         if (!newName) {
-          return c.json({ error: "newName is required" }, 400);
+          return c.json({ error: 'newName is required' }, 400);
         }
 
         // Find user by username first
@@ -169,7 +166,7 @@ async function startServer() {
         });
 
         if (!user.data.length) {
-          return c.json({ error: "User not found" }, 404);
+          return c.json({ error: 'User not found' }, 404);
         }
 
         // Update user profile - transaction is automatically used from context
@@ -184,7 +181,7 @@ async function startServer() {
         );
 
         return c.json({
-          message: "Profile updated successfully",
+          message: 'Profile updated successfully',
           requestId,
           userId,
           profile: result,
@@ -195,7 +192,7 @@ async function startServer() {
           error,
         );
         return c.json({
-          error: "Failed to update profile",
+          error: 'Failed to update profile',
           requestId,
           userId,
         }, 500);
@@ -203,7 +200,7 @@ async function startServer() {
     });
 
     // Add custom domain logic example
-    app.get("/api/users/search", async (c) => {
+    app.get('/api/users/search', async (c) => {
       const { email } = c.req.query();
 
       try {
@@ -214,8 +211,8 @@ async function startServer() {
 
         return c.json(result);
       } catch (error) {
-        console.error("Search failed:", error);
-        return c.json({ error: "Failed to search users" }, 500);
+        console.error('Search failed:', error);
+        return c.json({ error: 'Failed to search users' }, 500);
       }
     });
 
@@ -225,7 +222,7 @@ async function startServer() {
 
     Deno.serve({ port: 3000 }, app.fetch);
   } catch (error) {
-    console.error("Failed to start server:", error);
+    console.error('Failed to start server:', error);
     Deno.exit(1);
   }
 }
