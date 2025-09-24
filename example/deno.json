@@ -12,7 +12,8 @@
   },
   "tasks": {
     "generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated",
-    "db:init": "deno run -A generated/db/initialize-database.ts"
+    "db:init": "deno run -A generated/db/initialize-database.ts",
+    "run:example": "deno run -A ./example.ts"
   },
   "fmt": {
     "useTabs": false,
