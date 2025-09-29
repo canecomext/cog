@@ -362,14 +362,21 @@ type Env = {
 }
 
 /**
- * Register all REST routes
+ * Register built-in global middlewares
+ * This should be called before any custom middleware or route registration
  */
-export function registerRestRoutes(app: Hono<Env>) {
-  // Apply global middleware
+export function registerGlobalMiddlewares(app: Hono<Env>) {
+  // Apply global middleware in the correct order
   app.use('*', corsMiddleware);
   app.use('*', requestIdMiddleware);
   app.use('*', errorMiddleware);
+}
 
+/**
+ * Register all REST routes
+ * Note: Global middlewares should be registered before calling this function
+ */
+export function registerRestRoutes(app: Hono<Env>) {
   // Register model routes
 `;
 

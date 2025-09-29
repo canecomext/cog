@@ -136,7 +136,7 @@ function generateMainIndex(models: any[]): string {
 
 import { Hono } from '@hono/hono';
 import { initializeDatabase, type DatabaseConfig, type DbTransaction } from './db/database.ts';
-import { registerRestRoutes } from './rest/index.ts';
+import { registerGlobalMiddlewares, registerRestRoutes } from './rest/index.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
 
@@ -154,6 +154,9 @@ export interface InitializationConfig {
   hooks?: {
     [modelName: string]: any;
   };
+  // Optional callback to register custom global middlewares
+  // This is called after database initialization but before route registration
+  middlewareSetup?: (db: any) => void | Promise<void>;
 }
 
 /**
@@ -163,7 +166,17 @@ export async function initializeGenerated(config: InitializationConfig) {
   // Initialize database
   const { db, sql } = await initializeDatabase(config.database);
 
-  // Register REST routes
+  // Register built-in global middlewares first
+  registerGlobalMiddlewares(config.app);
+
+  // Call custom middleware setup if provided
+  // This allows users to register their custom global middlewares
+  // after built-in middlewares but before route registration
+  if (config.middlewareSetup) {
+    await config.middlewareSetup(db);
+  }
+
+  // Register REST routes after all global middlewares
   registerRestRoutes(config.app);
 
   // Initialize domain layers with hooks if provided

@@ -32,6 +32,44 @@ async function startServer() {
       },
       // Pass the Hono app instance
       app,
+      // Register custom global middlewares
+      // These will be registered after built-in middlewares but before routes
+      middlewareSetup: async (database) => {
+        // Request ID middleware - assigns a unique ID to each request
+        app.use('*', async (c, next) => {
+          const requestId = crypto.randomUUID();
+          c.set('requestId', requestId);
+          // Add request ID to response headers
+          c.header('X-Request-ID', requestId);
+          await next();
+        });
+
+        // Mock authentication middleware - in real apps, this would validate tokens/sessions
+        app.use('*', async (c, next) => {
+          // For demo purposes, we'll get userId from header or generate a demo one
+          const userId = c.req.header('X-User-ID') ||
+            'demo-user-' + crypto.randomUUID().slice(0, 8);
+          c.set('userId', userId);
+          await next();
+        });
+
+        // Add transaction middleware to automatically handle transactions
+        app.use('*', async (c, next) => {
+          await database.transaction(async (tx: DbTransaction) => {
+            // Store transaction in context
+            c.set('transaction', tx);
+            await next();
+          });
+        });
+
+        // Add request timing middleware
+        app.use('*', async (c, next) => {
+          const start = Date.now();
+          await next();
+          const end = Date.now();
+          console.log(`Request took ${end - start}ms`);
+        });
+      },
       // Register hooks
       hooks: {
         user: {
@@ -60,41 +98,6 @@ async function startServer() {
           },
         },
       },
-    });
-
-    // Request ID middleware - assigns a unique ID to each request
-    app.use('*', async (c, next) => {
-      const requestId = crypto.randomUUID();
-      c.set('requestId', requestId);
-      // Add request ID to response headers
-      c.header('X-Request-ID', requestId);
-      await next();
-    });
-
-    // Mock authentication middleware - in real apps, this would validate tokens/sessions
-    app.use('*', async (c, next) => {
-      // For demo purposes, we'll get userId from header or generate a demo one
-      const userId = c.req.header('X-User-ID') ||
-        'demo-user-' + crypto.randomUUID().slice(0, 8);
-      c.set('userId', userId);
-      await next();
-    });
-
-    // Add transaction middleware to automatically handle transactions
-    app.use('*', async (c, next) => {
-      await db.transaction(async (tx) => {
-        // Store transaction in context
-        c.set('transaction', tx);
-        await next();
-      });
-    });
-
-    // Add request timing middleware
-    app.use('*', async (c, next) => {
-      const start = Date.now();
-      await next();
-      const end = Date.now();
-      console.log(`Request took ${end - start}ms`);
     });
 
     // Add custom routes
@@ -214,6 +217,16 @@ async function startServer() {
         console.error('Search failed:', error);
         return c.json({ error: 'Failed to search users' }, 500);
       }
+    });
+
+    app.onError(async (err, c) => {
+      const tx = c.get('transaction');
+
+      if (tx) {
+        tx.rollback();
+      }
+
+      return c.text('Error', 500);
     });
 
     // Start the server
