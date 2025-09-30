@@ -2,14 +2,14 @@
  * Main module exports for the CRUD Operations Generator
  */
 
-import { ModelParser } from "./parser/model-parser.ts";
-import { DrizzleSchemaGenerator } from "./generators/drizzle-schema.generator.ts";
-import { DatabaseInitGenerator } from "./generators/database-init.generator.ts";
-import { DomainAPIGenerator } from "./generators/domain-api.generator.ts";
-import { RestAPIGenerator } from "./generators/rest-api.generator.ts";
-import { GeneratorConfig } from "./types/model.types.ts";
+import { ModelParser } from './parser/model-parser.ts';
+import { DrizzleSchemaGenerator } from './generators/drizzle-schema.generator.ts';
+import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
+import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
+import { RestAPIGenerator } from './generators/rest-api.generator.ts';
+import { GeneratorConfig } from './types/model.types.ts';
 
-export * from "./types/model.types.ts";
+export * from './types/model.types.ts';
 
 /**
  * Generate CRUD backend code from model definitions
@@ -27,7 +27,7 @@ export async function generateFromModels(
     modelsPath,
     outputPath,
     database: {
-      type: options.database?.type || "postgresql",
+      type: options.database?.type || 'postgresql',
       postgis: options.database?.postgis !== false,
       schema: options.database?.schema,
     },
@@ -39,80 +39,78 @@ export async function generateFromModels(
       validation: options.features?.validation !== false,
     },
     naming: {
-      tableNaming: "snake_case",
-      columnNaming: "snake_case",
+      tableNaming: 'snake_case',
+      columnNaming: 'snake_case',
     },
   };
 
   // Step 1: Parse models
-  console.log("📖 Parsing model definitions...");
+  console.log('📖 Parsing model definitions...');
   const parser = new ModelParser();
   const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
   if (errors.length > 0) {
-    console.error("\n❌ Validation errors found:");
+    console.error('\n❌ Validation errors found:');
     for (const error of errors) {
-      const prefix = error.severity === "error" ? "  ❌" : "  ⚠️";
+      const prefix = error.severity === 'error' ? '  ❌' : '  ⚠️';
       console.error(
-        `${prefix} ${error.model ? `[${error.model}]` : ""} ${error.message}`,
+        `${prefix} ${error.model ? `[${error.model}]` : ''} ${error.message}`,
       );
     }
 
-    const hasErrors = errors.some((e) => e.severity === "error");
+    const hasErrors = errors.some((e) => e.severity === 'error');
     if (hasErrors) {
-      throw new Error("Generation aborted due to validation errors");
+      throw new Error('Generation aborted due to validation errors');
     }
   }
 
   console.log(
-    `✅ Found ${models.length} valid models: ${
-      models.map((m) => m.name).join(", ")
-    }\n`,
+    `✅ Found ${models.length} valid models: ${models.map((m) => m.name).join(', ')}\n`,
   );
 
   // Step 2: Generate code
-  console.log("⚙️  Generating code...");
+  console.log('⚙️  Generating code...');
 
   const files = new Map<string, string>();
 
   // Generate Drizzle schemas
-  console.log("  📝 Generating Drizzle ORM schemas...");
+  console.log('  📝 Generating Drizzle ORM schemas...');
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
-    isCockroachDB: config.database.type === "cockroachdb",
+    isCockroachDB: config.database.type === 'cockroachdb',
   });
   const schemas = schemaGenerator.generateSchemas();
   schemas.forEach((content, path) => files.set(path, content));
 
   // Generate database initialization and utilities
-  console.log("  🗄️  Generating database utilities...");
+  console.log('  🗄️  Generating database utilities...');
   const dbInitGenerator = new DatabaseInitGenerator(models, {
     dbType: config.database.type,
-    postgis: config.database.postgis
+    postgis: config.database.postgis,
   });
-  
-  files.set("db/database.ts", dbInitGenerator.generateDatabaseInit());
-  files.set("db/initialize-database.ts", dbInitGenerator.generateDatabaseInitialization());
-  
+
+  files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());
+  files.set('db/initialize-database.ts', dbInitGenerator.generateDatabaseInitialization());
+
   console.log(`      Using ${config.database.type}${config.database.postgis ? ' + PostGIS' : ''}`);
 
   // Generate domain APIs
-  console.log("  🎯 Generating domain APIs...");
+  console.log('  🎯 Generating domain APIs...');
   const domainGenerator = new DomainAPIGenerator(models);
   const domainFiles = domainGenerator.generateDomainAPIs();
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
-  console.log("  🌐 Generating REST endpoints...");
+  console.log('  🌐 Generating REST endpoints...');
   const restGenerator = new RestAPIGenerator(models);
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
   // Generate main index file
-  console.log("  📦 Generating main export file...");
-  files.set("index.ts", generateMainIndex(models));
+  console.log('  📦 Generating main export file...');
+  files.set('index.ts', generateMainIndex(models));
 
   // Step 3: Write files
-  console.log("\n📝 Writing generated files...");
+  console.log('\n📝 Writing generated files...');
   await writeGeneratedFiles(outputPath, files);
 
   console.log(`\n✅ Successfully generated ${files.size} files!`);
@@ -137,16 +135,9 @@ function generateMainIndex(models: any[]): string {
 import { Hono } from '@hono/hono';
 import { initializeDatabase, type DatabaseConfig, type DbTransaction } from './db/database.ts';
 import { registerGlobalMiddlewares, registerRestRoutes } from './rest/index.ts';
+import type { Env } from './rest/types.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
-
-type Env = {
-  Variables: {
-    requestId?: string;
-    userId?: string;
-    transaction?: DbTransaction;
-  }
-}
 
 export interface InitializationConfig {
   database: DatabaseConfig;
@@ -154,9 +145,6 @@ export interface InitializationConfig {
   hooks?: {
     [modelName: string]: any;
   };
-  // Optional callback to register custom global middlewares
-  // This is called after database initialization but before route registration
-  middlewareSetup?: (db: any) => void | Promise<void>;
 }
 
 /**
@@ -169,13 +157,6 @@ export async function initializeGenerated(config: InitializationConfig) {
   // Register built-in global middlewares first
   registerGlobalMiddlewares(config.app);
 
-  // Call custom middleware setup if provided
-  // This allows users to register their custom global middlewares
-  // after built-in middlewares but before route registration
-  if (config.middlewareSetup) {
-    await config.middlewareSetup(db);
-  }
-
   // Register REST routes after all global middlewares
   registerRestRoutes(config.app);
 
@@ -186,7 +167,7 @@ export async function initializeGenerated(config: InitializationConfig) {
     if (config.hooks.${m.name.toLowerCase()}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain, 
         new domain.${m.name}Domain(config.hooks.${m.name.toLowerCase()}));
-    }`).join("")
+    }`).join('')
   }
   }
 
@@ -203,6 +184,7 @@ export * from './db/database.ts';
 export * from './rest/index.ts';
 export * from './domain/index.ts';
 export * from './schema/index.ts';
+export type { Env } from './rest/types.ts';
 `;
 }
 
@@ -218,7 +200,7 @@ async function writeGeneratedFiles(
 
   for (const [relativePath, content] of files) {
     const fullPath = `${outputPath}/${relativePath}`;
-    const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
 
     // Create directory if needed
     await Deno.mkdir(dir, { recursive: true });

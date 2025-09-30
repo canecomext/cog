@@ -16,6 +16,9 @@ export class RestAPIGenerator {
   generateRestAPIs(): Map<string, string> {
     const files = new Map<string, string>();
 
+    // Generate shared types
+    files.set('rest/types.ts', this.generateSharedTypes());
+
     // Generate individual REST endpoints
     for (const model of this.models) {
       const restAPI = this.generateModelRestAPI(model);
@@ -41,16 +44,8 @@ export class RestAPIGenerator {
 
     return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
-import { transactionMiddleware } from './middleware.ts';
-import type { DbTransaction } from '../db/database.ts';
-
-type Env = {
-  Variables: {
-    requestId?: string;
-    userId?: string;
-    transaction?: DbTransaction;
-  }
-}
+import { getDatabase } from '../db/database.ts';
+import type { Env } from './types.ts';
 
 export const ${modelNameLower}Routes = new Hono<Env>();
 
@@ -60,20 +55,24 @@ export const ${modelNameLower}Routes = new Hono<Env>();
  */
 ${modelNameLower}Routes.get('/', async (c) => {
   const { limit = '10', offset = '0', orderBy, orderDirection = 'asc' } = c.req.query();
+  const db = getDatabase();
   
-  const result = await ${modelNameLower}Domain.findMany(
-    undefined,
-    {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      orderBy,
-      orderDirection: orderDirection as 'asc' | 'desc'
-    },
-    {
-      requestId: c.get('requestId'),
-      userId: c.get('userId')
-    }
-  );
+  const result = await db.transaction(async (tx) => {
+    return await ${modelNameLower}Domain.findMany(
+      tx,
+      undefined,
+      {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        orderBy,
+        orderDirection: orderDirection as 'asc' | 'desc'
+      },
+      {
+        requestId: c.get('requestId'),
+        userId: c.get('userId')
+      }
+    );
+  });
 
   return c.json({
     data: result.data,
@@ -92,15 +91,19 @@ ${modelNameLower}Routes.get('/', async (c) => {
 ${modelNameLower}Routes.get('/:id', async (c) => {
   const id = c.req.param('id');
   const include = c.req.query('include')?.split(',');
+  const db = getDatabase();
 
-  const result = await ${modelNameLower}Domain.findById(
-    id,
-    { include },
-    {
-      requestId: c.get('requestId'),
-      userId: c.get('userId')
-    }
-  );
+  const result = await db.transaction(async (tx) => {
+    return await ${modelNameLower}Domain.findById(
+      id,
+      tx,
+      { include },
+      {
+        requestId: c.get('requestId'),
+        userId: c.get('userId')
+      }
+    );
+  });
 
   if (!result) {
     return c.json({ error: '${modelName} not found' }, 404);
@@ -113,17 +116,20 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
  * POST /${modelNamePlural}
  * Create a new ${modelName}
  */
-${modelNameLower}Routes.post('/', transactionMiddleware, async (c) => {
+${modelNameLower}Routes.post('/', async (c) => {
   const body = await c.req.json();
+  const db = getDatabase();
   
-  const result = await ${modelNameLower}Domain.create(
-    body,
-    {
-      requestId: c.get('requestId'),
-      userId: c.get('userId')
-    },
-    c.get('transaction')
-  );
+  const result = await db.transaction(async (tx) => {
+    return await ${modelNameLower}Domain.create(
+      body,
+      tx,
+      {
+        requestId: c.get('requestId'),
+        userId: c.get('userId')
+      }
+    );
+  });
 
   return c.json(result, 201);
 });
@@ -132,20 +138,23 @@ ${modelNameLower}Routes.post('/', transactionMiddleware, async (c) => {
  * PUT /${modelNamePlural}/:id
  * Update a ${modelName}
  */
-${modelNameLower}Routes.put('/:id', transactionMiddleware, async (c) => {
+${modelNameLower}Routes.put('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
+  const db = getDatabase();
 
   try {
-    const result = await ${modelNameLower}Domain.update(
-      id,
-      body,
-      {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
-      },
-      c.get('transaction')
-    );
+    const result = await db.transaction(async (tx) => {
+      return await ${modelNameLower}Domain.update(
+        id,
+        body,
+        tx,
+        {
+          requestId: c.get('requestId'),
+          userId: c.get('userId')
+        }
+      );
+    });
 
     return c.json(result);
   } catch (error) {
@@ -160,20 +169,23 @@ ${modelNameLower}Routes.put('/:id', transactionMiddleware, async (c) => {
  * PATCH /${modelNamePlural}/:id
  * Partially update a ${modelName}
  */
-${modelNameLower}Routes.patch('/:id', transactionMiddleware, async (c) => {
+${modelNameLower}Routes.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
+  const db = getDatabase();
 
   try {
-    const result = await ${modelNameLower}Domain.update(
-      id,
-      body,
-      {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
-      },
-      c.get('transaction')
-    );
+    const result = await db.transaction(async (tx) => {
+      return await ${modelNameLower}Domain.update(
+        id,
+        body,
+        tx,
+        {
+          requestId: c.get('requestId'),
+          userId: c.get('userId')
+        }
+      );
+    });
 
     return c.json(result);
   } catch (error) {
@@ -188,18 +200,21 @@ ${modelNameLower}Routes.patch('/:id', transactionMiddleware, async (c) => {
  * DELETE /${modelNamePlural}/:id
  * Delete a ${modelName}
  */
-${modelNameLower}Routes.delete('/:id', transactionMiddleware, async (c) => {
+${modelNameLower}Routes.delete('/:id', async (c) => {
   const id = c.req.param('id');
+  const db = getDatabase();
 
   try {
-    await ${modelNameLower}Domain.delete(
-      id,
-      {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
-      },
-      c.get('transaction')
-    );
+    await db.transaction(async (tx) => {
+      return await ${modelNameLower}Domain.delete(
+        id,
+        tx,
+        {
+          requestId: c.get('requestId'),
+          userId: c.get('userId')
+        }
+      );
+    });
 
     return c.json({ message: '${modelName} deleted successfully' });
   } catch (error) {
@@ -211,6 +226,22 @@ ${modelNameLower}Routes.delete('/:id', transactionMiddleware, async (c) => {
 });
 
 ${this.generateRelationshipEndpoints(model)}
+`;
+  }
+
+  /**
+   * Generate shared types file
+   */
+  private generateSharedTypes(): string {
+    return `/**
+ * Shared types for REST API
+ */
+export type Env = {
+  Variables: {
+    requestId?: string;
+    userId?: string;
+  }
+}
 `;
   }
 
@@ -252,34 +283,8 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
    * Generate middleware file
    */
   private generateMiddleware(): string {
-  return `import { MiddlewareHandler } from '@hono/hono';
-import { getDatabase, type DbTransaction } from '../db/database.ts';
-
-type Env = {
-  Variables: {
-    requestId?: string;
-    userId?: string;
-    transaction?: DbTransaction;
-  }
-}
-
-/**
- * Transaction middleware for operations that modify data
- */
-export const transactionMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  const db = getDatabase();
-  
-  try {
-    // Create transaction and store it in context
-    await db.transaction(async (tx) => {
-      c.set('transaction', tx);
-      await next();
-    });
-  } catch (error) {
-    // Transaction will be rolled back automatically on error
-    throw error;
-  }
-};
+    return `import { MiddlewareHandler } from '@hono/hono';
+import type { Env } from './types.ts';
 
 /**
  * Request ID middleware
@@ -343,7 +348,7 @@ export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
   private generateRestIndex(): string {
     let code = `import { Hono } from '@hono/hono';
 import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware.ts';
-import type { DbTransaction } from '../db/database.ts';
+import type { Env } from './types.ts';
 `;
 
     // Import all route files
@@ -352,14 +357,6 @@ import type { DbTransaction } from '../db/database.ts';
     }
 
     code += `
-
-type Env = {
-  Variables: {
-    requestId?: string;
-    userId?: string;
-    transaction?: DbTransaction;
-  }
-}
 
 /**
  * Register built-in global middlewares
@@ -396,10 +393,12 @@ export function registerRestRoutes(app: Hono<Env>) {
     return c.json({
       version: '1.0.0',
       endpoints: [
-${this.models.map(m => {
-  const plural = this.pluralize(m.name.toLowerCase());
-  return `        '${plural}'`;
-}).join(',\n')}
+${
+      this.models.map((m) => {
+        const plural = this.pluralize(m.name.toLowerCase());
+        return `        '${plural}'`;
+      }).join(',\n')
+    }
       ]
     });
   });
@@ -412,6 +411,9 @@ ${this.models.map(m => {
       code += `export { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
+    code += `\n// Re-export shared types\n`;
+    code += `export type { Env } from './types.ts';\n`;
+
     return code;
   }
 
@@ -420,8 +422,10 @@ ${this.models.map(m => {
    */
   private pluralize(word: string): string {
     // Check if already plural (simple heuristic)
-    if (word.endsWith('ies') || word.endsWith('ses') || word.endsWith('xes') || 
-        word.endsWith('ches') || word.endsWith('shes')) {
+    if (
+      word.endsWith('ies') || word.endsWith('ses') || word.endsWith('xes') ||
+      word.endsWith('ches') || word.endsWith('shes')
+    ) {
       return word;
     }
     // Check if word already ends with 's' but not 'ss' (likely already plural)
@@ -429,11 +433,13 @@ ${this.models.map(m => {
       return word;
     }
     // Handle common patterns
-    if (word.endsWith('y') && !['ay', 'ey', 'iy', 'oy', 'uy'].some(ending => word.endsWith(ending))) {
+    if (word.endsWith('y') && !['ay', 'ey', 'iy', 'oy', 'uy'].some((ending) => word.endsWith(ending))) {
       return word.slice(0, -1) + 'ies';
     }
-    if (word.endsWith('ss') || word.endsWith('x') || 
-        word.endsWith('ch') || word.endsWith('sh')) {
+    if (
+      word.endsWith('ss') || word.endsWith('x') ||
+      word.endsWith('ch') || word.endsWith('sh')
+    ) {
       return word + 'es';
     }
     return word + 's';

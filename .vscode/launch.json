@@ -6,10 +6,25 @@
   "configurations": [
     {
       "request": "launch",
-      "name": "Launch Program",
+      "name": "CLI",
       "type": "node",
       "program": "${workspaceFolder}/src/cli.ts",
       "cwd": "${workspaceFolder}",
+      "env": {},
+      "runtimeExecutable": "/Users/zgobolos/.deno/bin/deno",
+      "runtimeArgs": [
+        "run",
+        "--inspect-wait",
+        "--allow-all"
+      ],
+      "attachSimplePort": 9228
+    },
+    {
+      "request": "launch",
+      "name": "Example",
+      "type": "node",
+      "program": "${workspaceFolder}/example/example.ts",
+      "cwd": "${workspaceFolder}/example",
       "env": {},
       "runtimeExecutable": "/Users/zgobolos/.deno/bin/deno",
       "runtimeArgs": [

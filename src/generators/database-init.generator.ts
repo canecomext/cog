@@ -1,4 +1,4 @@
-import { ModelDefinition } from "../types/model.types.ts";
+import { ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates database initialization code
@@ -10,7 +10,7 @@ export class DatabaseInitGenerator {
 
   constructor(
     models: ModelDefinition[],
-    options: { dbType?: string; postgis?: boolean } = {}
+    options: { dbType?: string; postgis?: boolean } = {},
   ) {
     this.models = models;
     this.dbType = options.dbType === 'cockroachdb' ? 'cockroachdb' : 'postgresql';
@@ -23,7 +23,7 @@ export class DatabaseInitGenerator {
   generateDatabaseInitialization(): string {
     const createPostgis = this.postgis
       ? "\n    // Create PostGIS extension\n    await sql`CREATE EXTENSION IF NOT EXISTS postgis`;\n    console.log('PostGIS extension created');"
-      : "";
+      : '';
 
     // Remove extra indentation and fix template
     return `import { initializeDatabase, closeDatabase, getSQL } from './database.ts';
@@ -196,16 +196,6 @@ export async function closeDatabase() {
 }
 
 /**
- * Execute in transaction
- */
-export async function withTransaction<T>(
-  callback: (tx: DbTransaction) => Promise<T>
-): Promise<T> {
-  const database = getDatabase();
-  return await database.transaction(callback as any);
-}
-
-/**
  * Health check
  */
 export async function healthCheck(): Promise<boolean> {
@@ -259,8 +249,8 @@ export async function healthCheck(): Promise<boolean> {
     for (const model of this.models) visit(model.name.toLowerCase());
 
     // Map back to ModelDefinition in correct order
-    const modelByName = new Map(this.models.map(m => [m.name.toLowerCase(), m] as const));
-    return ordered.map(n => modelByName.get(n)!).filter(Boolean);
+    const modelByName = new Map(this.models.map((m) => [m.name.toLowerCase(), m] as const));
+    return ordered.map((n) => modelByName.get(n)!).filter(Boolean);
   }
 
   /**
@@ -268,12 +258,12 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateTableCreationSQL(): string {
     const sortedModels = this.sortModelsByDependencies();
-    return sortedModels.map(model => {
+    return sortedModels.map((model) => {
       const tableName = this.toSnakeCase(model.name);
       const columns = this.generateColumnsSQL(model);
       const constraints = this.generateConstraintsSQL(model);
       const createIfNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
-      
+
       return `    await sql\`
       CREATE TABLE ${createIfNotExists} "${tableName}" (
         ${columns}${constraints ? ',\n        ' + constraints : ''}
@@ -287,25 +277,27 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateColumnsSQL(model: ModelDefinition): string {
     const columns = [];
-    
+
     // Model-specific columns
     for (const field of model.fields) {
       if (field.primaryKey) {
         // Primary key field
         if (field.type === 'uuid') {
-          columns.push(`${field.name} UUID PRIMARY KEY${field.defaultValue ? ` DEFAULT ${field.defaultValue}` : ''} NOT NULL`);
+          columns.push(
+            `${field.name} UUID PRIMARY KEY${field.defaultValue ? ` DEFAULT ${field.defaultValue}` : ''} NOT NULL`,
+          );
         } else {
           columns.push(`${field.name} ${this.getColumnType(field)} PRIMARY KEY NOT NULL`);
         }
         continue;
       }
-      
+
       const columnName = this.toSnakeCase(field.name);
       const columnType = this.getColumnType(field);
       const constraints = this.getColumnConstraints(field);
       columns.push(`"${columnName}" ${columnType}${constraints}`);
     }
-    
+
     // Common columns
     if (model.timestamps !== false) {
       const timestampType = 'TIMESTAMP';
@@ -315,7 +307,7 @@ export async function healthCheck(): Promise<boolean> {
     if (model.softDelete) {
       columns.push(`deleted_at TIMESTAMP`);
     }
-    
+
     return columns.join(',\n        ');
   }
 
@@ -324,7 +316,7 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateConstraintsSQL(model: ModelDefinition): string {
     const constraints = [];
-    
+
     // Unique constraints
     for (const field of model.fields) {
       if (field.unique) {
@@ -332,7 +324,7 @@ export async function healthCheck(): Promise<boolean> {
         constraints.push(`CONSTRAINT "${model.name.toLowerCase()}_${columnName}_unique" UNIQUE("${columnName}")`);
       }
     }
-    
+
     // Foreign key constraints
     for (const field of model.fields) {
       if (field.references) {
@@ -341,15 +333,15 @@ export async function healthCheck(): Promise<boolean> {
         const refColumn = field.references.field || 'id';
         const onDelete = field.references.onDelete || 'NO ACTION';
         const onUpdate = field.references.onUpdate || 'NO ACTION';
-        
+
         constraints.push(
           `CONSTRAINT "${model.name.toLowerCase()}_${columnName}_fk" ` +
-          `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
-          `ON DELETE ${onDelete} ON UPDATE ${onUpdate}`
+            `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
+            `ON DELETE ${onDelete} ON UPDATE ${onUpdate}`,
         );
       }
     }
-    
+
     return constraints.join(',\n        ');
   }
 
@@ -358,12 +350,12 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateIndexCreationSQL(): string {
     const processedIndexes = new Set(); // Track unique index names
-    return this.models.map(model => {
+    return this.models.map((model) => {
       const tableName = this.toSnakeCase(model.name);
       const indexes = this.generateIndexes(model);
-      
+
       if (!indexes.length) return '';
-      
+
       return indexes.map(({ sql, name }) => {
         if (processedIndexes.has(name)) return '';
         processedIndexes.add(name);
@@ -379,7 +371,7 @@ export async function healthCheck(): Promise<boolean> {
   private generateIndexes(model: ModelDefinition): Array<{ sql: string; name: string }> {
     const indexes = [];
     const tableName = this.toSnakeCase(model.name);
-    
+
     // Field-level indexes
     for (const field of model.fields) {
       if (field.index) {
@@ -388,32 +380,32 @@ export async function healthCheck(): Promise<boolean> {
         const methodClause = method ? `USING ${method}` : '';
         const ifNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
         const indexName = `idx_${tableName}_${columnName}`;
-        
+
         indexes.push({
           name: indexName,
           sql: `CREATE INDEX ${ifNotExists} "${indexName}" ON "${tableName}" ` +
-               `${methodClause} ("${columnName}")`
+            `${methodClause} ("${columnName}")`,
         });
       }
     }
-    
+
     // Model-level indexes
     if (model.indexes) {
       for (const idx of model.indexes) {
-        const columns = idx.fields.map(f => `"${this.toSnakeCase(f)}"`).join(', ');
-        const indexName = idx.name || `idx_${tableName}_${idx.fields.map(f => this.toSnakeCase(f)).join('_')}`;
+        const columns = idx.fields.map((f) => `"${this.toSnakeCase(f)}"`).join(', ');
+        const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => this.toSnakeCase(f)).join('_')}`;
         const method = idx.type || this.getDefaultIndexMethod();
         const methodClause = method ? `USING ${method}` : '';
         const ifNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
-        
+
         indexes.push({
           name: indexName,
           sql: `CREATE INDEX ${ifNotExists} "${indexName}" ON "${tableName}" ` +
-               `${methodClause} (${columns})`
+            `${methodClause} (${columns})`,
         });
       }
     }
-    
+
     return indexes;
   }
 
@@ -436,7 +428,7 @@ export async function healthCheck(): Promise<boolean> {
       'boolean': 'BOOLEAN',
       'date': 'TIMESTAMP',
       'jsonb': 'JSONB',
-      'timestamp': 'TIMESTAMP'
+      'timestamp': 'TIMESTAMP',
     };
 
     if (field.type in commonTypes) {
@@ -507,11 +499,11 @@ export async function healthCheck(): Promise<boolean> {
    */
   private getColumnConstraints(field: any): string {
     const constraints = [];
-    
+
     if (field.required) {
       constraints.push('NOT NULL');
     }
-    
+
     if (field.defaultValue !== undefined) {
       if (field.type === 'uuid' && field.defaultValue === 'gen_random_uuid()') {
         constraints.push(`DEFAULT gen_random_uuid()`);
@@ -527,7 +519,7 @@ export async function healthCheck(): Promise<boolean> {
         constraints.push(`DEFAULT ${field.defaultValue}`);
       }
     }
-    
+
     return constraints.length ? ' ' + constraints.join(' ') : '';
   }
 
@@ -540,8 +532,7 @@ export async function healthCheck(): Promise<boolean> {
       if (field.type === 'json' || field.type === 'jsonb') {
         return 'INVERTED';
       }
-      return this.postgis && ['point', 'polygon', 'multipolygon', 'linestring'].includes(field.type) ? 
-        'GIST' : 'BTREE';
+      return this.postgis && ['point', 'polygon', 'multipolygon', 'linestring'].includes(field.type) ? 'GIST' : 'BTREE';
     }
 
     // PostgreSQL index types
@@ -568,6 +559,6 @@ export async function healthCheck(): Promise<boolean> {
    */
   private toSnakeCase(str: string): string {
     return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-      .replace(/^_/, "");
+      .replace(/^_/, '');
   }
 }
