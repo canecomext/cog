@@ -39,8 +39,6 @@ export class DomainAPIGenerator {
 import { type DbTransaction } from '../db/database.ts';
 
 export interface HookContext {
-  userId?: string;
-  requestId?: string;
   metadata?: Record<string, unknown>;
 }
 

@@ -1,9 +1,11 @@
 import { Hono } from '@hono/hono';
+import { HTTPException } from '@hono/hono/http-exception';
 import { type DbTransaction, HookContext, initializeGenerated, userDomain } from './generated/index.ts';
 import { sql } from 'drizzle-orm';
 import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
 import type { Env } from './generated/rest/types.ts';
+import { uuid } from 'drizzle-orm/pg-core';
 // the above line is a demonstration of fileds definition that can be used in the context, eg:
 // c.set('requestId', uuid.v4());
 // const requestId = c.get('requestId');
@@ -56,19 +58,21 @@ async function startServer() {
         user: {
           // Pre-create hook: Validate email format
           async preCreate(input: any, tx: DbTransaction, context?: HookContext) {
-            if (!input.email?.includes('@')) {
-              throw new Error('Invalid email format');
-            }
+            // throw new HTTPException(401, { message: 'Not authorized' });
             return { data: input, context };
           },
 
           // Post-create hook: Enrich response with computed field
           async postCreate(input: any, result: any, tx: DbTransaction, context?: HookContext) {
-            const enrichedResult = {
-              ...result,
-              displayName: `${result.fullName} (${result.email})`,
+            throw new HTTPException(403, { message: 'Forbidden' });
+            /*
+            return {
+              data: {
+                ...result,
+              },
+              context,
             };
-            return { data: enrichedResult, context };
+            */
           },
 
           // After-create hook: Log creation (async)
@@ -102,17 +106,23 @@ async function startServer() {
       }
     });
 
-    /*
-    app.onError(async (err, c) => {
-      const tx = c.get('transaction');
+    app.get('/xxx', async (c) => {
+      const uuid = crypto.randomUUID();
+      const uid = uuid.split('-')[1];
 
-      if (tx) {
-        tx.rollback();
-      }
+      const result = await db.transaction(async (tx) => {
+        const data = {
+          id: uuid,
+          email: `${uid}@email.com`,
+          username: uid,
+          fullName: `Full Name ${uid}`,
+          passwordHash: uid,
+        };
+        return await userDomain.create(data, tx);
+      });
 
-      return c.text('Error', 500);
+      return c.json(result);
     });
-    */
 
     // Start the server
     const port = 3000;

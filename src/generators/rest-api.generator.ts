@@ -68,8 +68,8 @@ ${modelNameLower}Routes.get('/', async (c) => {
         orderDirection: orderDirection as 'asc' | 'desc'
       },
       {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
+        // requestId: c.get('requestId'),
+        // userId: c.get('userId')
       }
     );
   });
@@ -99,8 +99,8 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
       tx,
       { include },
       {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
+        // requestId: c.get('requestId'),
+        // userId: c.get('userId')
       }
     );
   });
@@ -125,8 +125,8 @@ ${modelNameLower}Routes.post('/', async (c) => {
       body,
       tx,
       {
-        requestId: c.get('requestId'),
-        userId: c.get('userId')
+        // requestId: c.get('requestId'),
+        // userId: c.get('userId')
       }
     );
   });
@@ -150,8 +150,8 @@ ${modelNameLower}Routes.put('/:id', async (c) => {
         body,
         tx,
         {
-          requestId: c.get('requestId'),
-          userId: c.get('userId')
+          // requestId: c.get('requestId'),
+          // userId: c.get('userId')
         }
       );
     });
@@ -181,8 +181,8 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
         body,
         tx,
         {
-          requestId: c.get('requestId'),
-          userId: c.get('userId')
+          // requestId: c.get('requestId'),
+          // userId: c.get('userId')
         }
       );
     });
@@ -210,8 +210,8 @@ ${modelNameLower}Routes.delete('/:id', async (c) => {
         id,
         tx,
         {
-          requestId: c.get('requestId'),
-          userId: c.get('userId')
+          // requestId: c.get('requestId'),
+          // userId: c.get('userId')
         }
       );
     });
