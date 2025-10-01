@@ -452,8 +452,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Get ${rel.name} for ${model.name}
    */
-  async get${this.capitalize(rel.name)}(id: string): Promise<unknown[]> {
-    const db = withoutTransaction();
+  async get${this.capitalize(rel.name)}(id: string, tx: DbTransaction | null ): Promise<unknown[]> {
+    // Use provided transaction or get database instance
+    const db = tx || withoutTransaction();
+    
     return await db
       .select()
       .from(${rel.target.toLowerCase()}Table)

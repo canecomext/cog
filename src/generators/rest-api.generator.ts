@@ -261,7 +261,7 @@ export type Env = {
 ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   const id = c.req.param('id');
   
-  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
+  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id, null);
   
   return c.json(result);
 });`);
