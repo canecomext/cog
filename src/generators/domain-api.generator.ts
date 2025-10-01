@@ -62,15 +62,15 @@ export interface CRUDHooks<T, CreateInput, UpdateInput> {
   preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<CreateInput>>;
   preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<UpdateInput>>;
   preDelete?: (id: string, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindById?: (id: string, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindMany?: (tx: DbTransaction, filter?: FilterOptions, context?: HookContext) => Promise<PreHookResult<FilterOptions>>;
+  preFindById?: (id: string, tx: DbTransaction | null, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
+  preFindMany?: (tx: DbTransaction | null, filter?: FilterOptions, context?: HookContext) => Promise<PreHookResult<FilterOptions>>;
 
   // Post-operation hooks (within transaction)
   postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
   postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
   postDelete?: (id: string, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
-  postFindById?: (id: string, result: T | null, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T | null>>;
-  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T[]>>;
+  postFindById?: (id: string, result: T | null, tx: DbTransaction | null, context?: HookContext) => Promise<PostHookResult<T | null>>;
+  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx: DbTransaction | null, context?: HookContext) => Promise<PostHookResult<T[]>>;
 
   // After-operation hooks (outside transaction, async)
   afterCreate?: (result: T, context?: HookContext) => Promise<void>;
@@ -151,16 +151,19 @@ export class ${modelName}Domain {
   /**
    * Find ${modelName} by ID
    */
-  async findById(id: string, tx: DbTransaction, options?: FilterOptions, context?: HookContext): Promise<${modelName} | null> {
+  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: HookContext): Promise<${modelName} | null> {
+    // Use provided transaction or get database instance
+    const db = tx || withoutTransaction();
+
     // Pre-find hook
     if (this.hooks.preFindById) {
-      const preResult = await this.hooks.preFindById(id, tx, context);
+      const preResult = await this.hooks.preFindById(id, tx || null, context);
       id = preResult.data.id;
       context = { ...context, ...preResult.context };
     }
 
     // Build query
-    const query = tx
+    const query = db
       .select()
       .from(${modelNameLower}Table)
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id));
@@ -174,7 +177,7 @@ export class ${modelName}Domain {
     // Post-find hook
     let finalResult: ${modelName} | null = found;
     if (this.hooks.postFindById && found !== null) {
-      const postResult = await this.hooks.postFindById(id, found, tx, context);
+      const postResult = await this.hooks.postFindById(id, found, tx || null, context);
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
@@ -195,20 +198,23 @@ export class ${modelName}Domain {
    * Find all ${modelName}s with pagination and filtering
    */
   async findMany(
-    tx: DbTransaction,
+    tx?: DbTransaction,
     filter?: FilterOptions,
     pagination?: PaginationOptions,
     context?: HookContext,
   ): Promise<{ data: ${modelName}[]; total: number }> {
+    // Use provided transaction or get database instance
+    const db = tx || withoutTransaction();
+
     // Pre-find hook
     if (this.hooks.preFindMany) {
-      const preResult = await this.hooks.preFindMany(tx, filter, context);
+      const preResult = await this.hooks.preFindMany(tx || null, filter, context);
       filter = preResult.data as FilterOptions;
       context = { ...context, ...preResult.context };
     }
 
     // Build query with chaining to avoid type issues
-    let baseQuery = tx.select().from(${modelNameLower}Table);
+    let baseQuery = db.select().from(${modelNameLower}Table);
     
     // Apply filters
     if (filter?.where) {
@@ -239,7 +245,7 @@ export class ${modelName}Domain {
     const results = await query;
 
     // Get total count
-    const countQueryBase = tx
+    const countQueryBase = db
       .select({ count: sql<number>\`count(*)\` })
       .from(${modelNameLower}Table);
     
@@ -249,10 +255,10 @@ export class ${modelName}Domain {
 
     const [{ count }] = await countQuery;
 
-    // Post-find hook (only if transaction provided)
+    // Post-find hook
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
-          const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
+          const postResult = await this.hooks.postFindMany!(filter, results, tx || null, context);
           context = { ...context, ...postResult.context };
           return postResult.data;
         })()
