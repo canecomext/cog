@@ -99,7 +99,7 @@ export interface PaginationOptions {
       'id';
 
     return `import { eq, desc, asc, sql } from 'drizzle-orm';
-import { getDatabase, type DbTransaction } from '../db/database.ts';
+import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 import { CRUDHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
@@ -447,7 +447,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Get ${rel.name} for ${model.name}
    */
   async get${this.capitalize(rel.name)}(id: string): Promise<unknown[]> {
-    const db = getDatabase();
+    const db = withoutTransaction();
     return await db
       .select()
       .from(${rel.target.toLowerCase()}Table)

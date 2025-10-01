@@ -44,7 +44,7 @@ export class RestAPIGenerator {
 
     return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
-import { getDatabase } from '../db/database.ts';
+import { withTransaction } from '../db/database.ts';
 import type { Env } from './types.ts';
 
 export const ${modelNameLower}Routes = new Hono<Env>();
@@ -55,9 +55,8 @@ export const ${modelNameLower}Routes = new Hono<Env>();
  */
 ${modelNameLower}Routes.get('/', async (c) => {
   const { limit = '10', offset = '0', orderBy, orderDirection = 'asc' } = c.req.query();
-  const db = getDatabase();
   
-  const result = await db.transaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     return await ${modelNameLower}Domain.findMany(
       tx,
       undefined,
@@ -91,9 +90,8 @@ ${modelNameLower}Routes.get('/', async (c) => {
 ${modelNameLower}Routes.get('/:id', async (c) => {
   const id = c.req.param('id');
   const include = c.req.query('include')?.split(',');
-  const db = getDatabase();
 
-  const result = await db.transaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     return await ${modelNameLower}Domain.findById(
       id,
       tx,
@@ -118,9 +116,8 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
  */
 ${modelNameLower}Routes.post('/', async (c) => {
   const body = await c.req.json();
-  const db = getDatabase();
   
-  const result = await db.transaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     return await ${modelNameLower}Domain.create(
       body,
       tx,
@@ -141,10 +138,9 @@ ${modelNameLower}Routes.post('/', async (c) => {
 ${modelNameLower}Routes.put('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  const db = getDatabase();
 
   try {
-    const result = await db.transaction(async (tx) => {
+    const result = await withTransaction(async (tx) => {
       return await ${modelNameLower}Domain.update(
         id,
         body,
@@ -172,10 +168,9 @@ ${modelNameLower}Routes.put('/:id', async (c) => {
 ${modelNameLower}Routes.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  const db = getDatabase();
 
   try {
-    const result = await db.transaction(async (tx) => {
+    const result = await withTransaction(async (tx) => {
       return await ${modelNameLower}Domain.update(
         id,
         body,
@@ -202,10 +197,9 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
  */
 ${modelNameLower}Routes.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  const db = getDatabase();
 
   try {
-    await db.transaction(async (tx) => {
+    await withTransaction(async (tx) => {
       return await ${modelNameLower}Domain.delete(
         id,
         tx,

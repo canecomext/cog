@@ -165,11 +165,26 @@ export async function initializeDatabase(config: DatabaseConfig) {
 /**
  * Get database instance
  */
-export function getDatabase() {
+export function withoutTransaction() {
   if (!db) {
     throw new Error('Database not initialized. Call initializeDatabase first.');
   }
   return db;
+}
+
+/**
+ * Execute database operations within a transaction context
+ */
+export async function withTransaction<T>(
+  callback: (tx: DbTransaction) => Promise<T>,
+  options?: {
+    isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
+    accessMode?: 'read write' | 'read only';
+    deferrable?: boolean;
+  }
+): Promise<T> {
+  const database = withoutTransaction();
+  return await database.transaction(callback, options);
 }
 
 /**

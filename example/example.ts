@@ -1,6 +1,12 @@
 import { Hono } from '@hono/hono';
 import { HTTPException } from '@hono/hono/http-exception';
-import { type DbTransaction, HookContext, initializeGenerated, userDomain } from './generated/index.ts';
+import {
+  type DbTransaction,
+  HookContext,
+  initializeGenerated,
+  userDomain,
+  withTransaction,
+} from './generated/index.ts';
 import { sql } from 'drizzle-orm';
 import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
@@ -43,7 +49,7 @@ async function startServer() {
 
   try {
     // Initialize generated backend code
-    const { db } = await initializeGenerated({
+    await initializeGenerated({
       // Database configuration
       database: {
         connectionString: env.DB_URL,
@@ -64,7 +70,7 @@ async function startServer() {
 
           // Post-create hook: Enrich response with computed field
           async postCreate(input: any, result: any, tx: DbTransaction, context?: HookContext) {
-            throw new HTTPException(403, { message: 'Forbidden' });
+            throw new HTTPException(401);
             /*
             return {
               data: {
@@ -93,7 +99,7 @@ async function startServer() {
       const { email } = c.req.query();
 
       try {
-        const result = db.transaction(async (tx) => {
+        const result = await withTransaction(async (tx) => {
           return await userDomain.findMany(tx, {
             where: sql`email ILIKE ${`%${email}%`}`,
           });
@@ -110,7 +116,7 @@ async function startServer() {
       const uuid = crypto.randomUUID();
       const uid = uuid.split('-')[1];
 
-      const result = await db.transaction(async (tx) => {
+      const result = await withTransaction(async (tx) => {
         const data = {
           id: uuid,
           email: `${uid}@email.com`,
