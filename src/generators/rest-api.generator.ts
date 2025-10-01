@@ -44,7 +44,7 @@ export class RestAPIGenerator {
 
     return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
-import { withTransaction } from '../db/database.ts';
+import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import type { Env } from './types.ts';
 
 export const ${modelNameLower}Routes = new Hono<Env>();
@@ -56,22 +56,21 @@ export const ${modelNameLower}Routes = new Hono<Env>();
 ${modelNameLower}Routes.get('/', async (c) => {
   const { limit = '10', offset = '0', orderBy, orderDirection = 'asc' } = c.req.query();
   
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.findMany(
-      tx,
-      undefined,
-      {
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        orderBy,
-        orderDirection: orderDirection as 'asc' | 'desc'
-      },
-      {
-        // requestId: c.get('requestId'),
-        // userId: c.get('userId')
-      }
-    );
-  });
+  // No transaction needed for read operations
+  const result = await ${modelNameLower}Domain.findMany(
+    undefined, // No transaction
+    undefined, // No filter
+    {
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      orderBy,
+      orderDirection: orderDirection as 'asc' | 'desc'
+    },
+    {
+      // requestId: c.get('requestId'),
+      // userId: c.get('userId')
+    }
+  );
 
   return c.json({
     data: result.data,
@@ -91,17 +90,16 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
   const id = c.req.param('id');
   const include = c.req.query('include')?.split(',');
 
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.findById(
-      id,
-      tx,
-      { include },
-      {
-        // requestId: c.get('requestId'),
-        // userId: c.get('userId')
-      }
-    );
-  });
+  // No transaction needed for read operations
+  const result = await ${modelNameLower}Domain.findById(
+    id,
+    undefined, // No transaction
+    { include },
+    {
+      // requestId: c.get('requestId'),
+      // userId: c.get('userId')
+    }
+  );
 
   if (!result) {
     return c.json({ error: '${modelName} not found' }, 404);
