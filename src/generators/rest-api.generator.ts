@@ -265,6 +265,104 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   
   return c.json(result);
 });`);
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        const relName = rel.name;
+        const RelName = this.capitalize(relName);
+        const targetNameLower = rel.target.toLowerCase();
+        const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
+        const singularRel = this.singularize(relName);
+        const SingularRel = this.capitalize(singularRel);
+        
+        endpoints.push(`
+/**
+ * GET /${modelNamePlural}/:id/${relName}
+ * Get ${relName} for a ${model.name}
+ */
+${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
+  const id = c.req.param('id');
+  
+  const result = await ${modelNameLower}Domain.get${RelName}(id);
+  
+  return c.json(result);
+});
+
+/**
+ * POST /${modelNamePlural}/:id/${relName}
+ * Add ${relName} to a ${model.name}
+ */
+${modelNameLower}Routes.post('/:id/${relName}', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+  
+  await withTransaction(async (tx) => {
+    await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
+  });
+  
+  return c.json({ message: '${RelName} added successfully' }, 201);
+});
+
+/**
+ * PUT /${modelNamePlural}/:id/${relName}
+ * Replace all ${relName} for a ${model.name}
+ */
+${modelNameLower}Routes.put('/:id/${relName}', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+  
+  await withTransaction(async (tx) => {
+    await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
+  });
+  
+  return c.json({ message: '${RelName} updated successfully' });
+});
+
+/**
+ * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+ * Add a specific ${singularRel} to a ${model.name}
+ */
+${modelNameLower}Routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
+  const id = c.req.param('id');
+  const ${singularRel}Id = c.req.param('${singularRel}Id');
+  
+  await withTransaction(async (tx) => {
+    await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
+  });
+  
+  return c.json({ message: '${SingularRel} added successfully' }, 201);
+});
+
+/**
+ * DELETE /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+ * Remove a specific ${singularRel} from a ${model.name}
+ */
+${modelNameLower}Routes.delete('/:id/${relName}/:${singularRel}Id', async (c) => {
+  const id = c.req.param('id');
+  const ${singularRel}Id = c.req.param('${singularRel}Id');
+  
+  await withTransaction(async (tx) => {
+    await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
+  });
+  
+  return c.json({ message: '${SingularRel} removed successfully' });
+});
+
+/**
+ * DELETE /${modelNamePlural}/:id/${relName}
+ * Remove multiple ${relName} from a ${model.name}
+ */
+${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+  
+  await withTransaction(async (tx) => {
+    await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
+  });
+  
+  return c.json({ message: '${RelName} removed successfully' });
+});`);
       }
     }
 
@@ -442,5 +540,29 @@ ${
    */
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * Simple singularization
+   */
+  private singularize(word: string): string {
+    // Handle common patterns
+    if (word.endsWith('ies')) {
+      return word.slice(0, -3) + 'y';
+    }
+    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches') || word.endsWith('shes')) {
+      return word.slice(0, -2);
+    }
+    if (word.endsWith('s') && !word.endsWith('ss')) {
+      return word.slice(0, -1);
+    }
+    return word;
+  }
+
+  /**
+   * Find model by name
+   */
+  private findModelByName(name: string): ModelDefinition | undefined {
+    return this.models.find(m => m.name === name);
   }
 }

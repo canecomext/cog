@@ -97,8 +97,14 @@ export interface PaginationOptions {
     const modelNameLower = model.name.toLowerCase();
     const primaryKeyField = model.fields.find((f) => f.primaryKey)?.name ||
       'id';
+    
+    // Check if we need additional imports for manyToMany relationships
+    const hasManyToMany = model.relationships?.some(rel => rel.type === 'manyToMany');
+    const drizzleImports = hasManyToMany 
+      ? 'import { eq, desc, asc, sql, and, inArray } from \'drizzle-orm\';'
+      : 'import { eq, desc, asc, sql } from \'drizzle-orm\';';
 
-    return `import { eq, desc, asc, sql } from 'drizzle-orm';
+    return `${drizzleImports}
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
@@ -374,11 +380,22 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     }
 
     const imports: string[] = [];
+    const addedImports = new Set<string>();
+    
     for (const rel of model.relationships) {
-      if (rel.target !== model.name) {
+      if (rel.target !== model.name && !addedImports.has(rel.target)) {
         imports.push(
-          `import { ${rel.target.toLowerCase()}Table } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
+          `import { ${rel.target.toLowerCase()}Table, type ${rel.target} } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
         );
+        addedImports.add(rel.target);
+      }
+      
+      // Add junction table imports for manyToMany relationships
+      if (rel.type === 'manyToMany' && rel.through && !addedImports.has(rel.through)) {
+        imports.push(
+          `import { ${rel.through.toLowerCase()}Table } from '../schema/${rel.through.toLowerCase()}.schema.ts';`,
+        );
+        addedImports.add(rel.through);
       }
     }
 
@@ -461,6 +478,119 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       .from(${rel.target.toLowerCase()}Table)
       .where(eq(${rel.target.toLowerCase()}Table.${rel.foreignKey || model.name.toLowerCase() + 'Id'}, id));
   }`);
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        // Generate manyToMany methods
+        const targetName = rel.target;
+        const targetNameLower = targetName.toLowerCase();
+        const relName = rel.name;
+        const RelName = this.capitalize(relName);
+        const junctionTable = rel.through.toLowerCase();
+        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
+        const sourcePK = model.fields.find(f => f.primaryKey)?.name || 'id';
+        
+        // Import junction table at the top of the file (this will be handled separately)
+        
+        methods.push(`
+  /**
+   * Get ${relName} for ${model.name}
+   */
+  async get${RelName}(id: string, tx?: DbTransaction): Promise<${targetName}[]> {
+    const db = tx || withoutTransaction();
+    
+    const result = await db
+      .select({ ${targetNameLower}: ${targetNameLower}Table })
+      .from(${junctionTable}Table)
+      .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
+      .where(eq(${junctionTable}Table.${sourceFK}, id));
+    
+    return result.map(r => r.${targetNameLower});
+  }
+
+  /**
+   * Add ${relName} to ${model.name}
+   */
+  async add${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx: DbTransaction): Promise<void> {
+    await tx.insert(${junctionTable}Table).values({
+      ${sourceFK}: id,
+      ${targetFK}: ${this.singularize(targetNameLower)}Id
+    });
+  }
+
+  /**
+   * Add multiple ${relName} to ${model.name}
+   */
+  async add${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+    if (${targetNameLower}Ids.length === 0) return;
+    
+    const values = ${targetNameLower}Ids.map(${this.singularize(targetNameLower)}Id => ({
+      ${sourceFK}: id,
+      ${targetFK}: ${this.singularize(targetNameLower)}Id
+    }));
+    
+    await tx.insert(${junctionTable}Table).values(values);
+  }
+
+  /**
+   * Remove ${this.singularize(relName)} from ${model.name}
+   */
+  async remove${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx: DbTransaction): Promise<void> {
+    await tx.delete(${junctionTable}Table)
+      .where(
+        and(
+          eq(${junctionTable}Table.${sourceFK}, id),
+          eq(${junctionTable}Table.${targetFK}, ${this.singularize(targetNameLower)}Id)
+        )
+      );
+  }
+
+  /**
+   * Remove multiple ${relName} from ${model.name}
+   */
+  async remove${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+    if (${targetNameLower}Ids.length === 0) return;
+    
+    await tx.delete(${junctionTable}Table)
+      .where(
+        and(
+          eq(${junctionTable}Table.${sourceFK}, id),
+          inArray(${junctionTable}Table.${targetFK}, ${targetNameLower}Ids)
+        )
+      );
+  }
+
+  /**
+   * Set ${relName} for ${model.name} (replace all)
+   */
+  async set${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+    // Delete all existing relationships
+    await tx.delete(${junctionTable}Table)
+      .where(eq(${junctionTable}Table.${sourceFK}, id));
+    
+    // Add new relationships
+    if (${targetNameLower}Ids.length > 0) {
+      await this.add${RelName}(id, ${targetNameLower}Ids, tx);
+    }
+  }
+
+  /**
+   * Check if ${model.name} has a specific ${this.singularize(relName)}
+   */
+  async has${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx?: DbTransaction): Promise<boolean> {
+    const db = tx || withoutTransaction();
+    
+    const result = await db
+      .select({ count: sql<number>\`count(*)\` })
+      .from(${junctionTable}Table)
+      .where(
+        and(
+          eq(${junctionTable}Table.${sourceFK}, id),
+          eq(${junctionTable}Table.${targetFK}, ${this.singularize(targetNameLower)}Id)
+        )
+      );
+    
+    return result[0].count > 0;
+  }`);
       }
     }
 
@@ -487,5 +617,30 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * Convert to snake_case
+   */
+  private toSnakeCase(str: string): string {
+    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+      .replace(/^_/, '');
+  }
+
+  /**
+   * Simple singularization
+   */
+  private singularize(word: string): string {
+    // Handle common patterns
+    if (word.endsWith('ies')) {
+      return word.slice(0, -3) + 'y';
+    }
+    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches') || word.endsWith('shes')) {
+      return word.slice(0, -2);
+    }
+    if (word.endsWith('s') && !word.endsWith('ss')) {
+      return word.slice(0, -1);
+    }
+    return word;
   }
 }

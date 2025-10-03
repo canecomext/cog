@@ -34,6 +34,12 @@ export class DrizzleSchemaGenerator {
       );
     }
 
+    // Generate junction tables for manyToMany relationships
+    const junctionTables = this.generateJunctionTables();
+    for (const [path, content] of junctionTables) {
+      schemas.set(path, content);
+    }
+
     // Generate relations file
     const relationsContent = this.generateRelations();
     schemas.set("schema/relations.ts", relationsContent);
@@ -470,6 +476,136 @@ export class DrizzleSchemaGenerator {
   }
 
   /**
+   * Generate junction tables for manyToMany relationships
+   */
+  private generateJunctionTables(): Map<string, string> {
+    const junctionTables = new Map<string, string>();
+    const processedJunctions = new Set<string>();
+
+    for (const model of this.models) {
+      if (!model.relationships) continue;
+      
+      for (const rel of model.relationships) {
+        if (rel.type === 'manyToMany' && rel.through) {
+          // Avoid generating the same junction table twice
+          if (processedJunctions.has(rel.through)) continue;
+          processedJunctions.add(rel.through);
+          
+          const junctionSchema = this.generateJunctionTableSchema(
+            model,
+            rel,
+            rel.through
+          );
+          
+          junctionTables.set(
+            `schema/${rel.through.toLowerCase()}.schema.ts`,
+            junctionSchema
+          );
+        }
+      }
+    }
+    
+    return junctionTables;
+  }
+
+  /**
+   * Generate schema for a junction table
+   */
+  private generateJunctionTableSchema(
+    sourceModel: ModelDefinition,
+    relationship: RelationshipDefinition,
+    tableName: string
+  ): string {
+    // Find the target model
+    const targetModel = this.models.find(m => m.name === relationship.target);
+    if (!targetModel) {
+      throw new Error(`Target model ${relationship.target} not found for relationship ${relationship.name}`);
+    }
+    
+    // Find the primary key fields
+    const sourcePK = sourceModel.fields.find(f => f.primaryKey);
+    const targetPK = targetModel.fields.find(f => f.primaryKey);
+    
+    if (!sourcePK || !targetPK) {
+      throw new Error(`Primary keys not found for junction table ${tableName}`);
+    }
+    
+    // Determine the foreign key column names
+    const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
+    const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
+    
+    // Generate imports
+    let code = `import { pgTable, uuid, timestamp, primaryKey, index } from 'drizzle-orm/pg-core';
+`;
+    code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
+`;
+    code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
+`;
+    code += `\n`;
+    
+    // Generate table definition
+    code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
+`;
+    
+    // Add foreign key columns
+    if (sourcePK.type === 'uuid') {
+      code += `  ${sourceFKColumn}: uuid('${sourceFKColumn}')
+`;
+      code += `    .notNull()
+`;
+      code += `    .references(() => ${sourceModel.name.toLowerCase()}Table.${sourcePK.name}, { onDelete: 'CASCADE' }),
+`;
+    }
+    
+    if (targetPK.type === 'uuid') {
+      code += `  ${targetFKColumn}: uuid('${targetFKColumn}')
+`;
+      code += `    .notNull()
+`;
+      code += `    .references(() => ${targetModel.name.toLowerCase()}Table.${targetPK.name}, { onDelete: 'CASCADE' }),
+`;
+    }
+    
+    // Add timestamps if enabled globally
+    const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
+    if (hasTimestamps) {
+      code += `  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+`;
+    }
+    
+    code += `}, (table) => [
+`;
+    
+    // Add composite primary key
+    code += `  primaryKey({ columns: [table.${sourceFKColumn}, table.${targetFKColumn}] }),
+`;
+    
+    // Add indexes for performance
+    code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),
+`;
+    code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})
+`;
+    
+    code += `]);
+`;
+    code += `\n`;
+    
+    // Add type exports
+    code += `// Type exports\n`;
+    code += `export type ${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
+    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;`;
+    
+    return code;
+  }
+  
+  /**
+   * Capitalize first letter
+   */
+  private capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
    * Generate relations file
    */
   private generateRelations(): string {
@@ -559,8 +695,21 @@ export class DrizzleSchemaGenerator {
   private generateIndexFile(): string {
     let code = "// Export all schemas and relations\n";
 
+    // Export model schemas
     for (const model of this.models) {
       code += `export * from './${model.name.toLowerCase()}.schema.ts';\n`;
+    }
+
+    // Export junction table schemas
+    const processedJunctions = new Set<string>();
+    for (const model of this.models) {
+      if (!model.relationships) continue;
+      for (const rel of model.relationships) {
+        if (rel.type === 'manyToMany' && rel.through && !processedJunctions.has(rel.through)) {
+          processedJunctions.add(rel.through);
+          code += `export * from './${rel.through.toLowerCase()}.schema.ts';\n`;
+        }
+      }
     }
 
     code += `export * from './relations.ts';\n`;

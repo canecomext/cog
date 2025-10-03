@@ -70,15 +70,12 @@ async function startServer() {
 
           // Post-create hook: Enrich response with computed field
           async postCreate(input: any, result: any, tx: DbTransaction, context?: HookContext) {
-            throw new HTTPException(401);
-            /*
             return {
               data: {
                 ...result,
               },
               context,
             };
-            */
           },
 
           // After-create hook: Log creation (async)
