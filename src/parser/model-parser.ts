@@ -120,6 +120,7 @@ export class ModelParser {
     const model: ModelDefinition = {
       name: data.name,
       tableName: data.tableName,
+      plural: data.plural, // Add support for custom plural
       fields,
       schema: data.schema,
       relationships: data.relationships || [],

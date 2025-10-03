@@ -1,0 +1,41 @@
+{
+  "name": "Index",
+  "tableName": "indices",
+  "plural": "indices",
+  "description": "Index model demonstrating custom plural handling",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 255,
+      "required": true
+    },
+    {
+      "name": "userId",
+      "type": "uuid",
+      "required": true,
+      "references": {
+        "model": "User",
+        "field": "id",
+        "onDelete": "CASCADE",
+        "onUpdate": "CASCADE"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToOne",
+      "name": "user",
+      "target": "User",
+      "foreignKey": "userId"
+    }
+  ],
+  "timestamps": true
+}

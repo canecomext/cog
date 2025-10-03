@@ -99,6 +99,12 @@
       "through": "user_roles",
       "foreignKey": "user_id",
       "targetForeignKey": "role_id"
+    },
+    {
+      "type": "oneToMany",
+      "name": "indices",
+      "target": "Index",
+      "foreignKey": "userId"
     }
   ],
   "indexes": [

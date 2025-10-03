@@ -82,6 +82,7 @@ export interface IndexDefinition {
 export interface ModelDefinition {
   name: string; // Model name (e.g., "User")
   tableName: string; // Database table name (e.g., "users")
+  plural?: string; // Custom plural form (e.g., "indices" for "index")
   schema?: string; // Database schema name
   fields: FieldDefinition[];
   relationships?: RelationshipDefinition[];

@@ -40,7 +40,7 @@ export class RestAPIGenerator {
   private generateModelRestAPI(model: ModelDefinition): string {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
-    const modelNamePlural = this.pluralize(modelNameLower);
+    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
@@ -247,7 +247,7 @@ export type Env = {
 
     const endpoints: string[] = [];
     const modelNameLower = model.name.toLowerCase();
-    const modelNamePlural = this.pluralize(modelNameLower);
+    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     for (const rel of model.relationships) {
       if (rel.type === 'oneToMany') {
@@ -370,7 +370,7 @@ export function registerRestRoutes(app: Hono<Env>) {
 `;
 
     for (const model of this.models) {
-      const plural = this.pluralize(model.name.toLowerCase());
+      const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
       code += `  app.route('/api/${plural}', ${model.name.toLowerCase()}Routes);\n`;
     }
 
@@ -387,7 +387,7 @@ export function registerRestRoutes(app: Hono<Env>) {
       endpoints: [
 ${
       this.models.map((m) => {
-        const plural = this.pluralize(m.name.toLowerCase());
+        const plural = m.plural?.toLowerCase() || this.pluralize(m.name.toLowerCase());
         return `        '${plural}'`;
       }).join(',\n')
     }
