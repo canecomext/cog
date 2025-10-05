@@ -127,11 +127,15 @@ async function startServer() {
       return c.json(result);
     });
 
-    // Start the server
-    const port = 3000;
-    console.log(`Server starting on http://localhost:${port}`);
+  // List all registered endpoints (demonstration of utility function)
+  const { printRegisteredEndpoints } = await import('./generated/rest/index.ts');
+  printRegisteredEndpoints(app);
 
-    Deno.serve({ port: 3000 }, app.fetch);
+  // Start the server
+  const port = 3000;
+  console.log(`\nServer starting on http://localhost:${port}`);
+
+  Deno.serve({ port: 3000 }, app.fetch);
   } catch (error) {
     console.error('Failed to start server:', error);
     Deno.exit(1);

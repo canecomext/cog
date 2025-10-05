@@ -494,6 +494,8 @@ ${
   });
 }
 
+${this.generateEndpointListingUtilities()}
+
 // Export all routes for individual use
 `;
 
@@ -564,5 +566,253 @@ ${
    */
   private findModelByName(name: string): ModelDefinition | undefined {
     return this.models.find(m => m.name === name);
+  }
+
+  /**
+   * Generate endpoint listing utility functions
+   */
+  private generateEndpointListingUtilities(): string {
+    return `
+/**
+ * Route information interface
+ */
+export interface RouteInfo {
+  method: string;
+  path: string;
+  handler?: string;
+}
+
+/**
+ * Extract all registered routes from a Hono app instance
+ * This function analyzes Hono's internal router structure to list all endpoints
+ * 
+ * @param app - The Hono app instance to analyze
+ * @returns Array of route information with HTTP methods and paths
+ */
+export function listRegisteredEndpoints(app: Hono<any>): RouteInfo[] {
+  const routes: RouteInfo[] = [];
+  
+  try {
+    // Access Hono's internal router
+    // Note: This accesses private/internal properties and may break with Hono updates
+    const router = (app as any).router;
+    
+    if (!router) {
+      console.warn('Unable to access Hono router internals');
+      return routes;
+    }
+
+    // Different strategies based on Hono's internal structure
+    // Strategy 1: Try to access routes directly
+    if (router.routes) {
+      // Hono v3.x structure
+      for (const [method, methodRoutes] of Object.entries(router.routes as Record<string, any[]>)) {
+        if (Array.isArray(methodRoutes)) {
+          for (const route of methodRoutes) {
+            routes.push({
+              method: method.toUpperCase(),
+              path: route.path || route.regexp?.source || 'unknown',
+              handler: route.handler?.name || 'anonymous'
+            });
+          }
+        }
+      }
+    }
+    
+    // Strategy 2: Try the _router property (some Hono versions)
+    if (!routes.length && (app as any)._router) {
+      const _router = (app as any)._router;
+      if (_router.stack) {
+        // Express-like structure
+        for (const layer of _router.stack) {
+          if (layer.route) {
+            const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
+            for (const method of methods) {
+              routes.push({
+                method: method.toUpperCase(),
+                path: layer.route.path,
+                handler: layer.handle?.name || 'anonymous'
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Analyze the routes property on the app itself
+    if (!routes.length && (app as any).routes) {
+      const appRoutes = (app as any).routes;
+      if (Array.isArray(appRoutes)) {
+        for (const route of appRoutes) {
+          if (route.method && route.path) {
+            routes.push({
+              method: route.method.toUpperCase(),
+              path: route.path,
+              handler: route.handler?.name || 'anonymous'
+            });
+          }
+        }
+      } else if (typeof appRoutes === 'object') {
+        // Routes organized by method
+        for (const [method, paths] of Object.entries(appRoutes)) {
+          if (Array.isArray(paths)) {
+            for (const pathInfo of paths) {
+              const path = typeof pathInfo === 'string' ? pathInfo : pathInfo.path;
+              routes.push({
+                method: method.toUpperCase(),
+                path: path || 'unknown',
+                handler: 'anonymous'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Strategy 4: Use Hono's built-in route inspection (if available)
+    if (!routes.length && typeof (app as any).showRoutes === 'function') {
+      // Some Hono versions have a showRoutes method
+      const routeInfo = (app as any).showRoutes();
+      if (typeof routeInfo === 'string') {
+        // Parse string output
+        const lines = routeInfo.split('\\n');
+        for (const line of lines) {
+          const match = line.match(/^\\s*(\\w+)\\s+(.+)/);
+          if (match) {
+            routes.push({
+              method: match[1].toUpperCase(),
+              path: match[2].trim()
+            });
+          }
+        }
+      }
+    }
+
+    // If we still have no routes, try to extract from known endpoints
+    if (!routes.length) {
+      // Fallback: return predefined routes based on generated structure
+      ${this.generateFallbackRoutes()}
+    }
+
+    // Sort routes for consistent output
+    routes.sort((a, b) => {
+      if (a.path === b.path) {
+        return a.method.localeCompare(b.method);
+      }
+      return a.path.localeCompare(b.path);
+    });
+
+  } catch (error) {
+    console.error('Error extracting routes from Hono app:', error);
+  }
+  
+  return routes;
+}
+
+/**
+ * Format routes as a string table for console output
+ * 
+ * @param routes - Array of route information
+ * @returns Formatted string table
+ */
+export function formatRoutesTable(routes: RouteInfo[]): string {
+  if (!routes.length) {
+    return 'No routes found';
+  }
+
+  // Calculate column widths
+  const methodWidth = Math.max(8, ...routes.map(r => r.method.length));
+  const pathWidth = Math.max(20, ...routes.map(r => r.path.length));
+  
+  // Create header
+  const header = \`┌─\${'─'.repeat(methodWidth)}─┬─\${'─'.repeat(pathWidth)}─┐\`;
+  const headerRow = \`│ \${'METHOD'.padEnd(methodWidth)} │ \${'PATH'.padEnd(pathWidth)} │\`;
+  const separator = \`├─\${'─'.repeat(methodWidth)}─┼─\${'─'.repeat(pathWidth)}─┤\`;
+  const footer = \`└─\${'─'.repeat(methodWidth)}─┴─\${'─'.repeat(pathWidth)}─┘\`;
+  
+  // Create rows
+  const rows = routes.map(route => 
+    \`│ \${route.method.padEnd(methodWidth)} │ \${route.path.padEnd(pathWidth)} │\`
+  );
+  
+  // Combine all parts
+  return [
+    header,
+    headerRow,
+    separator,
+    ...rows,
+    footer
+  ].join('\\n');
+}
+
+/**
+ * Print all registered endpoints to console
+ * Convenience function that combines listing and formatting
+ * 
+ * @param app - The Hono app instance to analyze
+ */
+export function printRegisteredEndpoints(app: Hono<any>): void {
+  const routes = listRegisteredEndpoints(app);
+  const table = formatRoutesTable(routes);
+  
+  console.log('\\n=== Registered REST Endpoints ===\\n');
+  console.log(table);
+  console.log(\`\\nTotal endpoints: \${routes.length}\`);
+  
+  // Group by method
+  const byMethod = routes.reduce((acc, route) => {
+    acc[route.method] = (acc[route.method] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  console.log('\\nEndpoints by method:');
+  for (const [method, count] of Object.entries(byMethod)) {
+    console.log(\`  \${method}: \${count}\`);
+  }
+}`;
+  }
+
+  /**
+   * Generate fallback routes for endpoint listing
+   */
+  private generateFallbackRoutes(): string {
+    const routes: string[] = [];
+    
+    // Add health and API endpoints
+    routes.push(`routes.push({ method: 'GET', path: '/health' });`);
+    routes.push(`routes.push({ method: 'GET', path: '/api' });`);
+    
+    // Add CRUD endpoints for each model
+    for (const model of this.models) {
+      const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
+      const basePath = `/api/${plural}`;
+      
+      // Basic CRUD endpoints
+      routes.push(`routes.push({ method: 'GET', path: '${basePath}' });`);
+      routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id' });`);
+      routes.push(`routes.push({ method: 'POST', path: '${basePath}' });`);
+      routes.push(`routes.push({ method: 'PUT', path: '${basePath}/:id' });`);
+      routes.push(`routes.push({ method: 'PATCH', path: '${basePath}/:id' });`);
+      routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id' });`);
+      
+      // Relationship endpoints
+      if (model.relationships) {
+        for (const rel of model.relationships) {
+          if (rel.type === 'oneToMany') {
+            routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id/${rel.name}' });`);
+          } else if (rel.type === 'manyToMany' && rel.through) {
+            const singularRel = this.singularize(rel.name);
+            routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id/${rel.name}' });`);
+            routes.push(`routes.push({ method: 'POST', path: '${basePath}/:id/${rel.name}' });`);
+            routes.push(`routes.push({ method: 'PUT', path: '${basePath}/:id/${rel.name}' });`);
+            routes.push(`routes.push({ method: 'POST', path: '${basePath}/:id/${rel.name}/:${singularRel}Id' });`);
+            routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id/${rel.name}/:${singularRel}Id' });`);
+            routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id/${rel.name}' });`);
+          }
+        }
+      }
+    }
+    
+    return routes.join('\n      ');
   }
 }
