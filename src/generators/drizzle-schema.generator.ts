@@ -467,7 +467,7 @@ export class DrizzleSchemaGenerator {
     }
 
     // Add concurrent creation for PostgreSQL (not supported in CockroachDB)
-    if (this.dbType === 'postgresql') {
+    if (!this.isCockroachDB) {
       definition += '\n  .concurrently()';
     }
 
