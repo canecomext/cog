@@ -6,7 +6,7 @@
   "configurations": [
     {
       "request": "launch",
-      "name": "CLI",
+      "name": "Launch generator",
       "type": "node",
       "program": "${workspaceFolder}/src/cli.ts",
       "cwd": "${workspaceFolder}",
@@ -21,7 +21,7 @@
     },
     {
       "request": "launch",
-      "name": "Example",
+      "name": "Launch example",
       "type": "node",
       "program": "${workspaceFolder}/example/example.ts",
       "cwd": "${workspaceFolder}/example",
