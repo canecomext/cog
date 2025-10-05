@@ -6,24 +6,17 @@ import { generateFromModels } from './mod.ts';
  * Main CLI for the CRUD Operations Generator
  */
 async function main() {
-  console.log('🚀 CRUD Operations Generator (COG)');
-  console.log('===================================\n');
-
   // Parse command line arguments
   const args = parseArguments();
+  const verbose = args.verbose === true;
 
   // Set up configuration
   const modelsPath = args.modelsPath || './models';
   const outputPath = args.outputPath || './generated';
   const dbType = args.dbType || 'postgresql';
 
-  console.log('📁 Models directory:', modelsPath);
-  console.log('📂 Output directory:', outputPath);
-  console.log('🗄️  Database type:', dbType);
-  console.log('');
-
-  // Call the main generation function
-  const result = await generateFromModels(modelsPath, outputPath, {
+  // Call the main generation function - it will handle all output based on verbose flag
+  await generateFromModels(modelsPath, outputPath, {
     database: {
       type: dbType,
       postgis: args.postgis !== false,
@@ -34,15 +27,9 @@ async function main() {
       timestamps: args.timestamps !== false,
       uuid: args.uuid !== false,
       validation: args.validation !== false
-    }
+    },
+    verbose
   });
-
-  console.log('\n🎉 Generation complete! Your CRUD backend code is ready.\n');
-  console.log('📚 Next steps:');
-  console.log(`  1. Review the generated code in ${result.outputPath}`);
-  console.log('  2. Set up your PostgreSQL database with PostGIS extension');
-  console.log('  3. Configure your database connection in .env');
-  console.log('  4. Run your backend with: deno run --allow-all <your-backend.ts>\n');
 }
 
 /**
@@ -90,6 +77,7 @@ Options:
   --no-timestamps        Disable timestamps
   --no-uuid              Disable UUID support
   --no-validation        Disable validation
+  --verbose              Output the relative paths of generated files
   --help                 Show this help message
 
 Example:

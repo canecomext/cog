@@ -1,305 +1,27 @@
-# COG (CRUD Operations Generator)
+# WARP.md - COG Internal Documentation
 
-COG is a powerful code generator built with Deno that creates a complete CRUD backend from JSON model definitions. It generates a fully-featured TypeScript backend with proper separation of concerns, type safety, and modern best practices.
+## What is COG?
 
-## Table of Contents
-- [Core Features](#core-features)
-- [Model Definition System](#model-definition-system)
-- [Generated Code Structure](#generated-code-structure)
-- [Advanced Features](#advanced-features)
-- [Database Support](#database-support)
-- [API Features](#api-features)
-- [Getting Started](#getting-started)
+COG (CRUD Operations Generator) transforms JSON model definitions into a complete, production-ready TypeScript backend. Think of it as a compiler for backend applications - you describe your data models, and COG generates all the layers you need: database schemas, domain logic, REST APIs, and the glue that holds them together.
 
-## Core Features
+## The Problem It Solves
 
-### 1. Model-Driven Development
-- Define your data models in JSON format
-- Automatic code generation from model definitions
-- Type-safe code generation with TypeScript
-- Built-in validation of model definitions
+Writing CRUD operations is repetitive. Every model needs the same patterns: database tables, validation, API endpoints, error handling, transactions. Developers spend countless hours writing this boilerplate instead of focusing on unique business logic. COG eliminates this waste by generating consistent, well-structured code that follows best practices.
 
-### 2. Code Generation Components
-- Drizzle ORM schema definitions
-- Database initialization and connection management
-- Domain layer with CRUD operations
-- REST API endpoints using Hono framework
-- TypeScript types and interfaces
+## How COG Works
 
-### 3. Project Organization
-```
-/src
-├── cli.ts           # CLI entry point
-├── mod.ts           # Main module exports
-├── parser/          # Model parsing
-├── generators/      # Code generators
-└── types/          # TypeScript definitions
-```
+### The Generation Pipeline
 
-## Model Definition System
+1. **Parse** - Read JSON model definitions from a directory
+2. **Validate** - Check model integrity, relationships, and data types
+3. **Transform** - Convert models into internal representation
+4. **Generate** - Produce TypeScript code for each layer
+5. **Write** - Output organized code structure ready for use
 
-### 1. Data Types Support
-- **Primitive Types**
-  - text
-  - string (with length constraints)
-  - integer
-  - bigint
-  - decimal (with precision and scale)
-  - boolean
-  - date
-  - uuid
-  - json/jsonb
+### Input: Model Definitions
 
-- **PostGIS Types**
-  - point
-  - linestring
-  - polygon
-  - multipoint
-  - multilinestring
-  - multipolygon
-  - geometry
-  - geography
+Models are defined in JSON files with a simple, declarative structure:
 
-### 2. Field Features
-- Primary key definition
-- Unique constraints
-- Required/optional fields
-- Default values
-- Field length constraints
-- Index support
-- Array type support
-- Foreign key relationships
-
-### 3. Relationship Types
-- One-to-Many
-- Many-to-One
-- Many-to-Many (with junction tables)
-- One-to-One
-- Support for self-referential relationships
-
-### 4. Model-Level Features
-- Automatic timestamps (created_at, updated_at)
-- Soft delete support
-- Schema support
-- Custom hooks
-- Indexes (including composite and partial)
-
-## Generated Code Structure
-
-### 1. Schema Layer (`/schema`)
-- Drizzle ORM schema definitions
-- Type definitions for models
-- Relationship configurations
-- Index definitions
-
-### 2. Database Layer (`/db`)
-- Connection management
-- Transaction support
-- Health checks
-- Connection pooling
-- Type-safe database operations
-
-### 3. Domain Layer (`/domain`)
-
-#### Purpose and Responsibility
-- Core business logic implementation
-- CRUD operations with full type safety
-- Complex relationship handling
-- Hook system for extensibility
-- Transaction management
-- Domain-level validation
-
-#### Key Characteristics
-- Framework-agnostic
-- Doesn't depend on HTTP/REST concepts
-- Pure business logic focus
-- Reusable across different interfaces
-
-#### Domain Operations
-- Focused on business operations rather than HTTP methods
-- Rich input/output types
-- Complex validation rules
-- Business rule enforcement
-- Transaction coordination
-
-### 4. REST API Layer (`/rest`)
-
-#### Purpose and Responsibility
-- HTTP interface to domain operations
-- RESTful endpoint mapping
-- HTTP-specific concerns:
-  - Request parsing and validation
-  - Response formatting
-  - Status code selection
-  - Error handling
-  - CORS and security headers
-
-#### Separation from Domain Layer
-- **REST Layer**
-  - Handles HTTP-specific logic
-  - Maps URLs to domain operations
-  - Manages HTTP metadata (headers, status codes)
-  - Handles HTTP-specific validation
-  - Formats responses for HTTP clients
-
-- **Domain Layer**
-  - Contains pure business logic
-  - No knowledge of HTTP/REST
-  - Reusable across different interfaces
-  - Handles business validation
-  - Manages data consistency
-
-#### Benefits of Separation
-1. **Modularity**
-   - Domain logic can be used with different interfaces (REST, GraphQL, gRPC)
-   - REST endpoints can be modified without touching business logic
-   - Easier to maintain and test each layer independently
-
-2. **Responsibility Isolation**
-   - REST layer focuses on HTTP concerns
-   - Domain layer focuses on business rules
-   - Clear separation of concerns
-
-3. **Reusability**
-   - Domain logic can be reused across different projects
-   - Multiple interfaces can use the same domain logic
-   - Easier to add new interface types
-
-## Advanced Features
-
-### 1. Hook System and Execution Flow
-
-#### Hook Types and Ordering
-1. **Pre-operation hooks**
-   - Executed first, within the transaction
-   - Can modify input data before operation
-   - Can enrich context
-   - Hooks: preCreate, preUpdate, preDelete, preFindOne, preFindMany
-
-2. **Main Operation**
-   - Executes after pre-hooks
-   - Core database operation (create/update/delete/find)
-   - Still within the same transaction
-
-3. **Post-operation hooks**
-   - Executed immediately after operation
-   - Still within the same transaction
-   - Can modify operation result
-   - Can perform additional transactional operations
-   - Hooks: postCreate, postUpdate, postDelete, postFindOne, postFindMany
-
-4. **After-operation hooks**
-   - Executed after transaction commits
-   - Asynchronous, fire-and-forget style
-   - Cannot modify operation result
-   - Ideal for side effects (notifications, logging, etc.)
-   - Hooks: afterCreate, afterUpdate, afterDelete, afterFindOne, afterFindMany
-
-#### Transaction Behavior
-```
-Begin Transaction
-├─ Pre-operation hook
-├─ Main operation
-├─ Post-operation hook
-Commit Transaction
-└─ After-operation hook (async)
-```
-
-#### Hook Context Flow
-- Each hook can modify the context object
-- Context changes are passed forward to subsequent hooks
-- Context includes:
-  - requestId: For request tracking
-  - userId: For authentication/authorization
-  - metadata: Custom data
-
-### 2. Transaction Support
-- Automatic transaction management
-- Transaction middleware for REST endpoints
-- Transaction propagation
-- Rollback support
-
-### 3. Error Handling
-- Structured error responses
-- Request ID tracking
-- Error middleware
-- Type-safe error handling
-
-### 4. Query Features
-- Pagination support
-- Filtering capabilities
-- Sorting options
-- Relationship includes
-
-## Database Support
-
-### 1. PostgreSQL Features
-- Native PostgreSQL support
-- CockroachDB compatibility
-- PostGIS integration
-- JSON/JSONB support
-- Array types
-- Custom types
-
-### 2. Schema Management
-- Multi-schema support
-- Index management
-- Foreign key constraints
-- Cascade operations
-
-## API Features
-
-### 1. REST Endpoints
-- Standard CRUD operations
-- Relationship endpoints
-- Health check endpoint
-- API documentation endpoint
-
-### 2. Middleware Stack
-- Transaction middleware
-- Request ID tracking
-- Error handling
-- CORS support
-- Custom middleware support
-
-### 3. Request/Response Features
-- JSON request/response handling
-- Status code management
-- Error responses
-- Pagination metadata
-- Request tracking
-
-## Getting Started
-
-### 1. Installation
-```bash
-# Clone the repository
-git clone <repository-url>
-
-# Install required dependencies
-deno cache --reload src/mod.ts
-```
-
-Deno doesn't use a package.json or similar dependency manifest. Instead, it downloads and caches dependencies on-demand. The `deno cache` command pre-downloads all dependencies by analyzing import statements in the codebase, starting from the entry point. This ensures all required packages are available locally before running the application.
-
-### 2. Basic Usage
-```bash
-# Generate code from models
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
-```
-
-### 3. Configuration Options
-- `--modelsPath`: Path to model definitions (default: ./models)
-- `--outputPath`: Output directory (default: ./generated)
-- `--dbType`: Database type (postgresql/cockroachdb)
-- `--schema`: Database schema name
-- `--no-postgis`: Disable PostGIS support
-- `--no-softDeletes`: Disable soft deletes
-- `--no-timestamps`: Disable timestamps
-- `--no-uuid`: Disable UUID support
-- `--no-validation`: Disable validation
-
-### 4. Model Definition Example
 ```json
 {
   "name": "User",
@@ -329,10 +51,374 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 }
 ```
 
+### Output: Layered Architecture
+
+COG generates four distinct layers that work together:
+
+#### Database Layer (`/db`)
+Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with PostgreSQL or CockroachDB.
+
+#### Schema Layer (`/schema`)
+Drizzle ORM table definitions with full TypeScript types, relationships, indexes, and constraints. Supports all PostgreSQL types including PostGIS spatial data.
+
+#### Domain Layer (`/domain`)
+Pure business logic implementation. Each model gets a domain class with:
+- CRUD operations (create, findOne, findMany, update, delete)
+- Relationship management (fetch related data, manage associations)
+- Hook integration points
+- Transaction support
+- No HTTP dependencies - can be used by any interface
+
+#### REST Layer (`/rest`)
+HTTP interface using Hono framework. Translates HTTP requests to domain operations:
+- Standard CRUD endpoints (GET, POST, PUT, DELETE)
+- Relationship endpoints (GET /users/:id/posts)
+- Automatic transaction wrapping
+- Error handling and status codes
+- Request/response validation
+
+## Supported Data Types
+
+### Primitives
+- `text` - Unlimited text
+- `string` - VARCHAR with optional maxLength
+- `integer` - 32-bit integers
+- `bigint` - 64-bit integers for large numbers
+- `decimal` - Precise decimal numbers with scale/precision
+- `boolean` - True/false values
+- `date` - Timestamps stored as epoch milliseconds
+- `uuid` - Universally unique identifiers
+- `json`/`jsonb` - Structured JSON data
+
+### Spatial Types (PostGIS)
+- `point` - Single coordinate
+- `linestring` - Connected line segments
+- `polygon` - Closed area
+- `multipoint` - Multiple points
+- `multilinestring` - Multiple lines
+- `multipolygon` - Multiple polygons
+- `geometry` - Generic geometry type
+- `geography` - Geographic data on sphere
+
+Each spatial type supports:
+- SRID (Spatial Reference ID) specification
+- Geometry type constraints
+- Dimension configuration (2D, 3D, 4D)
+
+## Relationships
+
+COG handles all standard relationship patterns:
+
+### One-to-Many / Many-to-One
+Parent-child relationships like User -> Posts. Foreign key in child table.
+
+### Many-to-Many
+Requires junction table. Automatically generates the junction schema.
+
+### One-to-One
+Direct relationship with foreign key in either table.
+
+### Self-Referential
+Models can reference themselves (e.g., Location with parent/children).
+
+## The Hook System
+
+Hooks provide extension points for custom business logic. They execute in a specific order within the transaction boundary:
+
+### Execution Flow
+```
+Begin Transaction
+  → Pre-hook (modify input)
+  → Main Operation
+  → Post-hook (modify output)
+Commit Transaction
+→ After-hook (async side effects)
+```
+
+### Hook Types
+
+**Pre-operation hooks**
+- Execute before the main operation
+- Can modify input data
+- Can validate or reject operations
+- Run within transaction
+
+**Post-operation hooks**
+- Execute after successful operation
+- Can modify response data
+- Can perform additional database operations
+- Run within same transaction
+
+**After-operation hooks**
+- Execute after transaction commits
+- Cannot modify response
+- Perfect for notifications, logging, external API calls
+- Run asynchronously
+
+### Hook Context
+
+Hooks receive a context object that flows through the entire operation:
+- `requestId` - Unique request identifier
+- `userId` - Current user (from authentication)
+- `metadata` - Custom data passed between hooks
+- `transaction` - Active database transaction
+
+## Advanced Features
+
+### Transaction Management
+
+Every REST endpoint automatically wraps operations in a transaction:
+1. Begin transaction
+2. Execute pre-hooks
+3. Execute main operation
+4. Execute post-hooks
+5. Commit or rollback on error
+6. Execute after-hooks if successful
+
+### Query Capabilities
+
+The domain layer supports rich queries:
+- Complex WHERE conditions using SQL expressions
+- Pagination with limit/offset
+- Sorting by any field
+- Including related data
+- Partial updates
+- Batch operations
+
+### Database Flexibility
+
+**PostgreSQL Support**
+- Full feature set
+- PostGIS extension
+- JSON/JSONB operations
+- Array types
+- Custom types
+
+**CockroachDB Support**
+- Distributed SQL
+- Geo-partitioning
+- Built-in spatial types
+- PostgreSQL compatibility
+
+### Model Features
+
+**Timestamps**
+Automatic `createdAt` and `updatedAt` fields with proper timezone handling.
+
+**Soft Deletes**
+Records are marked as deleted rather than removed, with automatic filtering.
+
+**Indexes**
+Composite indexes, unique indexes, partial indexes, and spatial indexes (GIST, GIN).
+
+**Validation**
+Field-level constraints: required, unique, length, precision, scale, references.
+
+**Custom Pluralization**
+Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
+
+## File Organization
+
+### Generator Structure
+```
+src/
+├── cli.ts                    # Command-line interface
+├── mod.ts                    # Main module exports
+├── parser/
+│   └── model-parser.ts       # JSON model validation
+├── generators/
+│   ├── database-init.generator.ts
+│   ├── domain-api.generator.ts
+│   ├── drizzle-schema.generator.ts
+│   └── rest-api.generator.ts
+└── types/
+    └── model.types.ts        # TypeScript definitions
+```
+
+### Generated Code Structure
+```
+generated/
+├── index.ts                  # Main entry point
+├── db/
+│   ├── database.ts          # Connection management
+│   └── initialize-database.ts
+├── schema/
+│   ├── [model].schema.ts    # Drizzle table definitions
+│   ├── relations.ts         # Relationship definitions
+│   └── index.ts
+├── domain/
+│   ├── [model].domain.ts    # Business logic
+│   ├── hooks.types.ts
+│   └── index.ts
+└── rest/
+    ├── [model].rest.ts      # HTTP endpoints
+    ├── middleware.ts
+    ├── types.ts
+    └── index.ts
+```
+
+## Command-Line Usage
+
+### Basic Generation
+```bash
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
+```
+
+### Configuration Options
+- `--modelsPath <path>` - Location of JSON model files
+- `--outputPath <path>` - Where to generate code
+- `--dbType <type>` - Database type (postgresql/cockroachdb)
+- `--schema <name>` - Database schema name
+- `--no-postgis` - Disable PostGIS support
+- `--no-softDeletes` - Disable soft delete feature
+- `--no-timestamps` - Disable automatic timestamps
+- `--no-uuid` - Disable UUID support
+- `--no-validation` - Skip validation
+- `--verbose` - Show generated file paths
+
+## Integration Example
+
+After generation, integrate the code into your Hono application:
+
+```typescript
+import { Hono } from '@hono/hono';
+import { initializeGenerated } from './generated/index.ts';
+
+const app = new Hono();
+
+await initializeGenerated({
+  database: {
+    connectionString: 'postgresql://...',
+    ssl: { ca: '...' }
+  },
+  app,
+  hooks: {
+    user: {
+      async preCreate(input, tx, context) {
+        // Validate or modify input
+        return { data: input, context };
+      },
+      async postCreate(input, result, tx, context) {
+        // Enrich response
+        return { data: result, context };
+      },
+      async afterCreate(result, context) {
+        // Send notification
+        console.log('User created:', result.id);
+      }
+    }
+  }
+});
+
+Deno.serve({ port: 3000 }, app.fetch);
+```
+
+## Design Decisions
+
+### Why Deno?
+- Built-in TypeScript support without configuration
+- Secure by default with explicit permissions
+- Modern JavaScript features and APIs
+- Simplified dependency management
+
+### Why Drizzle ORM?
+- Type-safe SQL with TypeScript
+- Lightweight with minimal abstraction
+- Excellent PostgreSQL support
+- Migration-free schema definition
+
+### Why Hono?
+- Ultra-fast web framework
+- Small bundle size
+- Excellent TypeScript support
+- Works seamlessly with Deno
+
+### Why Separate Domain and REST?
+- Domain logic remains pure and reusable
+- Easy to add GraphQL or gRPC later
+- Better testability
+- Clear separation of concerns
+
+## Performance Considerations
+
+### Connection Pooling
+Database connections are pooled and reused to minimize overhead.
+
+### Transaction Batching
+Multiple operations within a request share the same transaction.
+
+### Lazy Loading
+Relationships are loaded on-demand unless explicitly included.
+
+### Index Optimization
+Generated indexes based on unique constraints and foreign keys.
+
+## Security Features
+
+### SQL Injection Prevention
+All queries use parameterized statements through Drizzle ORM.
+
+### Transaction Isolation
+Each request gets its own transaction with proper isolation.
+
+### Error Sanitization
+Internal errors are caught and sanitized before sending to clients.
+
+## Extensibility
+
+### Custom Generators
+The generator architecture allows adding new code generators by implementing the generator interface.
+
+### Hook System
+Any operation can be extended with custom logic through hooks.
+
+### Middleware Support
+The REST layer supports standard Hono middleware for cross-cutting concerns.
+
+### Custom Types
+Support for custom database types through Drizzle's customType API.
+
+## Limitations
+
+### Current Constraints
+- PostgreSQL/CockroachDB only (no MySQL/SQLite yet)
+- REST API only (no GraphQL generation)
+- No migration generation (schema-first approach)
+- No built-in authentication/authorization
+
+### Design Boundaries
+- Focuses on CRUD operations, not complex business workflows
+- Generates code, not a runtime framework
+- Requires manual integration with existing codebases
+
+## Future Enhancements
+
+Potential areas for expansion:
+- GraphQL API generation
+- OpenAPI specification generation
+- Migration file generation
+- Built-in authentication patterns
+- Real-time subscriptions support
+- More database engine support
+
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines and submit pull requests to our repository.
+COG is designed to be hackable. The codebase is organized for clarity:
+- Parsers handle input validation
+- Generators produce code strings
+- Types define the contract
+- CLI orchestrates the pipeline
+
+To add a new feature:
+1. Update types in `model.types.ts`
+2. Extend parser in `model-parser.ts`
+3. Modify relevant generators
+4. Test with example models
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details.
+
+## Authors
+
+See AUTHORS file for contributors.

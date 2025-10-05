@@ -127,6 +127,7 @@ export interface GeneratorConfig {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';
     columnNaming?: 'snake_case' | 'camelCase';
   };
+  verbose?: boolean; // Show detailed generation progress
 }
 
 // Generated file metadata

@@ -42,39 +42,26 @@ export async function generateFromModels(
       tableNaming: 'snake_case',
       columnNaming: 'snake_case',
     },
+    verbose: options.verbose,
   };
 
+  const verbose = config.verbose === true;
+
   // Step 1: Parse models
-  console.log('📖 Parsing model definitions...');
   const parser = new ModelParser();
   const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
   if (errors.length > 0) {
-    console.error('\n❌ Validation errors found:');
-    for (const error of errors) {
-      const prefix = error.severity === 'error' ? '  ❌' : '  ⚠️';
-      console.error(
-        `${prefix} ${error.model ? `[${error.model}]` : ''} ${error.message}`,
-      );
-    }
-
     const hasErrors = errors.some((e) => e.severity === 'error');
     if (hasErrors) {
       throw new Error('Generation aborted due to validation errors');
     }
   }
 
-  console.log(
-    `✅ Found ${models.length} valid models: ${models.map((m) => m.name).join(', ')}\n`,
-  );
-
   // Step 2: Generate code
-  console.log('⚙️  Generating code...');
-
   const files = new Map<string, string>();
 
   // Generate Drizzle schemas
-  console.log('  📝 Generating Drizzle ORM schemas...');
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
     isCockroachDB: config.database.type === 'cockroachdb',
   });
@@ -82,7 +69,6 @@ export async function generateFromModels(
   schemas.forEach((content, path) => files.set(path, content));
 
   // Generate database initialization and utilities
-  console.log('  🗄️  Generating database utilities...');
   const dbInitGenerator = new DatabaseInitGenerator(models, {
     dbType: config.database.type,
     postgis: config.database.postgis,
@@ -91,29 +77,21 @@ export async function generateFromModels(
   files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());
   files.set('db/initialize-database.ts', dbInitGenerator.generateDatabaseInitialization());
 
-  console.log(`      Using ${config.database.type}${config.database.postgis ? ' + PostGIS' : ''}`);
-
   // Generate domain APIs
-  console.log('  🎯 Generating domain APIs...');
   const domainGenerator = new DomainAPIGenerator(models);
   const domainFiles = domainGenerator.generateDomainAPIs();
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
-  console.log('  🌐 Generating REST endpoints...');
   const restGenerator = new RestAPIGenerator(models);
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
   // Generate main index file
-  console.log('  📦 Generating main export file...');
   files.set('index.ts', generateMainIndex(models));
 
   // Step 3: Write files
-  console.log('\n📝 Writing generated files...');
-  await writeGeneratedFiles(outputPath, files);
-
-  console.log(`\n✅ Successfully generated ${files.size} files!`);
+  await writeGeneratedFiles(outputPath, files, verbose);
 
   return {
     models,
@@ -194,6 +172,7 @@ export type { Env } from './rest/types.ts';
 async function writeGeneratedFiles(
   outputPath: string,
   files: Map<string, string>,
+  verbose = false,
 ) {
   // Create output directory
   await Deno.mkdir(outputPath, { recursive: true });
@@ -207,6 +186,10 @@ async function writeGeneratedFiles(
 
     // Write file
     await Deno.writeTextFile(fullPath, content);
-    console.log(`  ✓ ${relativePath}`);
+    
+    // Only output file paths if verbose flag is true
+    if (verbose) {
+      console.log(relativePath);
+    }
   }
 }

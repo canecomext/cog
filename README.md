@@ -1,0 +1,262 @@
+# COG - CRUD Operations Generator
+
+A powerful TypeScript code generator that creates complete, production-ready CRUD backends from simple JSON model definitions.
+
+## Quick Start
+
+### Prerequisites
+
+- [Deno](https://deno.land/) runtime installed
+- PostgreSQL database (or CockroachDB)
+- PostGIS extension (optional, for spatial data)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cog.git
+cd cog
+
+# Cache dependencies
+deno cache --reload src/mod.ts
+```
+
+### Generate Your First Backend
+
+1. Create a models directory with your JSON model definitions:
+
+```bash
+mkdir models
+```
+
+2. Create a model file `models/user.json`:
+
+```json
+{
+  "name": "User",
+  "tableName": "users",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()"
+    },
+    {
+      "name": "email",
+      "type": "string",
+      "unique": true,
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "timestamps": true
+}
+```
+
+3. Generate the backend code:
+
+```bash
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
+```
+
+4. Use the generated code in your application:
+
+```typescript
+import { Hono } from '@hono/hono';
+import { initializeGenerated } from './generated/index.ts';
+
+const app = new Hono();
+
+await initializeGenerated({
+  database: {
+    connectionString: 'postgresql://user:pass@localhost/mydb'
+  },
+  app
+});
+
+Deno.serve({ port: 3000 }, app.fetch);
+```
+
+## What Gets Generated?
+
+COG generates a complete backend stack with:
+
+- **Database Schema** - Type-safe Drizzle ORM schemas
+- **Domain Layer** - Business logic with CRUD operations
+- **REST API** - RESTful endpoints using Hono framework
+- **TypeScript Types** - Full type safety throughout
+- **Hook System** - Extensible pre/post operation hooks
+- **Transaction Management** - Automatic transaction handling
+
+## Features
+
+### Comprehensive Data Type Support
+
+- All PostgreSQL primitive types (text, integer, boolean, date, etc.)
+- PostGIS spatial types (point, polygon, linestring, etc.)
+- JSON/JSONB for structured data
+- Arrays and composite types
+- Big numbers support (bigint, decimal with precision)
+
+### Relationship Management
+
+- One-to-Many relationships
+- Many-to-One relationships
+- Many-to-Many with junction tables
+- One-to-One relationships
+- Self-referential relationships
+
+### Advanced Features
+
+- Automatic timestamps (createdAt, updatedAt)
+- Soft deletes with automatic filtering
+- Database transactions with rollback
+- Extensible hook system for custom logic
+- Rich query capabilities with filtering and pagination
+- Multi-schema support
+- Custom indexes (composite, partial, spatial)
+
+## Example Project
+
+Check out the `/example` directory for a complete demonstration:
+
+```bash
+cd example
+
+# Generate the example code
+deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated-c
+
+# Run the example server
+deno run -A example.ts
+```
+
+The example showcases:
+- Complex data models with various field types
+- All relationship types
+- PostGIS spatial data
+- Hook implementations
+- Custom business logic integration
+
+## CLI Options
+
+```bash
+deno run -A src/cli.ts [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--modelsPath` | Path to JSON model files | `./models` |
+| `--outputPath` | Where to generate code | `./generated` |
+| `--dbType` | Database type (`postgresql` or `cockroachdb`) | `postgresql` |
+| `--schema` | Database schema name | - |
+| `--no-postgis` | Disable PostGIS support | false |
+| `--no-timestamps` | Disable automatic timestamps | false |
+| `--no-softDeletes` | Disable soft delete feature | false |
+| `--verbose` | Show generated file paths | false |
+| `--help` | Show help message | - |
+
+## Model Definition Format
+
+Models are defined in JSON with this structure:
+
+```json
+{
+  "name": "ModelName",
+  "tableName": "table_name",
+  "fields": [
+    {
+      "name": "fieldName",
+      "type": "dataType",
+      "primaryKey": true,
+      "unique": false,
+      "required": true,
+      "defaultValue": "value",
+      "references": {
+        "model": "OtherModel",
+        "field": "id",
+        "onDelete": "CASCADE"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "type": "oneToMany",
+      "name": "relationshipName",
+      "target": "TargetModel",
+      "foreignKey": "foreign_key_field"
+    }
+  ],
+  "timestamps": true,
+  "softDelete": true,
+  "indexes": [
+    {
+      "fields": ["field1", "field2"],
+      "unique": true
+    }
+  ]
+}
+```
+
+## Documentation
+
+- [WARP.md](./WARP.md) - Complete technical documentation
+- [Example README](./example/README.md) - Example project walkthrough
+- [Type Definitions](./src/types/model.types.ts) - TypeScript type documentation
+
+## Use Cases
+
+COG is perfect for:
+
+- Rapid prototyping of database-backed applications
+- Building microservices with consistent structure
+- Creating admin panels and CRUD interfaces
+- Generating boilerplate for complex applications
+- Learning projects and hackathons
+
+## Architecture
+
+COG follows Domain-Driven Design principles:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   REST API  │────▶│   Domain    │────▶│  Database   │
+│   (Hono)    │     │   Logic     │     │  (Drizzle)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                     │
+       ▼                   ▼                     ▼
+   HTTP Layer      Business Layer         Data Layer
+```
+
+## Requirements
+
+- Deno 1.37 or higher
+- PostgreSQL 12+ or CockroachDB
+- PostGIS extension (optional)
+
+## Contributing
+
+Contributions are welcome! Please read the contributing guidelines and submit pull requests.
+
+## License
+
+MIT License - see [LICENSE](./LICENSE) file for details.
+
+## Authors
+
+See [AUTHORS](./AUTHORS) file for the list of contributors.
+
+## Support
+
+For questions and support:
+- Open an issue on GitHub
+- Check the documentation in WARP.md
+- Review the example project
+
+---
+
+Built with TypeScript and Deno for modern backend development.

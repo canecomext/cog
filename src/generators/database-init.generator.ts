@@ -277,63 +277,65 @@ export async function healthCheck(): Promise<boolean> {
   private generateJunctionTableCreationSQL(): string {
     const junctionTables: string[] = [];
     const processedJunctions = new Set<string>();
-    
+
     for (const model of this.models) {
       if (!model.relationships) continue;
-      
+
       for (const rel of model.relationships) {
         if (rel.type === 'manyToMany' && rel.through) {
           // Avoid generating the same junction table twice
           if (processedJunctions.has(rel.through)) continue;
           processedJunctions.add(rel.through);
-          
+
           // Find the target model
-          const targetModel = this.models.find(m => m.name === rel.target);
+          const targetModel = this.models.find((m) => m.name === rel.target);
           if (!targetModel) continue;
-          
+
           // Get primary key types
-          const sourcePK = model.fields.find(f => f.primaryKey);
-          const targetPK = targetModel.fields.find(f => f.primaryKey);
-          
+          const sourcePK = model.fields.find((f) => f.primaryKey);
+          const targetPK = targetModel.fields.find((f) => f.primaryKey);
+
           if (!sourcePK || !targetPK) continue;
-          
+
           // Generate the junction table name and columns
           const tableName = rel.through.toLowerCase();
           const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
           const targetFKColumn = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
-          
-          const createIfNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
-          
+
           let tableSQL = `    await sql\`
-      CREATE TABLE ${createIfNotExists} "${tableName}" (
-        ${sourceFKColumn} UUID NOT NULL REFERENCES "${this.toSnakeCase(model.name)}"(${sourcePK.name}) ON DELETE CASCADE,
-        ${targetFKColumn} UUID NOT NULL REFERENCES "${this.toSnakeCase(targetModel.name)}"(${targetPK.name}) ON DELETE CASCADE,`;
-          
+      CREATE TABLE IF NOT EXISTS "${tableName}" (
+        ${sourceFKColumn} UUID NOT NULL REFERENCES "${
+            this.toSnakeCase(model.name)
+          }"(${sourcePK.name}) ON DELETE CASCADE,
+        ${targetFKColumn} UUID NOT NULL REFERENCES "${
+            this.toSnakeCase(targetModel.name)
+          }"(${targetPK.name}) ON DELETE CASCADE,`;
+
           // Add timestamps if enabled
           const hasTimestamps = model.timestamps || targetModel.timestamps;
           if (hasTimestamps) {
             tableSQL += `
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,`;
           }
-          
+
           tableSQL += `
         PRIMARY KEY (${sourceFKColumn}, ${targetFKColumn})
       );\`;
     console.log('Created junction table: ${tableName}');`;
-          
+
           junctionTables.push(tableSQL);
-          
+
           // Add indexes for the foreign keys
           const indexSQL = `    // Create indexes for ${tableName}
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${sourceFKColumn} ON "${tableName}"(${sourceFKColumn});\`;
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${targetFKColumn} ON "${tableName}"(${targetFKColumn});\`;
     console.log('Created indexes for junction table: ${tableName}');`;
-          
+
           junctionTables.push(indexSQL);
         }
       }
     }
-    
+
     return junctionTables.join('\n\n');
   }
 
@@ -346,10 +348,9 @@ export async function healthCheck(): Promise<boolean> {
       const tableName = this.toSnakeCase(model.name);
       const columns = this.generateColumnsSQL(model);
       const constraints = this.generateConstraintsSQL(model);
-      const createIfNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
 
       return `    await sql\`
-      CREATE TABLE ${createIfNotExists} "${tableName}" (
+      CREATE TABLE IF NOT EXISTS "${tableName}" (
         ${columns}${constraints ? ',\n        ' + constraints : ''}
       );\`;
     console.log('Created table: ${tableName}');`;
@@ -462,12 +463,11 @@ export async function healthCheck(): Promise<boolean> {
         const columnName = this.toSnakeCase(field.name);
         const method = this.getIndexMethod(field);
         const methodClause = method ? `USING ${method}` : '';
-        const ifNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
         const indexName = `idx_${tableName}_${columnName}`;
 
         indexes.push({
           name: indexName,
-          sql: `CREATE INDEX ${ifNotExists} "${indexName}" ON "${tableName}" ` +
+          sql: `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
             `${methodClause} ("${columnName}")`,
         });
       }
@@ -480,11 +480,10 @@ export async function healthCheck(): Promise<boolean> {
         const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => this.toSnakeCase(f)).join('_')}`;
         const method = idx.type || this.getDefaultIndexMethod();
         const methodClause = method ? `USING ${method}` : '';
-        const ifNotExists = this.dbType === 'cockroachdb' ? '' : 'IF NOT EXISTS';
 
         indexes.push({
           name: indexName,
-          sql: `CREATE INDEX ${ifNotExists} "${indexName}" ON "${tableName}" ` +
+          sql: `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
             `${methodClause} (${columns})`,
         });
       }
