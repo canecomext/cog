@@ -59,11 +59,12 @@ COG generates four distinct layers that work together:
 Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with PostgreSQL or CockroachDB.
 
 #### Schema Layer (`/schema`)
-Drizzle ORM table definitions with full TypeScript types, relationships, indexes, and constraints. Supports all PostgreSQL types including PostGIS spatial data.
+Drizzle ORM table definitions with full TypeScript types, relationships, indexes, and constraints. Supports all PostgreSQL types including PostGIS spatial data. Also includes Zod validation schemas automatically generated from table definitions.
 
 #### Domain Layer (`/domain`)
 Pure business logic implementation. Each model gets a domain class with:
 - CRUD operations (create, findOne, findMany, update, delete)
+- Automatic input validation using Zod schemas
 - Relationship management (fetch related data, manage associations)
 - Hook integration points
 - Transaction support
@@ -121,6 +122,151 @@ Direct relationship with foreign key in either table.
 ### Self-Referential
 Models can reference themselves (e.g., Location with parent/children).
 
+## Input Validation
+
+COG integrates [Zod](https://zod.dev) validation using [drizzle-zod](https://orm.drizzle.team/docs/zod) for automatic input validation on all CRUD operations.
+
+### Automatic Schema Generation
+
+For each model, three Zod schemas are automatically generated from Drizzle table definitions:
+
+```typescript
+// In generated/schema/user.schema.ts
+
+// For create operations - validates all required fields
+export const userInsertSchema = createInsertSchema(userTable);
+
+// For update operations - all fields are optional (partial updates)
+export const userUpdateSchema = createUpdateSchema(userTable);
+
+// For select operations - validates query results  
+export const userSelectSchema = createSelectSchema(userTable);
+```
+
+### Validation Execution Flow
+
+Validation happens at two critical points in every create and update operation:
+
+```
+1. Initial Input Validation
+   ↓ (Zod schema validation)
+2. Pre-hook receives validated input
+   ↓ (Pre-hook can modify input)
+3. Pre-hook Output Validation  
+   ↓ (Zod schema validation again)
+4. Database operation with validated data
+```
+
+This dual-validation approach ensures:
+- Invalid data is rejected immediately
+- Hooks receive only valid input
+- Hooks cannot emit malformed data to database operations
+- Data integrity is maintained throughout the operation
+
+### Implementation in Domain API
+
+**Create Operation:**
+```typescript
+async create(input: NewUser, tx: DbTransaction, context?: HookContext): Promise<User> {
+  // 1. Validate input before pre-hook
+  const validatedInput = userInsertSchema.parse(input);
+
+  // 2. Pre-create hook (within transaction)
+  let processedInput = validatedInput;
+  if (this.hooks.preCreate) {
+    const preResult = await this.hooks.preCreate(validatedInput, tx, context);
+    // 3. Validate pre-hook output to ensure it didn't emit malformed data
+    processedInput = userInsertSchema.parse(preResult.data);
+    context = { ...context, ...preResult.context };
+  }
+
+  // 4. Perform create operation with validated data
+  const [created] = await tx
+    .insert(userTable)
+    .values(processedInput)
+    .returning();
+
+  // ... post-hook and after-hook logic
+}
+```
+
+**Update Operation:**
+```typescript
+async update(id: string, input: Partial<NewUser>, tx: DbTransaction, context?: HookContext): Promise<User> {
+  // 1. Validate input before pre-hook (partial update)
+  const validatedInput = userUpdateSchema.parse(input);
+
+  // 2. Pre-update hook
+  let processedInput = validatedInput;
+  if (this.hooks.preUpdate) {
+    const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
+    // 3. Validate pre-hook output to ensure it didn't emit malformed data
+    processedInput = userUpdateSchema.parse(preResult.data);
+    context = { ...context, ...preResult.context };
+  }
+
+  // 4. Perform update operation with validated data
+  const [updated] = await tx
+    .update(userTable)
+    .set({
+      ...processedInput,
+      updatedAt: new Date(),
+    })
+    .where(eq(userTable.id, id))
+    .returning();
+
+  // ... post-hook and after-hook logic
+}
+```
+
+### Error Handling
+
+When validation fails, Zod throws a `ZodError` with detailed field-level information:
+
+```typescript
+import { ZodError } from 'zod';
+
+try {
+  await userDomain.create({
+    email: 'invalid-email',
+    username: 'user',
+    // Missing required field: fullName
+  }, tx);
+} catch (error) {
+  if (error instanceof ZodError) {
+    // Access detailed validation errors
+    error.errors.forEach(err => {
+      console.log(`${err.path.join('.')}: ${err.message}`);
+    });
+    // Output:
+    // fullName: Required
+    // passwordHash: Required
+  }
+}
+```
+
+### Benefits
+
+**Single Source of Truth**
+- Validation rules derived directly from Drizzle table definitions
+- No manual Zod schema creation needed
+- Schema changes automatically update validation
+
+**Type Safety**
+- Runtime validation matches TypeScript types
+- Compile-time and runtime type checking
+- Catch invalid data before it reaches the database
+
+**Hook Safety**
+- Pre-hooks receive validated input
+- Pre-hook output validated before database operations
+- Prevents hooks from corrupting data
+
+**Developer Experience**
+- Automatic - no configuration required
+- Clear, detailed error messages
+- Works seamlessly with existing code
+
 ## The Hook System
 
 Hooks provide extension points for custom business logic. They execute in a specific order within the transaction boundary:
@@ -128,7 +274,9 @@ Hooks provide extension points for custom business logic. They execute in a spec
 ### Execution Flow
 ```
 Begin Transaction
+  → Input Validation (Zod)
   → Pre-hook (modify input)
+  → Pre-hook Output Validation (Zod)
   → Main Operation
   → Post-hook (modify output)
 Commit Transaction
@@ -139,8 +287,9 @@ Commit Transaction
 
 **Pre-operation hooks**
 - Execute before the main operation
+- Receive validated input (Zod validation already applied)
 - Can modify input data
-- Can validate or reject operations
+- Output is validated before main operation
 - Run within transaction
 
 **Post-operation hooks**
@@ -211,8 +360,8 @@ Records are marked as deleted rather than removed, with automatic filtering.
 **Indexes**
 Composite indexes, unique indexes, partial indexes, and spatial indexes (GIST, GIN).
 
-**Validation**
-Field-level constraints: required, unique, length, precision, scale, references.
+**Input Validation**
+Automatic Zod validation for all CRUD operations. Schemas are generated from Drizzle table definitions and validate both initial input and pre-hook output. Includes field-level constraints: required, unique, length, precision, scale, and type checking.
 
 **Custom Pluralization**
 Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").

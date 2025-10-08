@@ -57,8 +57,22 @@ export interface FilterOptions {
   include?: string[];
 }
 
+/**
+ * CRUD hooks with input validation.
+ * 
+ * Input Validation Flow:
+ * 1. Input is validated with Zod schema BEFORE pre-hook is called
+ * 2. Pre-hook receives validated input and can modify it
+ * 3. Pre-hook output is validated with Zod schema BEFORE main operation
+ * 4. This ensures pre-hooks cannot emit malformed data to operations
+ * 
+ * All validation uses Zod schemas generated from Drizzle table definitions.
+ * Validation errors will throw ZodError with detailed error information.
+ */
 export interface CRUDHooks<T, CreateInput, UpdateInput> {
   // Pre-operation hooks (within transaction)
+  // Note: Input is already validated before this hook is called
+  // Note: Output will be validated before the main operation
   preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<CreateInput>>;
   preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<UpdateInput>>;
   preDelete?: (id: string, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
@@ -106,7 +120,7 @@ export interface PaginationOptions {
 
     return `${drizzleImports}
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName} } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 import { CRUDHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
@@ -121,11 +135,15 @@ export class ${modelName}Domain {
    * Create a new ${modelName}
    */
   async create(input: New${modelName}, tx: DbTransaction, context?: HookContext): Promise<${modelName}> {
+    // Validate input before pre-hook
+    const validatedInput = ${modelNameLower}InsertSchema.parse(input);
+
     // Pre-create hook (within transaction)
-    let processedInput = input;
+    let processedInput = validatedInput;
     if (this.hooks.preCreate) {
-      const preResult = await this.hooks.preCreate(input, tx, context);
-      processedInput = preResult.data;
+      const preResult = await this.hooks.preCreate(validatedInput, tx, context);
+      // Validate pre-hook output to ensure it didn't emit malformed data
+      processedInput = ${modelNameLower}InsertSchema.parse(preResult.data);
       context = { ...context, ...preResult.context };
     }
 
@@ -287,11 +305,15 @@ export class ${modelName}Domain {
    * Update ${modelName}
    */
   async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: HookContext): Promise<${modelName}> {
+    // Validate input before pre-hook (partial update)
+    const validatedInput = ${modelNameLower}UpdateSchema.parse(input);
+
     // Pre-update hook
-    let processedInput = input;
+    let processedInput = validatedInput;
     if (this.hooks.preUpdate) {
-      const preResult = await this.hooks.preUpdate(id, input, tx, context);
-      processedInput = preResult.data;
+      const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
+      // Validate pre-hook output to ensure it didn't emit malformed data
+      processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data);
       context = { ...context, ...preResult.context };
     }
 

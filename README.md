@@ -87,6 +87,7 @@ Deno.serve({ port: 3000 }, app.fetch);
 COG generates a complete backend stack with:
 
 - **Database Schema** - Type-safe Drizzle ORM schemas
+- **Zod Validation Schemas** - Automatic input validation for all operations
 - **Domain Layer** - Business logic with CRUD operations
 - **REST API** - RESTful endpoints using Hono framework
 - **TypeScript Types** - Full type safety throughout
@@ -113,6 +114,7 @@ COG generates a complete backend stack with:
 
 ### Advanced Features
 
+- **Input Validation** - Automatic Zod validation for all CRUD operations
 - Automatic timestamps (createdAt, updatedAt)
 - Soft deletes with automatic filtering
 - Database transactions with rollback
@@ -232,11 +234,73 @@ COG follows Domain-Driven Design principles:
    HTTP Layer      Business Layer         Data Layer
 ```
 
+## Input Validation
+
+COG automatically integrates [Zod](https://zod.dev) validation using [drizzle-zod](https://orm.drizzle.team/docs/zod):
+
+- **Automatic Schema Generation** - Zod schemas derived from Drizzle table definitions
+- **Pre-hook Validation** - Input validated before hooks execute
+- **Post-hook Validation** - Hook output validated before database operations
+- **Type Safety** - Runtime validation matches your TypeScript types
+- **Clear Error Messages** - Detailed validation errors with field-level information
+
+### Validation Flow
+
+```typescript
+// Create operation with automatic validation
+const user = await userDomain.create({
+  email: 'user@example.com',
+  username: 'johndoe',
+  fullName: 'John Doe',
+  passwordHash: 'hashed_password',
+}, tx);
+// ✓ Input validated before operation
+// ✓ Hook output validated before database insert
+// ✓ Invalid data rejected with clear error messages
+```
+
+### Generated Schemas
+
+For each model, three Zod schemas are generated:
+
+```typescript
+// For create operations - validates required fields
+export const userInsertSchema = createInsertSchema(userTable);
+
+// For update operations - all fields optional
+export const userUpdateSchema = createUpdateSchema(userTable);
+
+// For select operations - validates query results
+export const userSelectSchema = createSelectSchema(userTable);
+```
+
 ## Requirements
 
 - Deno 1.37 or higher
 - PostgreSQL 12+ or CockroachDB
 - PostGIS extension (optional)
+
+### Dependencies for Generated Code
+
+Projects using COG-generated code need:
+
+- `drizzle-orm` - Database ORM
+- `drizzle-zod` - Zod schema generation from Drizzle tables
+- `@hono/hono` - Web framework
+- `postgres` - PostgreSQL client
+
+Add to your `deno.json`:
+
+```json
+{
+  "imports": {
+    "drizzle-orm": "npm:drizzle-orm@^0.44.5",
+    "drizzle-zod": "npm:drizzle-zod@^0.8.0",
+    "@hono/hono": "jsr:@hono/hono@^4.6.0",
+    "postgres": "npm:postgres@^3.4.7"
+  }
+}
+```
 
 ## Contributing
 

@@ -54,8 +54,9 @@ export class DrizzleSchemaGenerator {
     const imports = this.generateImports(model);
     const tableDefinition = this.generateTableDefinition(model);
     const typeExports = this.generateTypeExports(model);
+    const zodSchemas = this.generateZodSchemas(model);
 
-    return `${imports}\n\n${tableDefinition}\n\n${typeExports}`;
+    return `${imports}\n\n${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
   }
 
   /**
@@ -106,6 +107,9 @@ export class DrizzleSchemaGenerator {
     imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
 
     imports += `import { sql } from 'drizzle-orm';\n`;
+    
+    // Add Zod and drizzle-zod imports for schema validation
+    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
 
     // Import other tables referenced by foreign keys in this schema
     const referencedModels = new Set<string>();
@@ -664,6 +668,25 @@ export class DrizzleSchemaGenerator {
     let code = `// Type exports\n`;
     code += `export type ${model.name} = typeof ${model.name.toLowerCase()}Table.$inferSelect;\n`;
     code += `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;`;
+
+    return code;
+  }
+
+  /**
+   * Generate Zod schemas for validation
+   */
+  private generateZodSchemas(model: ModelDefinition): string {
+    const modelNameLower = model.name.toLowerCase();
+    let code = `// Zod schemas for validation\n`;
+    
+    // Generate insert schema (for create operations)
+    code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table);\n`;
+    
+    // Generate update schema (for update operations - all fields optional)
+    code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table);\n`;
+    
+    // Generate select schema (for validating query results)
+    code += `export const ${modelNameLower}SelectSchema = createSelectSchema(${modelNameLower}Table);`;
 
     return code;
   }
