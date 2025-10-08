@@ -8,7 +8,8 @@
     "jsr:@std/internal@^1.0.10": "1.0.10",
     "jsr:@std/path@*": "1.1.0",
     "jsr:@std/path@^1.1.2": "1.1.2",
-    "npm:drizzle-orm@~0.44.5": "0.44.5",
+    "npm:drizzle-orm@~0.44.5": "0.44.5_postgres@3.4.7",
+    "npm:drizzle-zod@~0.8.3": "0.8.3_drizzle-orm@0.44.5__postgres@3.4.7_zod@4.1.11_postgres@3.4.7",
     "npm:postgres@^3.4.7": "3.4.7"
   },
   "jsr": {
@@ -38,8 +39,27 @@
     "drizzle-orm@0.44.5": {
       "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ=="
     },
+    "drizzle-orm@0.44.5_postgres@3.4.7": {
+      "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ==",
+      "dependencies": [
+        "postgres"
+      ],
+      "optionalPeers": [
+        "postgres"
+      ]
+    },
+    "drizzle-zod@0.8.3_drizzle-orm@0.44.5__postgres@3.4.7_zod@4.1.11_postgres@3.4.7": {
+      "integrity": "sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==",
+      "dependencies": [
+        "drizzle-orm@0.44.5_postgres@3.4.7",
+        "zod"
+      ]
+    },
     "postgres@3.4.7": {
       "integrity": "sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw=="
+    },
+    "zod@4.1.11": {
+      "integrity": "sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg=="
     }
   },
   "redirects": {
@@ -65,6 +85,7 @@
       "jsr:@std/dotenv@~0.225.5",
       "jsr:@std/path@^1.1.2",
       "npm:drizzle-orm@~0.44.5",
+      "npm:drizzle-zod@~0.8.3",
       "npm:postgres@^3.4.7"
     ]
   }
