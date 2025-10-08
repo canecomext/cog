@@ -7,6 +7,7 @@ import { DrizzleSchemaGenerator } from './generators/drizzle-schema.generator.ts
 import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
 import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
+import { OpenAPIGenerator } from './generators/openapi.generator.ts';
 import { GeneratorConfig } from './types/model.types.ts';
 
 export * from './types/model.types.ts';
@@ -86,6 +87,11 @@ export async function generateFromModels(
   const restGenerator = new RestAPIGenerator(models);
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
+
+  // Generate OpenAPI specification
+  const openAPIGenerator = new OpenAPIGenerator(models);
+  const openAPIFiles = openAPIGenerator.generateOpenAPI();
+  openAPIFiles.forEach((content, path) => files.set(path, content));
 
   // Generate main index file
   files.set('index.ts', generateMainIndex(models));
