@@ -62,15 +62,15 @@ export interface CRUDHooks<T, CreateInput, UpdateInput> {
   preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<CreateInput>>;
   preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<UpdateInput>>;
   preDelete?: (id: string, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindById?: (id: string, tx: DbTransaction | null, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindMany?: (tx: DbTransaction | null, filter?: FilterOptions, context?: HookContext) => Promise<PreHookResult<FilterOptions>>;
+  preFindById?: (id: string, tx?: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
+  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: HookContext) => Promise<PreHookResult<FilterOptions>>;
 
   // Post-operation hooks (within transaction)
   postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
   postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
   postDelete?: (id: string, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
-  postFindById?: (id: string, result: T | null, tx: DbTransaction | null, context?: HookContext) => Promise<PostHookResult<T | null>>;
-  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx: DbTransaction | null, context?: HookContext) => Promise<PostHookResult<T[]>>;
+  postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: HookContext) => Promise<PostHookResult<T | null>>;
+  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: HookContext) => Promise<PostHookResult<T[]>>;
 
   // After-operation hooks (outside transaction, async)
   afterCreate?: (result: T, context?: HookContext) => Promise<void>;
@@ -97,12 +97,12 @@ export interface PaginationOptions {
     const modelNameLower = model.name.toLowerCase();
     const primaryKeyField = model.fields.find((f) => f.primaryKey)?.name ||
       'id';
-    
+
     // Check if we need additional imports for manyToMany relationships
-    const hasManyToMany = model.relationships?.some(rel => rel.type === 'manyToMany');
-    const drizzleImports = hasManyToMany 
-      ? 'import { eq, desc, asc, sql, and, inArray } from \'drizzle-orm\';'
-      : 'import { eq, desc, asc, sql } from \'drizzle-orm\';';
+    const hasManyToMany = model.relationships?.some((rel) => rel.type === 'manyToMany');
+    const drizzleImports = hasManyToMany
+      ? "import { eq, desc, asc, sql, and, inArray } from 'drizzle-orm';"
+      : "import { eq, desc, asc, sql } from 'drizzle-orm';";
 
     return `${drizzleImports}
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
@@ -163,7 +163,7 @@ export class ${modelName}Domain {
 
     // Pre-find hook
     if (this.hooks.preFindById) {
-      const preResult = await this.hooks.preFindById(id, tx || null, context);
+      const preResult = await this.hooks.preFindById(id, tx, context);
       id = preResult.data.id;
       context = { ...context, ...preResult.context };
     }
@@ -183,7 +183,7 @@ export class ${modelName}Domain {
     // Post-find hook
     let finalResult: ${modelName} | null = found;
     if (this.hooks.postFindById && found !== null) {
-      const postResult = await this.hooks.postFindById(id, found, tx || null, context);
+      const postResult = await this.hooks.postFindById(id, found, tx, context);
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
@@ -214,7 +214,7 @@ export class ${modelName}Domain {
 
     // Pre-find hook
     if (this.hooks.preFindMany) {
-      const preResult = await this.hooks.preFindMany(tx || null, filter, context);
+      const preResult = await this.hooks.preFindMany(tx, filter, context);
       filter = preResult.data as FilterOptions;
       context = { ...context, ...preResult.context };
     }
@@ -264,7 +264,7 @@ export class ${modelName}Domain {
     // Post-find hook
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
-          const postResult = await this.hooks.postFindMany!(filter, results, tx || null, context);
+          const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
           context = { ...context, ...postResult.context };
           return postResult.data;
         })()
@@ -381,7 +381,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     const imports: string[] = [];
     const addedImports = new Set<string>();
-    
+
     for (const rel of model.relationships) {
       if (rel.target !== model.name && !addedImports.has(rel.target)) {
         imports.push(
@@ -389,7 +389,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         );
         addedImports.add(rel.target);
       }
-      
+
       // Add junction table imports for manyToMany relationships
       if (rel.type === 'manyToMany' && rel.through && !addedImports.has(rel.through)) {
         imports.push(
@@ -469,7 +469,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Get ${rel.name} for ${model.name}
    */
-  async get${this.capitalize(rel.name)}(id: string, tx: DbTransaction | null ): Promise<unknown[]> {
+  async get${this.capitalize(rel.name)}(id: string, tx?: DbTransaction): Promise<unknown[]> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
     
@@ -487,10 +487,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const junctionTable = rel.through.toLowerCase();
         const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
         const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
-        const sourcePK = model.fields.find(f => f.primaryKey)?.name || 'id';
-        
+        const sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
+
         // Import junction table at the top of the file (this will be handled separately)
-        
+
         methods.push(`
   /**
    * Get ${relName} for ${model.name}
@@ -510,7 +510,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Add ${relName} to ${model.name}
    */
-  async add${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx: DbTransaction): Promise<void> {
+  async add${this.singularize(RelName)}(id: string, ${
+          this.singularize(targetNameLower)
+        }Id: string, tx: DbTransaction): Promise<void> {
     await tx.insert(${junctionTable}Table).values({
       ${sourceFK}: id,
       ${targetFK}: ${this.singularize(targetNameLower)}Id
@@ -534,7 +536,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Remove ${this.singularize(relName)} from ${model.name}
    */
-  async remove${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx: DbTransaction): Promise<void> {
+  async remove${this.singularize(RelName)}(id: string, ${
+          this.singularize(targetNameLower)
+        }Id: string, tx: DbTransaction): Promise<void> {
     await tx.delete(${junctionTable}Table)
       .where(
         and(
@@ -576,7 +580,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Check if ${model.name} has a specific ${this.singularize(relName)}
    */
-  async has${this.singularize(RelName)}(id: string, ${this.singularize(targetNameLower)}Id: string, tx?: DbTransaction): Promise<boolean> {
+  async has${this.singularize(RelName)}(id: string, ${
+          this.singularize(targetNameLower)
+        }Id: string, tx?: DbTransaction): Promise<boolean> {
     const db = tx || withoutTransaction();
     
     const result = await db

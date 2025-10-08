@@ -10,6 +10,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
+import { join } from '@std/path';
 import type { Env } from './generated/rest/types.ts';
 import { uuid } from 'drizzle-orm/pg-core';
 // the above line is a demonstration of fileds definition that can be used in the context, eg:
@@ -50,11 +51,11 @@ async function startServer() {
   try {
     // Initialize generated backend code
     await initializeGenerated({
-      // Database configuration
+      // Database configuration, adjust to your environment
       database: {
         connectionString: env.DB_URL,
         ssl: {
-          ca: env.DB_SSL_CERT_FILE,
+          ca: await Deno.readTextFile(join(Deno.cwd(), env.DB_SSL_CERT_FILE)),
         },
       },
       // Pass the Hono app instance
@@ -127,15 +128,15 @@ async function startServer() {
       return c.json(result);
     });
 
-  // List all registered endpoints (demonstration of utility function)
-  const { printRegisteredEndpoints } = await import('./generated/rest/index.ts');
-  printRegisteredEndpoints(app);
+    // List all registered endpoints (demonstration of utility function)
+    const { printRegisteredEndpoints } = await import('./generated/rest/index.ts');
+    printRegisteredEndpoints(app);
 
-  // Start the server
-  const port = 3000;
-  console.log(`\nServer starting on http://localhost:${port}`);
+    // Start the server
+    const port = 3000;
+    console.log(`\nServer starting on http://localhost:${port}`);
 
-  Deno.serve({ port: 3000 }, app.fetch);
+    Deno.serve({ port: 3000 }, app.fetch);
   } catch (error) {
     console.error('Failed to start server:', error);
     Deno.exit(1);

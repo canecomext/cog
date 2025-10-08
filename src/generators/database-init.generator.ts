@@ -26,30 +26,20 @@ export class DatabaseInitGenerator {
       : '';
 
     // Remove extra indentation and fix template
-    return `import { initializeDatabase, closeDatabase, getSQL } from './database.ts';
-import { load } from "@std/dotenv";
-import { join } from "@std/path";
+    return `import { connect, DatabaseConfig, disconnect, getSQL } from './database.ts';
 
 // Handle interruption signals
 Deno.addSignalListener("SIGINT", async () => {
   console.log('\\nReceived interrupt signal');
-  await closeDatabase();
+  await disconnect();
   console.log('Database connection closed');
   Deno.exit(0);
 });
 
-// Load environment variables
-const env = await load();
-
-async function initialize() {
+export async function initializeDatabase(config: DatabaseConfig) {
   try {
     // Initialize database with the existing configuration
-    await initializeDatabase({
-      connectionString: env.DB_URL,
-      ssl: env.DB_SSL_CERT_FILE
-        ? { ca: await Deno.readTextFile(join(Deno.cwd(), env.DB_SSL_CERT_FILE)) }
-        : 'require'
-    });
+    await connect(config);
     
     const sql = getSQL();
 ${createPostgis}
@@ -68,12 +58,10 @@ ${this.generateIndexCreationSQL()}
     console.error('Error during database initialization:', error);
     throw error;
   } finally {
-    await closeDatabase();
+    await disconnect();
     console.log('Database connection closed');
   }
 }
-
-await initialize();
 `;
   }
 
@@ -109,11 +97,13 @@ export interface DatabaseConfig {
   database?: string;
   user?: string;
   password?: string;
+
+  // See more info at: // See https://nodejs.org/api/tls.html#tlsconnectoptions-callback
   ssl?: boolean | 'require' | 'prefer' | 'allow' | 'verify-full' | {
-    ca?: string;      // Path to the CA certificate file
-    key?: string;     // Path to the client key file
-    cert?: string;    // Path to the client certificate file
-    rejectUnauthorized?: boolean;  // Whether to reject unauthorized connections
+    ca?: string;                  // CA certificate
+    key?: string;                 // Client key
+    cert?: string;                // Client certificate
+    rejectUnauthorized?: boolean; // Whether to reject unauthorized connections
   };
   max?: number;
   idle_timeout?: number;
@@ -125,7 +115,7 @@ let sql: postgres.Sql<{}> | null = null;
 /**
  * Initialize database connection
  */
-export async function initializeDatabase(config: DatabaseConfig) {
+export async function connect(config: DatabaseConfig) {
   if (db) {
     return { db, sql };
   }
@@ -170,7 +160,7 @@ export async function initializeDatabase(config: DatabaseConfig) {
  */
 export function withoutTransaction() {
   if (!db) {
-    throw new Error('Database not initialized. Call initializeDatabase first.');
+    throw new Error('Database not connected. Call connect(...) first.');
   }
   return db;
 }
@@ -195,7 +185,7 @@ export async function withTransaction<T>(
  */
 export function getSQL(): postgres.Sql<{}> {
   if (!sql) {
-    throw new Error('Database not initialized. Call initializeDatabase first.');
+    throw new Error('Database not connected. Call connect(...) first.');
   }
   return sql;
 }
@@ -203,7 +193,7 @@ export function getSQL(): postgres.Sql<{}> {
 /**
  * Close database connection
  */
-export async function closeDatabase() {
+export async function disconnect() {
   if (sql) {
     await sql.end();
     sql = null;

@@ -261,7 +261,7 @@ export type Env = {
 ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   const id = c.req.param('id');
   
-  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id, null);
+  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
   
   return c.json(result);
 });`);
@@ -272,7 +272,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
         const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
         const singularRel = this.singularize(relName);
         const SingularRel = this.capitalize(singularRel);
-        
+
         endpoints.push(`
 /**
  * GET /${modelNamePlural}/:id/${relName}
@@ -565,7 +565,7 @@ ${this.generateEndpointListingUtilities()}
    * Find model by name
    */
   private findModelByName(name: string): ModelDefinition | undefined {
-    return this.models.find(m => m.name === name);
+    return this.models.find((m) => m.name === name);
   }
 
   /**
@@ -777,16 +777,16 @@ export function printRegisteredEndpoints(app: Hono<any>): void {
    */
   private generateFallbackRoutes(): string {
     const routes: string[] = [];
-    
+
     // Add health and API endpoints
     routes.push(`routes.push({ method: 'GET', path: '/health' });`);
     routes.push(`routes.push({ method: 'GET', path: '/api' });`);
-    
+
     // Add CRUD endpoints for each model
     for (const model of this.models) {
       const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
       const basePath = `/api/${plural}`;
-      
+
       // Basic CRUD endpoints
       routes.push(`routes.push({ method: 'GET', path: '${basePath}' });`);
       routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id' });`);
@@ -794,7 +794,7 @@ export function printRegisteredEndpoints(app: Hono<any>): void {
       routes.push(`routes.push({ method: 'PUT', path: '${basePath}/:id' });`);
       routes.push(`routes.push({ method: 'PATCH', path: '${basePath}/:id' });`);
       routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id' });`);
-      
+
       // Relationship endpoints
       if (model.relationships) {
         for (const rel of model.relationships) {
@@ -812,7 +812,7 @@ export function printRegisteredEndpoints(app: Hono<any>): void {
         }
       }
     }
-    
+
     return routes.join('\n      ');
   }
 }

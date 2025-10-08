@@ -111,7 +111,7 @@ function generateMainIndex(models: any[]): string {
  */
 
 import { Hono } from '@hono/hono';
-import { initializeDatabase, type DatabaseConfig, type DbTransaction } from './db/database.ts';
+import { connect, type DatabaseConfig } from './db/database.ts';
 import { registerGlobalMiddlewares, registerRestRoutes } from './rest/index.ts';
 import type { Env } from './rest/types.ts';
 import * as domain from './domain/index.ts';
@@ -130,7 +130,7 @@ export interface InitializationConfig {
  */
 export async function initializeGenerated(config: InitializationConfig) {
   // Initialize database
-  const { db, sql } = await initializeDatabase(config.database);
+  const { db, sql } = await connect(config.database);
 
   // Register built-in global middlewares first
   registerGlobalMiddlewares(config.app);
@@ -186,7 +186,7 @@ async function writeGeneratedFiles(
 
     // Write file
     await Deno.writeTextFile(fullPath, content);
-    
+
     // Only output file paths if verbose flag is true
     if (verbose) {
       console.log(relativePath);
