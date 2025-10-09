@@ -473,7 +473,7 @@ export function registerRestRoutes(app: Hono<Env>, baseUrl?: string) {
 
     for (const model of this.models) {
       const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
-      code += `  app.route('${apiPrefix}/${plural}', ${model.name.toLowerCase()}Routes);\n`;
+      code += `  app.route(\`\${apiPrefix}/${plural}\`, ${model.name.toLowerCase()}Routes);\n`;
     }
 
     code += `
@@ -483,7 +483,7 @@ export function registerRestRoutes(app: Hono<Env>, baseUrl?: string) {
   });
 
   // API documentation endpoint
-  app.get(apiPrefix, (c) => {
+  app.get(\`\${apiPrefix}\`, (c) => {
     return c.json({
       version: '1.0.0',
       baseUrl: apiPrefix,
