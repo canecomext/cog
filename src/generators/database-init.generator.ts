@@ -44,6 +44,9 @@ export async function initializeDatabase(config: DatabaseConfig) {
     const sql = getSQL();
 ${createPostgis}
 
+    // Drop existing tables (in reverse dependency order)
+${this.generateTableDropSQL()}
+
     // Create tables
 ${this.generateTableCreationSQL()}
 
@@ -61,6 +64,21 @@ ${this.generateIndexCreationSQL()}
     await disconnect();
     console.log('Database connection closed');
   }
+}
+
+// Main execution
+if (import.meta.main) {
+  const { load } = await import('@std/dotenv');
+  const env = await load();
+  
+  const config: DatabaseConfig = {
+    connectionString: env.DB_URL,
+    ssl: env.DB_SSL_CERT_FILE ? {
+      ca: await Deno.readTextFile(env.DB_SSL_CERT_FILE),
+    } : undefined,
+  };
+  
+  await initializeDatabase(config);
 }
 `;
   }
@@ -215,6 +233,18 @@ export async function healthCheck(): Promise<boolean> {
     return false;
   }
 }`;
+  }
+
+  /**
+   * Generate SQL statements for dropping tables
+   */
+  private generateTableDropSQL(): string {
+    // Get models in dependency order, then reverse for dropping
+    const sortedModels = this.sortModelsByDependencies().reverse();
+    return sortedModels.map((model) => {
+      const tableName = this.toSnakeCase(model.name);
+      return `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${tableName}');`;
+    }).join('\n');
   }
 
   /**
