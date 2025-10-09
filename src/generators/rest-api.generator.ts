@@ -462,14 +462,18 @@ export function registerGlobalMiddlewares(app: Hono<Env>) {
 /**
  * Register all REST routes
  * Note: Global middlewares should be registered before calling this function
+ * @param app - The Hono app instance
+ * @param baseUrl - Optional base URL prefix for API routes (defaults to '/api')
  */
-export function registerRestRoutes(app: Hono<Env>) {
+export function registerRestRoutes(app: Hono<Env>, baseUrl?: string) {
+  const apiPrefix = baseUrl || '/api';
+  
   // Register model routes
 `;
 
     for (const model of this.models) {
       const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
-      code += `  app.route('/api/${plural}', ${model.name.toLowerCase()}Routes);\n`;
+      code += `  app.route('${apiPrefix}/${plural}', ${model.name.toLowerCase()}Routes);\n`;
     }
 
     code += `
@@ -479,9 +483,10 @@ export function registerRestRoutes(app: Hono<Env>) {
   });
 
   // API documentation endpoint
-  app.get('/api', (c) => {
+  app.get(apiPrefix, (c) => {
     return c.json({
       version: '1.0.0',
+      baseUrl: apiPrefix,
       endpoints: [
 ${
       this.models.map((m) => {

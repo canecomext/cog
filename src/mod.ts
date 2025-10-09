@@ -126,6 +126,9 @@ import * as schema from './schema/index.ts';
 export interface InitializationConfig {
   database: DatabaseConfig;
   app: Hono<Env>;
+  api?: {
+    baseUrl?: string; // Optional base URL prefix for API routes (e.g., '/api/v1')
+  };
   hooks?: {
     [modelName: string]: any;
   };
@@ -142,7 +145,7 @@ export async function initializeGenerated(config: InitializationConfig) {
   registerGlobalMiddlewares(config.app);
 
   // Register REST routes after all global middlewares
-  registerRestRoutes(config.app);
+  registerRestRoutes(config.app, config.api?.baseUrl);
 
   // Initialize domain layers with hooks if provided
   if (config.hooks) {
