@@ -64,10 +64,7 @@ ${modelNameLower}Routes.get('/', async (c) => {
       orderBy,
       orderDirection: orderDirection as 'asc' | 'desc'
     },
-    {
-      // requestId: c.get('requestId'),
-      // userId: c.get('userId')
-    }
+    c.var // Pass all context variables to hooks
   );
 
   return c.json({
@@ -93,10 +90,7 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
     id,
     undefined, // No transaction
     { include },
-    {
-      // requestId: c.get('requestId'),
-      // userId: c.get('userId')
-    }
+    c.var // Pass all context variables to hooks
   );
 
   if (!result) {
@@ -117,10 +111,7 @@ ${modelNameLower}Routes.post('/', async (c) => {
     return await ${modelNameLower}Domain.create(
       body,
       tx,
-      {
-        // requestId: c.get('requestId'),
-        // userId: c.get('userId')
-      }
+      c.var // Pass all context variables to hooks
     );
   });
 
@@ -141,10 +132,7 @@ ${modelNameLower}Routes.put('/:id', async (c) => {
         id,
         body,
         tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
+        c.var // Pass all context variables to hooks
       );
     });
 
@@ -171,10 +159,7 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
         id,
         body,
         tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
+        c.var // Pass all context variables to hooks
       );
     });
 
@@ -199,10 +184,7 @@ ${modelNameLower}Routes.delete('/:id', async (c) => {
       return await ${modelNameLower}Domain.delete(
         id,
         tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
+        c.var // Pass all context variables to hooks
       );
     });
 

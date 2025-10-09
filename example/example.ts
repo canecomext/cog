@@ -11,41 +11,20 @@ import { sql } from 'drizzle-orm';
 import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
-import type { Env } from './env-types.ts'; // Import YOUR Env type, not the generated one
-import { uuid } from 'drizzle-orm/pg-core';
-// Demonstration of how to use context variables:
-// c.set('requestId', uuid.v4());
-// const requestId = c.get('requestId');
+import type { Env } from './example-context.ts';
+import { printRegisteredEndpoints } from './generated/rest/index.ts';
+import { apiReference } from '@scalar/hono-api-reference';
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
 
-// Create Hono app instance with YOUR custom environment type
 const app = new Hono<Env>();
 
 const env = await load();
 
-// Initialize the backend
 async function startServer() {
-  // demo
   app.use('*', async (c, next) => {
-    const requestId = crypto.randomUUID();
-    c.set('requestId', requestId);
-    // Add request ID to response headers
-    c.header('X-Request-ID', requestId);
+    const someString = crypto.randomUUID();
+    c.set('someString', someString);
     await next();
-  });
-
-  // demo
-  app.use('*', async (c, next) => {
-    const userId = c.req.header('X-User-ID');
-    c.set('userId', userId);
-    await next();
-  });
-
-  // demo
-  app.use('*', async (c, next) => {
-    const start = Date.now();
-    await next();
-    const end = Date.now();
-    console.log(`Request took ${end - start}ms`);
   });
 
   try {
@@ -55,7 +34,7 @@ async function startServer() {
       database: {
         connectionString: env.DB_URL,
         ssl: {
-          ca: Deno.readTextFileSync(join(Deno.cwd(), env.DB_SSL_CERT_FILE)),
+          ca: Deno.readTextFileSync(join(Deno.cwd(), env.DB_SSL_CA_FILE)),
         },
       },
       // Pass the Hono app instance
@@ -89,9 +68,6 @@ async function startServer() {
       },
     });
 
-    // Add custom routes
-    app.get('/', (c) => c.json({ message: 'Welcome to the example backend!' }));
-
     // Add custom domain logic example
     app.get('/api/users/search', async (c) => {
       const { email } = c.req.query();
@@ -110,33 +86,122 @@ async function startServer() {
       }
     });
 
-    app.get('/xxx', async (c) => {
-      const uuid = crypto.randomUUID();
-      const uid = uuid.split('-')[1];
+    app.get(
+      '/reference',
+      apiReference({
+        url: '/openapi.json',
+        theme: 'purple', // Try: 'alternate', 'default', 'moon', 'purple', 'solarized'
+        pageTitle: 'Generated CRUD API - Reference',
+      }),
+    );
 
-      const result = await withTransaction(async (tx) => {
-        const data = {
-          id: uuid,
-          email: `${uid}@email.com`,
-          username: uid,
-          fullName: `Full Name ${uid}`,
-          passwordHash: uid,
-        };
-        return await userDomain.create(data, tx);
-      });
-
-      return c.json(result);
+    app.get('/openapi.json', (c) => {
+      return c.json(generatedOpenAPISpec);
     });
 
-    // List all registered endpoints (demonstration of utility function)
-    const { printRegisteredEndpoints } = await import('./generated/rest/index.ts');
+    // =============================================================================
+    // Landing page with links to all documentation
+    // =============================================================================
+    app.get('/', (c) => {
+      return c.html(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>API Documentation</title>
+        <style>
+          body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+          }
+          h1 { color: #333; }
+          .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f9f9f9;
+          }
+          a {
+            color: #6366f1;
+            text-decoration: none;
+            font-weight: 500;
+          }
+          a:hover { text-decoration: underline; }
+          .theme-selector {
+            margin: 10px 0;
+            padding: 10px;
+            background: #fff;
+            border-radius: 4px;
+          }
+          code {
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>🚀 API Documentation</h1>
+        <p>Welcome to your API documentation powered by Scalar!</p>
+        
+        <div class="card">
+          <h2>📚 Generated CRUD API</h2>
+          <p>Auto-generated REST API for all your models with CRUD operations.</p>
+          <a href="/reference" target="_blank">→ View Documentation</a>
+          <br><br>
+          <small>OpenAPI Spec: <a href="/openapi.json" target="_blank">/openapi.json</a></small>
+        </div>
+        
+        <!--
+        <div class="card">
+          <h2>🎯 Complete API (Generated + Custom)</h2>
+          <p>Includes generated CRUD endpoints plus custom authentication and analytics endpoints.</p>
+          <a href="/docs/reference" target="_blank">→ View Documentation</a>
+          <br><br>
+          <small>OpenAPI Spec: <a href="/docs/openapi.json" target="_blank">/docs/openapi.json</a></small>
+        </div>
+        -->
+        
+        <!--
+        <div class="card">
+          <h2>🎨 Try Different Themes</h2>
+          <div class="theme-selector">
+            <p>Available themes:</p>
+            <a href="/reference/custom?theme=purple">Purple (default)</a> •
+            <a href="/reference/custom?theme=alternate">Alternate</a> •
+            <a href="/reference/custom?theme=default">Default</a> •
+            <a href="/reference/custom?theme=moon">Moon</a> •
+            <a href="/reference/custom?theme=solarized">Solarized</a>
+          </div>
+        </div>
+        -->
+        
+        <div class="card">
+          <h2>💡 Quick Tips</h2>
+          <ul>
+            <li>All endpoints support <code>Bearer</code> authentication</li>
+            <li>Use the "Try it" button in Scalar to test endpoints</li>
+            <li>Filter by tags to see specific endpoint groups</li>
+            <li>Download OpenAPI spec to generate client SDKs</li>
+          </ul>
+        </div>
+      </body>
+    </html>
+  `);
+    });
+
     printRegisteredEndpoints(app);
 
-    // Start the server
-    const port = 3000;
-    console.log(`\nServer starting on http://localhost:${port}`);
-
-    Deno.serve({ port: 3000 }, app.fetch);
+    Deno.serve({
+      port: 3000,
+      onListen(addr) {
+        console.log(`\nServer started at ${addr.hostname}:${addr.port}`);
+      },
+    }, app.fetch);
   } catch (error) {
     console.error('Failed to start server:', error);
     Deno.exit(1);
