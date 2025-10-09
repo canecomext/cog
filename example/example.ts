@@ -55,7 +55,7 @@ async function startServer() {
       database: {
         connectionString: env.DB_URL,
         ssl: {
-          ca: await Deno.readTextFile(join(Deno.cwd(), env.DB_SSL_CERT_FILE)),
+          ca: Deno.readTextFileSync(join(Deno.cwd(), env.DB_SSL_CERT_FILE)),
         },
       },
       // Pass the Hono app instance

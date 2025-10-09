@@ -118,7 +118,7 @@ function generateMainIndex(models: any[]): string {
 
 import { Hono } from '@hono/hono';
 import { connect, type DatabaseConfig } from './db/database.ts';
-import { registerGlobalMiddlewares, registerRestRoutes } from './rest/index.ts';
+import { registerRestRoutes } from './rest/index.ts';
 import type { Env } from './rest/types.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
@@ -140,9 +140,6 @@ export interface InitializationConfig {
 export async function initializeGenerated(config: InitializationConfig) {
   // Initialize database
   const { db, sql } = await connect(config.database);
-
-  // Register built-in global middlewares first
-  registerGlobalMiddlewares(config.app);
 
   // Register REST routes after all global middlewares
   registerRestRoutes(config.app, config.api?.baseUrl);

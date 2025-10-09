@@ -65,21 +65,6 @@ ${this.generateIndexCreationSQL()}
     console.log('Database connection closed');
   }
 }
-
-// Main execution
-if (import.meta.main) {
-  const { load } = await import('@std/dotenv');
-  const env = await load();
-  
-  const config: DatabaseConfig = {
-    connectionString: env.DB_URL,
-    ssl: env.DB_SSL_CERT_FILE ? {
-      ca: await Deno.readTextFile(env.DB_SSL_CERT_FILE),
-    } : undefined,
-  };
-  
-  await initializeDatabase(config);
-}
 `;
   }
 

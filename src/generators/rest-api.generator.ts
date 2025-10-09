@@ -25,9 +25,6 @@ export class RestAPIGenerator {
       files.set(`rest/${model.name.toLowerCase()}.rest.ts`, restAPI);
     }
 
-    // Generate middleware
-    files.set('rest/middleware.ts', this.generateMiddleware());
-
     // Generate REST registration file
     files.set('rest/index.ts', this.generateRestIndex());
 
@@ -370,74 +367,10 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
   }
 
   /**
-   * Generate middleware file
-   */
-  private generateMiddleware(): string {
-    return `import { MiddlewareHandler } from '@hono/hono';
-import type { Env } from './types.ts';
-
-/**
- * Request ID middleware
- */
-export const requestIdMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  const requestId = c.req.header('x-request-id') || crypto.randomUUID();
-  c.set('requestId', requestId);
-  c.header('x-request-id', requestId);
-  await next();
-};
-
-/**
- * Error handling middleware
- */
-export const errorMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  try {
-    await next();
-  } catch (error) {
-    console.error('API Error:', error);
-    
-    if (error instanceof Error) {
-      return c.json(
-        { 
-          error: error.message,
-          requestId: c.get('requestId')
-        },
-        500
-      );
-    }
-    
-    return c.json(
-      { 
-        error: 'Internal server error',
-        requestId: c.get('requestId')
-      },
-      500
-    );
-  }
-};
-
-/**
- * CORS middleware
- */
-export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-id');
-  
-  if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204);
-  }
-  
-  await next();
-};
-`;
-  }
-
-  /**
    * Generate REST index file
    */
   private generateRestIndex(): string {
     let code = `import { Hono } from '@hono/hono';
-import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware.ts';
 import type { Env } from './types.ts';
 `;
 
@@ -447,17 +380,6 @@ import type { Env } from './types.ts';
     }
 
     code += `
-
-/**
- * Register built-in global middlewares
- * This should be called before any custom middleware or route registration
- */
-export function registerGlobalMiddlewares(app: Hono<Env>) {
-  // Apply global middleware in the correct order
-  app.use('*', corsMiddleware);
-  app.use('*', requestIdMiddleware);
-  app.use('*', errorMiddleware);
-}
 
 /**
  * Register all REST routes
@@ -477,11 +399,6 @@ export function registerRestRoutes(app: Hono<Env>, baseUrl?: string) {
     }
 
     code += `
-  // Health check endpoint
-  app.get('/health', (c) => {
-    return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
-  });
-
   // API documentation endpoint
   app.get(\`\${apiPrefix}\`, (c) => {
     return c.json({
