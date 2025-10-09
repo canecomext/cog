@@ -11,13 +11,13 @@ import { sql } from 'drizzle-orm';
 import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
-import type { Env } from './generated/rest/types.ts';
+import type { Env } from './env-types.ts'; // Import YOUR Env type, not the generated one
 import { uuid } from 'drizzle-orm/pg-core';
-// the above line is a demonstration of fileds definition that can be used in the context, eg:
+// Demonstration of how to use context variables:
 // c.set('requestId', uuid.v4());
 // const requestId = c.get('requestId');
 
-// Create Hono app instance with the correct environment type
+// Create Hono app instance with YOUR custom environment type
 const app = new Hono<Env>();
 
 const env = await load();

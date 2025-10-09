@@ -42,9 +42,10 @@ export class RestAPIGenerator {
     return `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import type { Env } from './types.ts';
+import type { DefaultEnv } from './types.ts';
 
-export const ${modelNameLower}Routes = new Hono<Env>();
+// Routes use DefaultEnv but can be type-cast when registering
+export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
 
 /**
  * GET /${modelNamePlural}
@@ -224,11 +225,25 @@ ${this.generateRelationshipEndpoints(model)}
   private generateSharedTypes(): string {
     return `/**
  * Shared types for REST API
+ * 
+ * Note: The Env type should be defined in your application code.
+ * This allows you to customize the Variables available in your Hono context.
+ * 
+ * Example:
+ * export type Env = {
+ *   Variables: {
+ *     requestId?: string;
+ *     userId?: string;
+ *     // Add your custom variables here
+ *   }
+ * }
  */
-export type Env = {
+
+// Default minimal Env type for generated routes
+// You should override this in your application
+export type DefaultEnv = {
   Variables: {
-    requestId?: string;
-    userId?: string;
+    [key: string]: any;
   }
 }
 `;
@@ -371,7 +386,6 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
    */
   private generateRestIndex(): string {
     let code = `import { Hono } from '@hono/hono';
-import type { Env } from './types.ts';
 `;
 
     // Import all route files
@@ -387,7 +401,7 @@ import type { Env } from './types.ts';
  * @param app - The Hono app instance
  * @param baseUrl - Optional base URL prefix for API routes (defaults to '/api')
  */
-export function registerRestRoutes(app: Hono<Env>, baseUrl?: string) {
+export function registerRestRoutes(app: Hono<any>, baseUrl?: string) {
   const apiPrefix = baseUrl || '/api';
   
   // Register model routes
@@ -426,7 +440,7 @@ ${this.generateEndpointListingUtilities()}
     }
 
     code += `\n// Re-export shared types\n`;
-    code += `export type { Env } from './types.ts';\n`;
+    code += `export type { DefaultEnv } from './types.ts';\n`;
 
     return code;
   }
