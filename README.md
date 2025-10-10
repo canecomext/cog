@@ -1,6 +1,7 @@
 # COG - CRUD Operations Generator
 
-A powerful TypeScript code generator that creates complete, production-ready CRUD backends from simple JSON model definitions.
+A powerful TypeScript code generator that creates complete, production-ready CRUD backends from simple JSON model
+definitions.
 
 ## Quick Start
 
@@ -74,9 +75,9 @@ const app = new Hono();
 
 await initializeGenerated({
   database: {
-    connectionString: 'postgresql://user:pass@localhost/mydb'
+    connectionString: 'postgresql://user:pass@localhost/mydb',
   },
-  app
+  app,
 });
 
 Deno.serve({ port: 3000 }, app.fetch);
@@ -115,8 +116,8 @@ COG generates a complete backend stack with:
 
 ### Advanced Features
 
-- **Input Validation** - Automatic Zod validation for all CRUD operations
-- **OpenAPI Documentation** - Auto-generated API documentation
+- Automatic Zod validation for all CRUD operations
+- Auto-generated API documentation
 - Automatic timestamps (createdAt, updatedAt)
 - Soft deletes with automatic filtering
 - Database transactions with rollback
@@ -140,6 +141,7 @@ deno run -A example.ts
 ```
 
 The example showcases:
+
 - Complex data models with various field types
 - All relationship types
 - PostGIS spatial data
@@ -152,17 +154,17 @@ The example showcases:
 deno run -A src/cli.ts [options]
 ```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--modelsPath` | Path to JSON model files | `./models` |
-| `--outputPath` | Where to generate code | `./generated` |
-| `--dbType` | Database type (`postgresql` or `cockroachdb`) | `postgresql` |
-| `--schema` | Database schema name | - |
-| `--no-postgis` | Disable PostGIS support | false |
-| `--no-timestamps` | Disable automatic timestamps | false |
-| `--no-softDeletes` | Disable soft delete feature | false |
-| `--verbose` | Show generated file paths | false |
-| `--help` | Show help message | - |
+| Option             | Description                                   | Default       |
+| ------------------ | --------------------------------------------- | ------------- |
+| `--modelsPath`     | Path to JSON model files                      | `./models`    |
+| `--outputPath`     | Where to generate code                        | `./generated` |
+| `--dbType`         | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
+| `--schema`         | Database schema name                          | -             |
+| `--no-postgis`     | Disable PostGIS support                       | false         |
+| `--no-timestamps`  | Disable automatic timestamps                  | false         |
+| `--no-softDeletes` | Disable soft delete feature                   | false         |
+| `--verbose`        | Show generated file paths                     | false         |
+| `--help`           | Show help message                             | -             |
 
 ## Model Definition Format
 
@@ -313,9 +315,9 @@ const customSpec = {
         tags: ['Authentication'],
         summary: 'User login',
         // ... your custom endpoint spec
-      }
-    }
-  }
+      },
+    },
+  },
 };
 
 const completeSpec = mergeOpenAPISpec(customSpec);
@@ -327,11 +329,14 @@ app.get('/openapi.json', (c) => c.json(completeSpec));
 ```typescript
 import { apiReference } from '@scalar/hono-api-reference';
 
-app.get('/reference', apiReference({
-  url: '/openapi.json',
-  theme: 'purple', // 'alternate', 'default', 'moon', 'purple', 'solarized'
-  pageTitle: 'My API Documentation',
-}));
+app.get(
+  '/reference',
+  apiReference({
+    url: '/openapi.json',
+    theme: 'purple', // 'alternate', 'default', 'moon', 'purple', 'solarized'
+    pageTitle: 'My API Documentation',
+  }),
+);
 
 // Visit http://localhost:3000/reference to see your beautiful API docs
 ```
@@ -356,8 +361,8 @@ const fullSpec = mergeOpenAPISpec({
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-      }
-    }
+      },
+    },
   },
   security: [{ bearerAuth: [] }],
 });
@@ -406,6 +411,7 @@ See [AUTHORS](./AUTHORS) file for the list of contributors.
 ## Support
 
 For questions and support:
+
 - Open an issue on GitHub
 - Check the documentation in WARP.md
 - Review the example project
