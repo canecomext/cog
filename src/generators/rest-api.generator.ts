@@ -25,9 +25,6 @@ export class RestAPIGenerator {
       files.set(`rest/${model.name.toLowerCase()}.rest.ts`, restAPI);
     }
 
-    // Generate middleware
-    files.set('rest/middleware.ts', this.generateMiddleware());
-
     // Generate REST registration file
     files.set('rest/index.ts', this.generateRestIndex());
 
@@ -43,11 +40,13 @@ export class RestAPIGenerator {
     const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     return `import { Hono } from '@hono/hono';
+import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import type { Env } from './types.ts';
+import type { DefaultEnv } from './types.ts';
 
-export const ${modelNameLower}Routes = new Hono<Env>();
+// Routes use DefaultEnv but can be type-cast when registering
+export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
 
 /**
  * GET /${modelNamePlural}
@@ -66,10 +65,7 @@ ${modelNameLower}Routes.get('/', async (c) => {
       orderBy,
       orderDirection: orderDirection as 'asc' | 'desc'
     },
-    {
-      // requestId: c.get('requestId'),
-      // userId: c.get('userId')
-    }
+    c.var // Pass all context variables to hooks
   );
 
   return c.json({
@@ -95,17 +91,14 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
     id,
     undefined, // No transaction
     { include },
-    {
-      // requestId: c.get('requestId'),
-      // userId: c.get('userId')
-    }
+    c.var // Pass all context variables to hooks
   );
 
   if (!result) {
-    return c.json({ error: '${modelName} not found' }, 404);
+    throw new HTTPException(404, { message: '${modelName} not found' });
   }
 
-  return c.json(result);
+  return c.json({ data: result });
 });
 
 /**
@@ -119,14 +112,11 @@ ${modelNameLower}Routes.post('/', async (c) => {
     return await ${modelNameLower}Domain.create(
       body,
       tx,
-      {
-        // requestId: c.get('requestId'),
-        // userId: c.get('userId')
-      }
+      c.var // Pass all context variables to hooks
     );
   });
 
-  return c.json(result, 201);
+  return c.json({ data: result }, 201);
 });
 
 /**
@@ -137,26 +127,16 @@ ${modelNameLower}Routes.put('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
 
-  try {
-    const result = await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.update(
-        id,
-        body,
-        tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.update(
+      id,
+      body,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json(result);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 /**
@@ -167,26 +147,16 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
 
-  try {
-    const result = await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.update(
-        id,
-        body,
-        tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.update(
+      id,
+      body,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json(result);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 /**
@@ -196,25 +166,15 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
 ${modelNameLower}Routes.delete('/:id', async (c) => {
   const id = c.req.param('id');
 
-  try {
-    await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.delete(
-        id,
-        tx,
-        {
-          // requestId: c.get('requestId'),
-          // userId: c.get('userId')
-        }
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.delete(
+      id,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json({ message: '${modelName} deleted successfully' });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 ${this.generateRelationshipEndpoints(model)}
@@ -227,11 +187,25 @@ ${this.generateRelationshipEndpoints(model)}
   private generateSharedTypes(): string {
     return `/**
  * Shared types for REST API
+ * 
+ * Note: The Env type should be defined in your application code.
+ * This allows you to customize the Variables available in your Hono context.
+ * 
+ * Example:
+ * export type Env = {
+ *   Variables: {
+ *     requestId?: string;
+ *     userId?: string;
+ *     // Add your custom variables here
+ *   }
+ * }
  */
-export type Env = {
+
+// Default minimal Env type for generated routes
+// You should override this in your application
+export type DefaultEnv = {
   Variables: {
-    requestId?: string;
-    userId?: string;
+    [key: string]: any;
   }
 }
 `;
@@ -263,7 +237,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   
   const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
   
-  return c.json(result);
+  return c.json({ data: result });
 });`);
       } else if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
@@ -283,7 +257,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   
   const result = await ${modelNameLower}Domain.get${RelName}(id);
   
-  return c.json(result);
+  return c.json({ data: result });
 });
 
 /**
@@ -299,7 +273,7 @@ ${modelNameLower}Routes.post('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} added successfully' }, 201);
+  return c.json({ data: { message: '${RelName} added successfully' } }, 201);
 });
 
 /**
@@ -315,7 +289,7 @@ ${modelNameLower}Routes.put('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} updated successfully' });
+  return c.json({ data: { message: '${RelName} updated successfully' } });
 });
 
 /**
@@ -330,7 +304,7 @@ ${modelNameLower}Routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
     await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
   });
   
-  return c.json({ message: '${SingularRel} added successfully' }, 201);
+  return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
 });
 
 /**
@@ -345,7 +319,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}/:${singularRel}Id', async (c) =>
     await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
   });
   
-  return c.json({ message: '${SingularRel} removed successfully' });
+  return c.json({ data: { message: '${SingularRel} removed successfully' } });
 });
 
 /**
@@ -361,7 +335,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} removed successfully' });
+  return c.json({ data: { message: '${RelName} removed successfully' } });
 });`);
       }
     }
@@ -370,75 +344,10 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
   }
 
   /**
-   * Generate middleware file
-   */
-  private generateMiddleware(): string {
-    return `import { MiddlewareHandler } from '@hono/hono';
-import type { Env } from './types.ts';
-
-/**
- * Request ID middleware
- */
-export const requestIdMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  const requestId = c.req.header('x-request-id') || crypto.randomUUID();
-  c.set('requestId', requestId);
-  c.header('x-request-id', requestId);
-  await next();
-};
-
-/**
- * Error handling middleware
- */
-export const errorMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  try {
-    await next();
-  } catch (error) {
-    console.error('API Error:', error);
-    
-    if (error instanceof Error) {
-      return c.json(
-        { 
-          error: error.message,
-          requestId: c.get('requestId')
-        },
-        500
-      );
-    }
-    
-    return c.json(
-      { 
-        error: 'Internal server error',
-        requestId: c.get('requestId')
-      },
-      500
-    );
-  }
-};
-
-/**
- * CORS middleware
- */
-export const corsMiddleware: MiddlewareHandler<Env> = async (c, next) => {
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-id');
-  
-  if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204);
-  }
-  
-  await next();
-};
-`;
-  }
-
-  /**
    * Generate REST index file
    */
   private generateRestIndex(): string {
     let code = `import { Hono } from '@hono/hono';
-import { requestIdMiddleware, errorMiddleware, corsMiddleware } from './middleware.ts';
-import type { Env } from './types.ts';
 `;
 
     // Import all route files
@@ -449,39 +358,28 @@ import type { Env } from './types.ts';
     code += `
 
 /**
- * Register built-in global middlewares
- * This should be called before any custom middleware or route registration
- */
-export function registerGlobalMiddlewares(app: Hono<Env>) {
-  // Apply global middleware in the correct order
-  app.use('*', corsMiddleware);
-  app.use('*', requestIdMiddleware);
-  app.use('*', errorMiddleware);
-}
-
-/**
  * Register all REST routes
  * Note: Global middlewares should be registered before calling this function
+ * @param app - The Hono app instance
+ * @param baseUrl - Optional base URL prefix for API routes (defaults to '/api')
  */
-export function registerRestRoutes(app: Hono<Env>) {
+export function registerRestRoutes(app: Hono<any>, baseUrl?: string) {
+  const apiPrefix = baseUrl || '/api';
+  
   // Register model routes
 `;
 
     for (const model of this.models) {
       const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
-      code += `  app.route('/api/${plural}', ${model.name.toLowerCase()}Routes);\n`;
+      code += `  app.route(\`\${apiPrefix}/${plural}\`, ${model.name.toLowerCase()}Routes);\n`;
     }
 
     code += `
-  // Health check endpoint
-  app.get('/health', (c) => {
-    return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
-  });
-
   // API documentation endpoint
-  app.get('/api', (c) => {
+  app.get(\`\${apiPrefix}\`, (c) => {
     return c.json({
       version: '1.0.0',
+      baseUrl: apiPrefix,
       endpoints: [
 ${
       this.models.map((m) => {
@@ -504,7 +402,7 @@ ${this.generateEndpointListingUtilities()}
     }
 
     code += `\n// Re-export shared types\n`;
-    code += `export type { Env } from './types.ts';\n`;
+    code += `export type { DefaultEnv } from './types.ts';\n`;
 
     return code;
   }

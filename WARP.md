@@ -74,6 +74,7 @@ Pure business logic implementation. Each model gets a domain class with:
 HTTP interface using Hono framework. Translates HTTP requests to domain operations:
 - Standard CRUD endpoints (GET, POST, PUT, DELETE)
 - Relationship endpoints (GET /users/:id/posts)
+- OpenAPI 3.1.0 specification for all endpoints
 - Automatic transaction wrapping
 - Error handling and status codes
 - Request/response validation
@@ -366,6 +367,201 @@ Automatic Zod validation for all CRUD operations. Schemas are generated from Dri
 **Custom Pluralization**
 Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
 
+**OpenAPI Documentation**
+Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints. Includes complete request/response schemas, can be extended with custom endpoints, and supports Scalar API Reference integration.
+
+## OpenAPI Specification Generation
+
+COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
+
+### Generated Files
+
+**`generated/rest/openapi.ts`**
+- TypeScript module with the complete OpenAPI specification
+- Exports `generatedOpenAPISpec` object
+- Provides `mergeOpenAPISpec()` function for extending with custom endpoints
+- Includes TypeScript types from `openapi-types` package
+
+**`generated/rest/openapi.json`**
+- Static JSON file with the OpenAPI specification
+- Can be served directly or used with API documentation tools
+
+### What's Included
+
+**Paths**
+- All CRUD endpoints (list, create, get, update, delete)
+- Relationship endpoints (one-to-many, many-to-many)
+- Query parameters for pagination, filtering, and sorting
+- Path parameters for resource IDs
+
+**Schemas**
+- Model schemas with all fields and their types
+- Input schemas for create operations
+- Update schemas for partial updates
+- Response schemas matching domain types
+
+**Components**
+- Reusable parameters (limit, offset, orderBy, etc.)
+- Common responses (NotFound, ValidationError, ServerError)
+- Field constraints (maxLength, format, nullable, etc.)
+
+**Metadata**
+- Operation IDs for each endpoint
+- Tags for grouping by model
+- Descriptions for endpoints and parameters
+- HTTP status codes and response types
+
+### Serving the Specification
+
+**Basic Usage:**
+```typescript
+import { Hono } from '@hono/hono';
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+
+const app = new Hono();
+
+// Serve the OpenAPI spec
+app.get('/openapi.json', (c) => c.json(generatedOpenAPISpec));
+```
+
+**With Scalar (Beautiful API Reference):**
+```typescript
+import { apiReference } from '@scalar/hono-api-reference';
+
+app.get('/reference', apiReference({
+  url: '/openapi.json',
+  theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
+  pageTitle: 'My API Documentation',
+}));
+
+// Visit http://localhost:3000/reference to see your API documentation
+```
+
+### Extending with Custom Endpoints
+
+The `mergeOpenAPISpec()` function allows you to add your custom endpoints:
+
+```typescript
+import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
+
+const customSpec = {
+  info: {
+    title: 'My Complete API',
+    description: 'Generated CRUD operations plus custom endpoints',
+  },
+  paths: {
+    '/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Login user',
+        operationId: 'loginUser',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                  password: { type: 'string' }
+                },
+                required: ['email', 'password']
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Login successful',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    token: { type: 'string' },
+                    user: { $ref: '#/components/schemas/User' }
+                  }
+                }
+              }
+            }
+          },
+          '401': {
+            description: 'Invalid credentials'
+          }
+        }
+      }
+    },
+    '/auth/refresh': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Refresh access token',
+        // ... your endpoint spec
+      }
+    }
+  },
+  components: {
+    schemas: {
+      LoginRequest: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string' }
+        }
+      }
+    },
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT'
+      }
+    }
+  },
+  security: [{ bearerAuth: [] }]
+};
+
+const completeSpec = mergeOpenAPISpec(customSpec);
+
+// Serve the combined specification
+app.get('/openapi.json', (c) => c.json(completeSpec));
+```
+
+### Schema Type Mapping
+
+COG maps model field types to OpenAPI schema types:
+
+| Model Type | OpenAPI Type | Format |
+|------------|--------------|--------|
+| `text` | `string` | - |
+| `string` | `string` | - |
+| `integer` | `integer` | `int32` |
+| `bigint` | `integer` | `int64` |
+| `decimal` | `number` | `double` |
+| `boolean` | `boolean` | - |
+| `date` | `string` | `date-time` |
+| `uuid` | `string` | `uuid` |
+| `json`/`jsonb` | `object` | - |
+| PostGIS types | `object` | (GeoJSON) |
+
+### Benefits
+
+**Automatic Synchronization**
+- OpenAPI spec is always in sync with your models
+- Changes to models automatically update the documentation
+- No manual documentation maintenance required
+
+**Development Tools**
+- Generate client SDKs with OpenAPI Generator
+- Beautiful API documentation with Scalar
+- Import into Postman or Insomnia
+- Validate requests/responses
+
+**API Discovery**
+- Self-documenting API
+- Clear endpoint structure
+- Type definitions for all operations
+- Example values and constraints
+
 ## File Organization
 
 ### Generator Structure
@@ -379,7 +575,8 @@ src/
 │   ├── database-init.generator.ts
 │   ├── domain-api.generator.ts
 │   ├── drizzle-schema.generator.ts
-│   └── rest-api.generator.ts
+│   ├── rest-api.generator.ts
+│   └── openapi.generator.ts  # OpenAPI 3.1.0 spec generation
 └── types/
     └── model.types.ts        # TypeScript definitions
 ```
@@ -403,6 +600,8 @@ generated/
     ├── [model].rest.ts      # HTTP endpoints
     ├── middleware.ts
     ├── types.ts
+    ├── openapi.ts           # OpenAPI specification (TypeScript)
+    ├── openapi.json         # OpenAPI specification (JSON)
     └── index.ts
 ```
 

@@ -38,18 +38,25 @@ export class DomainAPIGenerator {
     return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
 
-export interface HookContext {
-  metadata?: Record<string, unknown>;
+/**
+ * Hook context that receives all variables from the Hono context.
+ * The generic EnvVars type will contain all custom variables defined 
+ * in your application's Env type.
+ * 
+ * Example:
+ * If your Env type has Variables: { requestId?: string; userId?: string; tenantId?: string }
+ * Then in hooks you can access: context.requestId, context.userId, context.tenantId
+ */
+export type HookContext<EnvVars extends Record<string, any> = Record<string, any>> = EnvVars;
+
+export interface PreHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
+  data: T;
+  context?: HookContext<EnvVars>;
 }
 
-export interface PreHookResult<T> {
+export interface PostHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
   data: T;
-  context?: HookContext;
-}
-
-export interface PostHookResult<T> {
-  data: T;
-  context?: HookContext;
+  context?: HookContext<EnvVars>;
 }
 
 export interface FilterOptions {
@@ -68,30 +75,34 @@ export interface FilterOptions {
  * 
  * All validation uses Zod schemas generated from Drizzle table definitions.
  * Validation errors will throw ZodError with detailed error information.
+ * 
+ * The generic EnvVars type allows you to specify your Env Variables type for type-safe
+ * access to context variables in hooks.
  */
-export interface CRUDHooks<T, CreateInput, UpdateInput> {
+export interface CRUDHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
-  preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<CreateInput>>;
-  preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<UpdateInput>>;
-  preDelete?: (id: string, tx: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindById?: (id: string, tx?: DbTransaction, context?: HookContext) => Promise<PreHookResult<{ id: string }>>;
-  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: HookContext) => Promise<PreHookResult<FilterOptions>>;
+  // Note: context contains all variables from your Env type
+  preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<CreateInput, EnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<UpdateInput, EnvVars>>;
+  preDelete?: (id: string, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
+  preFindById?: (id: string, tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
+  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: HookContext<EnvVars>) => Promise<PreHookResult<FilterOptions, EnvVars>>;
 
   // Post-operation hooks (within transaction)
-  postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
-  postDelete?: (id: string, result: T, tx: DbTransaction, context?: HookContext) => Promise<PostHookResult<T>>;
-  postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: HookContext) => Promise<PostHookResult<T | null>>;
-  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: HookContext) => Promise<PostHookResult<T[]>>;
+  postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postDelete?: (id: string, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T | null, EnvVars>>;
+  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T[], EnvVars>>;
 
   // After-operation hooks (outside transaction, async)
-  afterCreate?: (result: T, context?: HookContext) => Promise<void>;
-  afterUpdate?: (result: T, context?: HookContext) => Promise<void>;
-  afterDelete?: (result: T, context?: HookContext) => Promise<void>;
-  afterFindById?: (result: T | null, context?: HookContext) => Promise<void>;
-  afterFindMany?: (results: T[], context?: HookContext) => Promise<void>;
+  afterCreate?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
+  afterUpdate?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
+  afterDelete?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
+  afterFindById?: (result: T | null, context?: HookContext<EnvVars>) => Promise<void>;
+  afterFindMany?: (results: T[], context?: HookContext<EnvVars>) => Promise<void>;
 }
 
 export interface PaginationOptions {
@@ -119,22 +130,23 @@ export interface PaginationOptions {
       : "import { eq, desc, asc, sql } from 'drizzle-orm';";
 
     return `${drizzleImports}
+import { HTTPException } from '@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 import { CRUDHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
-export class ${modelName}Domain {
-  private hooks: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>>;
+export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<string, any>> {
+  private hooks: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
 
-  constructor(hooks?: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>>) {
+  constructor(hooks?: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
     this.hooks = hooks || {};
   }
 
   /**
    * Create a new ${modelName}
    */
-  async create(input: New${modelName}, tx: DbTransaction, context?: HookContext): Promise<${modelName}> {
+  async create(input: New${modelName}, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook
     const validatedInput = ${modelNameLower}InsertSchema.parse(input);
 
@@ -144,7 +156,7 @@ export class ${modelName}Domain {
       const preResult = await this.hooks.preCreate(validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}InsertSchema.parse(preResult.data);
-      context = { ...context, ...preResult.context };
+      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
     }
 
     // Perform create operation
@@ -158,7 +170,7 @@ export class ${modelName}Domain {
     if (this.hooks.postCreate) {
       const postResult = await this.hooks.postCreate(processedInput, created, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context };
+      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
     }
 
     // After-create hook (outside transaction, after post-hook)
@@ -175,7 +187,7 @@ export class ${modelName}Domain {
   /**
    * Find ${modelName} by ID
    */
-  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: HookContext): Promise<${modelName} | null> {
+  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: HookContext<EnvVars>): Promise<${modelName} | null> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
 
@@ -183,7 +195,7 @@ export class ${modelName}Domain {
     if (this.hooks.preFindById) {
       const preResult = await this.hooks.preFindById(id, tx, context);
       id = preResult.data.id;
-      context = { ...context, ...preResult.context };
+      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
     }
 
     // Build query
@@ -205,7 +217,7 @@ export class ${modelName}Domain {
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
-      context = { ...context, ...postResult.context };
+      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
     }
 
     // After-find hook (outside transaction, after post-hook)
@@ -225,7 +237,7 @@ export class ${modelName}Domain {
     tx?: DbTransaction,
     filter?: FilterOptions,
     pagination?: PaginationOptions,
-    context?: HookContext,
+    context?: HookContext<EnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
@@ -234,7 +246,7 @@ export class ${modelName}Domain {
     if (this.hooks.preFindMany) {
       const preResult = await this.hooks.preFindMany(tx, filter, context);
       filter = preResult.data as FilterOptions;
-      context = { ...context, ...preResult.context };
+      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
     }
 
     // Build query with chaining to avoid type issues
@@ -283,7 +295,7 @@ export class ${modelName}Domain {
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
           const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
-          context = { ...context, ...postResult.context };
+          context = { ...context, ...postResult.context } as HookContext<EnvVars>;
           return postResult.data;
         })()
       : results;
@@ -304,7 +316,7 @@ export class ${modelName}Domain {
   /**
    * Update ${modelName}
    */
-  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: HookContext): Promise<${modelName}> {
+  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook (partial update)
     const validatedInput = ${modelNameLower}UpdateSchema.parse(input);
 
@@ -314,7 +326,7 @@ export class ${modelName}Domain {
       const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data);
-      context = { ...context, ...preResult.context };
+      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
     }
 
     // Perform update
@@ -328,7 +340,7 @@ export class ${modelName}Domain {
       .returning();
 
     if (!updated) {
-      throw new Error(\`${modelName} with id \${id} not found\`);
+      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
     }
 
     // Post-update hook
@@ -336,7 +348,7 @@ export class ${modelName}Domain {
     if (this.hooks.postUpdate) {
       const postResult = await this.hooks.postUpdate(id, processedInput, updated, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context };
+      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
     }
 
     // After-update hook (outside transaction, after post-hook)
@@ -352,19 +364,19 @@ export class ${modelName}Domain {
   /**
    * Delete ${modelName}
    */
-  async delete(id: string, tx: DbTransaction, context?: HookContext): Promise<${modelName}> {
+  async delete(id: string, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
     // Pre-delete hook
     if (this.hooks.preDelete) {
       const preResult = await this.hooks.preDelete(id, tx, context);
       id = preResult.data.id;
-      context = { ...context, ...preResult.context };
+      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
     }
 
     // Perform delete
     ${model.softDelete ? this.generateSoftDelete(model, 'tx') : this.generateHardDelete(model, 'tx')}
 
     if (!deleted) {
-      throw new Error(\`${modelName} with id \${id} not found\`);
+      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
     }
 
     // Post-delete hook
@@ -372,7 +384,7 @@ export class ${modelName}Domain {
     if (this.hooks.postDelete) {
       const postResult = await this.hooks.postDelete(id, deleted, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context };
+      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
     }
 
     // After-delete hook (outside transaction, after post-hook)
@@ -388,7 +400,7 @@ export class ${modelName}Domain {
   ${this.generateRelationshipMethods(model)}
 }
 
-// Export singleton instance
+// Export singleton instance (uses default Record<string, any> for EnvVars)
 export const ${modelNameLower}Domain = new ${modelName}Domain();
 `;
   }

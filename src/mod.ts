@@ -7,6 +7,7 @@ import { DrizzleSchemaGenerator } from './generators/drizzle-schema.generator.ts
 import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
 import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
+import { OpenAPIGenerator } from './generators/openapi.generator.ts';
 import { GeneratorConfig } from './types/model.types.ts';
 
 export * from './types/model.types.ts';
@@ -87,6 +88,11 @@ export async function generateFromModels(
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
+  // Generate OpenAPI specification
+  const openAPIGenerator = new OpenAPIGenerator(models);
+  const openAPIFiles = openAPIGenerator.generateOpenAPI();
+  openAPIFiles.forEach((content, path) => files.set(path, content));
+
   // Generate main index file
   files.set('index.ts', generateMainIndex(models));
 
@@ -112,14 +118,17 @@ function generateMainIndex(models: any[]): string {
 
 import { Hono } from '@hono/hono';
 import { connect, type DatabaseConfig } from './db/database.ts';
-import { registerGlobalMiddlewares, registerRestRoutes } from './rest/index.ts';
-import type { Env } from './rest/types.ts';
+import { registerRestRoutes } from './rest/index.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
 
-export interface InitializationConfig {
+// Generic initialization config - works with any Hono Env type
+export interface InitializationConfig<Env extends { Variables: Record<string, any> } = any> {
   database: DatabaseConfig;
   app: Hono<Env>;
+  api?: {
+    baseUrl?: string; // Optional base URL prefix for API routes (e.g., '/api/v1')
+  };
   hooks?: {
     [modelName: string]: any;
   };
@@ -127,16 +136,15 @@ export interface InitializationConfig {
 
 /**
  * Initialize the generated backend
+ * @param config Configuration object with database, app, and optional hooks
+ * @returns Initialized database connection, SQL client, domain objects, and schema
  */
-export async function initializeGenerated(config: InitializationConfig) {
+export async function initializeGenerated<Env extends { Variables: Record<string, any> } = any>(config: InitializationConfig<Env>) {
   // Initialize database
   const { db, sql } = await connect(config.database);
 
-  // Register built-in global middlewares first
-  registerGlobalMiddlewares(config.app);
-
   // Register REST routes after all global middlewares
-  registerRestRoutes(config.app);
+  registerRestRoutes(config.app, config.api?.baseUrl);
 
   // Initialize domain layers with hooks if provided
   if (config.hooks) {
@@ -162,7 +170,7 @@ export * from './db/database.ts';
 export * from './rest/index.ts';
 export * from './domain/index.ts';
 export * from './schema/index.ts';
-export type { Env } from './rest/types.ts';
+export type { DefaultEnv } from './rest/types.ts';
 `;
 }
 

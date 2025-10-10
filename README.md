@@ -1,6 +1,7 @@
 # COG - CRUD Operations Generator
 
-A powerful TypeScript code generator that creates complete, production-ready CRUD backends from simple JSON model definitions.
+A powerful TypeScript code generator that creates complete, production-ready CRUD backends from simple JSON model
+definitions.
 
 ## Quick Start
 
@@ -74,9 +75,9 @@ const app = new Hono();
 
 await initializeGenerated({
   database: {
-    connectionString: 'postgresql://user:pass@localhost/mydb'
+    connectionString: 'postgresql://user:pass@localhost/mydb',
   },
-  app
+  app,
 });
 
 Deno.serve({ port: 3000 }, app.fetch);
@@ -90,6 +91,7 @@ COG generates a complete backend stack with:
 - **Zod Validation Schemas** - Automatic input validation for all operations
 - **Domain Layer** - Business logic with CRUD operations
 - **REST API** - RESTful endpoints using Hono framework
+- **OpenAPI Specification** - Complete OpenAPI 3.1.0 docs for all endpoints
 - **TypeScript Types** - Full type safety throughout
 - **Hook System** - Extensible pre/post operation hooks
 - **Transaction Management** - Automatic transaction handling
@@ -114,7 +116,8 @@ COG generates a complete backend stack with:
 
 ### Advanced Features
 
-- **Input Validation** - Automatic Zod validation for all CRUD operations
+- Automatic Zod validation for all CRUD operations
+- Auto-generated API documentation
 - Automatic timestamps (createdAt, updatedAt)
 - Soft deletes with automatic filtering
 - Database transactions with rollback
@@ -138,6 +141,7 @@ deno run -A example.ts
 ```
 
 The example showcases:
+
 - Complex data models with various field types
 - All relationship types
 - PostGIS spatial data
@@ -150,17 +154,17 @@ The example showcases:
 deno run -A src/cli.ts [options]
 ```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--modelsPath` | Path to JSON model files | `./models` |
-| `--outputPath` | Where to generate code | `./generated` |
-| `--dbType` | Database type (`postgresql` or `cockroachdb`) | `postgresql` |
-| `--schema` | Database schema name | - |
-| `--no-postgis` | Disable PostGIS support | false |
-| `--no-timestamps` | Disable automatic timestamps | false |
-| `--no-softDeletes` | Disable soft delete feature | false |
-| `--verbose` | Show generated file paths | false |
-| `--help` | Show help message | - |
+| Option             | Description                                   | Default       |
+| ------------------ | --------------------------------------------- | ------------- |
+| `--modelsPath`     | Path to JSON model files                      | `./models`    |
+| `--outputPath`     | Where to generate code                        | `./generated` |
+| `--dbType`         | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
+| `--schema`         | Database schema name                          | -             |
+| `--no-postgis`     | Disable PostGIS support                       | false         |
+| `--no-timestamps`  | Disable automatic timestamps                  | false         |
+| `--no-softDeletes` | Disable soft delete feature                   | false         |
+| `--verbose`        | Show generated file paths                     | false         |
+| `--help`           | Show help message                             | -             |
 
 ## Model Definition Format
 
@@ -274,6 +278,96 @@ export const userUpdateSchema = createUpdateSchema(userTable);
 export const userSelectSchema = createSelectSchema(userTable);
 ```
 
+## OpenAPI Documentation
+
+COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints:
+
+### Generated Files
+
+- `generated/rest/openapi.ts` - TypeScript module with OpenAPI spec
+- `generated/rest/openapi.json` - Static JSON specification file
+
+### Features
+
+- **Complete Coverage** - All CRUD and relationship endpoints documented
+- **Schema Definitions** - Includes request/response schemas for all models
+- **Extendable** - Merge with custom OpenAPI specs for your endpoints
+- **Type-Safe** - Uses TypeScript types from `openapi-types`
+
+### Usage
+
+**Serve OpenAPI JSON:**
+
+```typescript
+import { Hono } from '@hono/hono';
+import { generatedOpenAPISpec, mergeOpenAPISpec } from './generated/rest/openapi.ts';
+
+const app = new Hono();
+
+// Serve generated OpenAPI spec
+app.get('/openapi.json', (c) => c.json(generatedOpenAPISpec));
+
+// Or merge with custom endpoints
+const customSpec = {
+  paths: {
+    '/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'User login',
+        // ... your custom endpoint spec
+      },
+    },
+  },
+};
+
+const completeSpec = mergeOpenAPISpec(customSpec);
+app.get('/openapi.json', (c) => c.json(completeSpec));
+```
+
+**Integrate with Scalar (Beautiful API Reference):**
+
+```typescript
+import { apiReference } from '@scalar/hono-api-reference';
+
+app.get(
+  '/reference',
+  apiReference({
+    url: '/openapi.json',
+    theme: 'purple', // 'alternate', 'default', 'moon', 'purple', 'solarized'
+    pageTitle: 'My API Documentation',
+  }),
+);
+
+// Visit http://localhost:3000/reference to see your beautiful API docs
+```
+
+### Extending the Specification
+
+The generated OpenAPI spec can be extended with your custom endpoints:
+
+```typescript
+import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
+import { myCustomEndpoints } from './custom-api-spec.ts';
+
+const fullSpec = mergeOpenAPISpec({
+  info: {
+    title: 'My Complete API',
+    description: 'Generated CRUD + Custom Endpoints',
+  },
+  paths: myCustomEndpoints,
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    },
+  },
+  security: [{ bearerAuth: [] }],
+});
+```
+
 ## Requirements
 
 - Deno 1.37 or higher
@@ -317,6 +411,7 @@ See [AUTHORS](./AUTHORS) file for the list of contributors.
 ## Support
 
 For questions and support:
+
 - Open an issue on GitHub
 - Check the documentation in WARP.md
 - Review the example project
