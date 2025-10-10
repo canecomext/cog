@@ -1,4 +1,4 @@
-import { Hono } from '@hono/hono';
+import { type Context, type ErrorHandler, Hono } from '@hono/hono';
 import { HTTPException } from '@hono/hono/http-exception';
 import {
   type DbTransaction,
@@ -19,6 +19,13 @@ import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
 const app = new Hono<Env>();
 
 const env = await load();
+
+const onUnhandledError = (err: Error, c: Context<Env>) => {
+  console.error('Unhandled error:', err);
+  return c.json({
+    error: 'Internal server error',
+  }, 500);
+};
 
 async function startServer() {
   app.use('*', async (c, next) => {
@@ -195,7 +202,14 @@ async function startServer() {
 
     printRegisteredEndpoints(app);
 
-    app.onError((err, c) => {
+    app.onError((err: Error, c: Context<Env>) => {
+      // Handle HTTPException
+      if (err instanceof HTTPException) {
+        return c.json({
+          error: err.message,
+        }, err.status);
+      }
+
       // Handle Zod validation errors
       if (err.name === 'ZodError') {
         try {
@@ -205,29 +219,12 @@ async function startServer() {
           }, []);
 
           return c.json({
-            error: {
-              message: 'Validation failed',
-              details: formattedErrors,
-            },
+            error: formattedErrors,
           }, 400);
         } catch {
           // If JSON parse fails, return raw message
-          return c.json({
-            error: {
-              message: 'Validation failed',
-              details: [err.message],
-            },
-          }, 400);
+          onUnhandledError(err, c);
         }
-      }
-
-      // Handle HTTPException
-      if (err instanceof HTTPException) {
-        return c.json({
-          error: {
-            message: err.message,
-          },
-        }, err.status);
       }
 
       // Handle Drizzle database errors
@@ -244,17 +241,17 @@ async function startServer() {
               const constraintMatch = pgError.constraint_name?.match(/_([^_]+)_unique$/);
               const field = constraintMatch ? constraintMatch[1].replace(/_/g, ' ') : 'value';
               return c.json({
-                error: {
-                  message: `This ${field} is already in use`,
-                },
+                error: [
+                  `${field}: Already in use`,
+                ],
               }, 409);
             }
 
             case '23503': // foreign_key_violation
               return c.json({
-                error: {
-                  message: 'The referenced resource does not exist',
-                },
+                error: [
+                  'The referenced resource does not exist',
+                ],
               }, 400);
 
             case '23502': {
@@ -262,24 +259,20 @@ async function startServer() {
               const columnMatch = pgError.message?.match(/column "([^"]+)"/);
               const column = columnMatch ? columnMatch[1].replace(/_/g, ' ') : 'field';
               return c.json({
-                error: {
-                  message: `The required field ${column} is missing`,
-                },
+                error: [
+                  `${column}: Required field is missing`,
+                ],
               }, 400);
             }
 
             case '23514': // check_violation
               return c.json({
-                error: {
-                  message: 'Invalid data provided',
-                },
+                error: 'Invalid data provided',
               }, 400);
 
             case '22P02': // invalid_text_representation
               return c.json({
-                error: {
-                  message: 'Invalid data format',
-                },
+                error: 'Invalid data format',
               }, 400);
 
             default:
@@ -290,30 +283,18 @@ async function startServer() {
                 constraint: pgError.constraint_name,
               });
               return c.json({
-                error: {
-                  message: 'Unable to process request',
-                },
+                error: 'Unable to process request',
               }, 500);
           }
         }
 
         // DrizzleQueryError without underlying PostgreSQL error
         console.error('Drizzle error without cause:', err);
-        return c.json({
-          error: {
-            message: 'Unable to process request',
-            details: ['An error occurred while processing your request'],
-          },
-        }, 500);
+        return onUnhandledError(err, c);
       }
 
       // Handle all other errors
-      console.error('Unhandled error:', err);
-      return c.json({
-        error: {
-          message: 'Internal server error',
-        },
-      }, 500);
+      return onUnhandledError(err, c);
     });
 
     Deno.serve({
