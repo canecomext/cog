@@ -123,11 +123,18 @@ export interface PaginationOptions {
     const primaryKeyField = model.fields.find((f) => f.primaryKey)?.name ||
       'id';
 
-    // Check if we need additional imports for manyToMany relationships
+    // Check if we need additional imports for relationships
+    const hasRelationships = model.relationships && model.relationships.length > 0;
     const hasManyToMany = model.relationships?.some((rel) => rel.type === 'manyToMany');
-    const drizzleImports = hasManyToMany
-      ? "import { eq, desc, asc, sql, and, inArray } from 'drizzle-orm';"
-      : "import { eq, desc, asc, sql } from 'drizzle-orm';";
+    
+    // We need inArray for batch fetching in findMany when there are relationships
+    let drizzleImports = "import { eq, desc, asc, sql";
+    if (hasManyToMany) {
+      drizzleImports += ", and, inArray";
+    } else if (hasRelationships) {
+      drizzleImports += ", inArray";
+    }
+    drizzleImports += " } from 'drizzle-orm';";
 
     return `${drizzleImports}
 import { HTTPException } from '@hono/hono/http-exception';
@@ -204,11 +211,11 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
       .from(${modelNameLower}Table)
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id));
 
-    // Add relationships if requested
-    ${this.generateRelationshipIncludes(model)}
-
     const result = await query;
     const found = result[0] || null;
+
+    // Add relationships if requested
+    ${this.generateRelationshipIncludes(model)}
 
     // Post-find hook
     let finalResult: ${modelName} | null = found;
@@ -279,6 +286,8 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
 
     // Execute query
     const results = await query;
+
+    ${this.generateRelationshipIncludesForMany(model)}
 
     // Get total count
     const countQueryBase = db
@@ -444,17 +453,211 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       return '// No relationships to include';
     }
 
-    return `
-      if (options?.include) {
-        // Handle relationship includes
-        ${
-      model.relationships.map((rel) => `
-        if (options.include.includes('${rel.name}')) {
-          // Include ${rel.name} relationship
-          // This would require proper join logic based on relationship type
-        }`).join('\n')
+    // Generate the include logic for relationships
+    let code = '\n    // Handle relationship includes\n';
+    code += '    if (options?.include && options.include.length > 0 && found) {\n';
+    
+    for (const rel of model.relationships) {
+      code += `        if (options.include.includes('${rel.name}')) {\n`;
+      
+      if (rel.type === 'manyToOne') {
+        // For manyToOne, fetch the single related entity
+        const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
+        code += `          // Load ${rel.name} (manyToOne)\n`;
+        code += `          if (found.${foreignKey}) {\n`;
+        code += `            const ${rel.name} = await db\n`;
+        code += `              .select()\n`;
+        code += `              .from(${rel.target.toLowerCase()}Table)\n`;
+        code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
+        code += `              .limit(1);\n`;
+        code += `            (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+        code += `          } else {\n`;
+        code += `            (found as any).${rel.name} = null;\n`;
+        code += `          }\n`;
+      } else if (rel.type === 'oneToMany') {
+        // For oneToMany, fetch the array of related entities
+        const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
+        code += `          // Load ${rel.name} (oneToMany)\n`;
+        code += `          const ${rel.name} = await db\n`;
+        code += `            .select()\n`;
+        code += `            .from(${rel.target.toLowerCase()}Table)\n`;
+        code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id));\n`;
+        code += `          (found as any).${rel.name} = ${rel.name};\n`;
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        // For manyToMany, fetch through junction table
+        const junctionTable = rel.through.toLowerCase();
+        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+        code += `          // Load ${rel.name} (manyToMany)\n`;
+        code += `          const ${rel.name}Result = await db\n`;
+        code += `            .select({ ${rel.target.toLowerCase()}: ${rel.target.toLowerCase()}Table })\n`;
+        code += `            .from(${junctionTable}Table)\n`;
+        code += `            .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
+        code += `            .where(eq(${junctionTable}Table.${sourceFK}, id));\n`;
+        code += `          (found as any).${rel.name} = ${rel.name}Result.map(r => r.${rel.target.toLowerCase()});\n`;
+      } else if (rel.type === 'oneToOne') {
+        // For oneToOne, check if foreign key is on this model
+        const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
+        if (hasFK) {
+          // Foreign key is on this model, fetch the related entity
+          const foreignKey = rel.foreignKey!;
+          code += `          // Load ${rel.name} (oneToOne - owned)\n`;
+          code += `          if (found.${foreignKey}) {\n`;
+          code += `            const ${rel.name} = await db\n`;
+          code += `              .select()\n`;
+          code += `              .from(${rel.target.toLowerCase()}Table)\n`;
+          code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
+          code += `              .limit(1);\n`;
+          code += `            (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+          code += `          } else {\n`;
+          code += `            (found as any).${rel.name} = null;\n`;
+          code += `          }\n`;
+        } else {
+          // Foreign key is on the target model, fetch the related entity
+          const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
+          code += `          // Load ${rel.name} (oneToOne - inverse)\n`;
+          code += `          const ${rel.name} = await db\n`;
+          code += `            .select()\n`;
+          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
+          code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id))\n`;
+          code += `            .limit(1);\n`;
+          code += `          (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+        }
+      }
+      
+      code += `        }\n`;
     }
-      }`;
+    
+    code += '    }';
+    
+    return code;
+  }
+
+  /**
+   * Generate relationship includes for findMany
+   */
+  private generateRelationshipIncludesForMany(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '// No relationships to include';
+    }
+
+    // Generate the include logic for relationships in findMany
+    let code = '// Handle relationship includes for multiple results\n';
+    code += '    if (filter?.include && filter.include.length > 0 && results.length > 0) {\n';
+    
+    for (const rel of model.relationships) {
+      code += `      if (filter.include.includes('${rel.name}')) {\n`;
+      
+      if (rel.type === 'manyToOne') {
+        // For manyToOne, batch fetch related entities
+        const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
+        code += `        // Load ${rel.name} (manyToOne) for all results\n`;
+        code += `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+        code += `        if (${rel.name}Ids.length > 0) {\n`;
+        code += `          const ${rel.name}Map = new Map();\n`;
+        code += `          const ${rel.name}Data = await db\n`;
+        code += `            .select()\n`;
+        code += `            .from(${rel.target.toLowerCase()}Table)\n`;
+        code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
+        code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
+        code += `          results.forEach(result => {\n`;
+        code += `            (result as any).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
+        code += `          });\n`;
+        code += `        } else {\n`;
+        code += `          results.forEach(result => {\n`;
+        code += `            (result as any).${rel.name} = null;\n`;
+        code += `          });\n`;
+        code += `        }\n`;
+      } else if (rel.type === 'oneToMany') {
+        // For oneToMany, batch fetch all related entities
+        const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
+        code += `        // Load ${rel.name} (oneToMany) for all results\n`;
+        code += `        const resultIds = results.map(r => r.id);\n`;
+        code += `        const ${rel.name}Data = await db\n`;
+        code += `          .select()\n`;
+        code += `          .from(${rel.target.toLowerCase()}Table)\n`;
+        code += `          .where(inArray(${rel.target.toLowerCase()}Table.${foreignKey}, resultIds));\n`;
+        code += `        const ${rel.name}Map = new Map<string, any[]>();\n`;
+        code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
+        code += `        ${rel.name}Data.forEach(item => {\n`;
+        code += `          const list = ${rel.name}Map.get(item.${foreignKey});\n`;
+        code += `          if (list) list.push(item);\n`;
+        code += `        });\n`;
+        code += `        results.forEach(result => {\n`;
+        code += `          (result as any).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
+        code += `        });\n`;
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        // For manyToMany, batch fetch through junction table
+        const junctionTable = rel.through.toLowerCase();
+        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+        code += `        // Load ${rel.name} (manyToMany) for all results\n`;
+        code += `        const resultIds = results.map(r => r.id);\n`;
+        code += `        const ${rel.name}Data = await db\n`;
+        code += `          .select({ \n`;
+        code += `            ${sourceFK}: ${junctionTable}Table.${sourceFK},\n`;
+        code += `            ${rel.target.toLowerCase()}: ${rel.target.toLowerCase()}Table \n`;
+        code += `          })\n`;
+        code += `          .from(${junctionTable}Table)\n`;
+        code += `          .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
+        code += `          .where(inArray(${junctionTable}Table.${sourceFK}, resultIds));\n`;
+        code += `        const ${rel.name}Map = new Map<string, any[]>();\n`;
+        code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
+        code += `        ${rel.name}Data.forEach(item => {\n`;
+        code += `          const list = ${rel.name}Map.get(item.${sourceFK});\n`;
+        code += `          if (list) list.push(item.${rel.target.toLowerCase()});\n`;
+        code += `        });\n`;
+        code += `        results.forEach(result => {\n`;
+        code += `          (result as any).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
+        code += `        });\n`;
+      } else if (rel.type === 'oneToOne') {
+        // For oneToOne, batch fetch related entities
+        const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
+        if (hasFK) {
+          // Foreign key is on this model
+          const foreignKey = rel.foreignKey!;
+          code += `        // Load ${rel.name} (oneToOne - owned) for all results\n`;
+          code += `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+          code += `        if (${rel.name}Ids.length > 0) {\n`;
+          code += `          const ${rel.name}Map = new Map();\n`;
+          code += `          const ${rel.name}Data = await db\n`;
+          code += `            .select()\n`;
+          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
+          code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
+          code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
+          code += `          results.forEach(result => {\n`;
+          code += `            (result as any).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
+          code += `          });\n`;
+          code += `        } else {\n`;
+          code += `          results.forEach(result => {\n`;
+          code += `            (result as any).${rel.name} = null;\n`;
+          code += `          });\n`;
+          code += `        }\n`;
+        } else {
+          // Foreign key is on the target model
+          const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
+          code += `        // Load ${rel.name} (oneToOne - inverse) for all results\n`;
+          code += `        const resultIds = results.map(r => r.id);\n`;
+          code += `        const ${rel.name}Data = await db\n`;
+          code += `            .select()\n`;
+          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
+          code += `            .where(inArray(${rel.target.toLowerCase()}Table.${foreignKey}, resultIds));\n`;
+          code += `        const ${rel.name}Map = new Map();\n`;
+          code += `        ${rel.name}Data.forEach(item => {\n`;
+          code += `          ${rel.name}Map.set(item.${foreignKey}, item);\n`;
+          code += `        });\n`;
+          code += `        results.forEach(result => {\n`;
+          code += `            (result as any).${rel.name} = ${rel.name}Map.get(result.id) || null;\n`;
+          code += `        });\n`;
+        }
+      }
+      
+      code += `      }\n`;
+    }
+    
+    code += '    }\n';
+    
+    return code;
   }
 
   /**

@@ -53,12 +53,15 @@ export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
  * List all ${modelNamePlural} with pagination
  */
 ${modelNameLower}Routes.get('/', async (c) => {
-  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc' } = c.req.query();
+  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
+  
+  // Parse include parameter
+  const includeArray = include ? include.split(',') : undefined;
   
   // No transaction needed for read operations
   const result = await ${modelNameLower}Domain.findMany(
     undefined, // No transaction
-    undefined, // No filter
+    includeArray ? { include: includeArray } : undefined, // Filter with include
     {
       limit: parseInt(limit),
       offset: parseInt(offset),
