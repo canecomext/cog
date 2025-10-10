@@ -356,6 +356,8 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
     }
 
     code += `
+import { generatedOpenAPISpec } from './openapi.ts';
+import { apiReference } from '@scalar/hono-api-reference';
 
 /**
  * Register all REST routes
@@ -390,6 +392,17 @@ ${
       ]
     });
   });
+
+  // OpenAPI documentation endpoints
+  app.get('/cog/openapi.json', (c) => {
+    return c.json(generatedOpenAPISpec);
+  });
+
+  // Scalar API reference documentation
+  app.get('/cog/reference', apiReference({
+    url: '/cog/openapi.json',
+    theme: 'purple',
+  }) as any);
 }
 
 ${this.generateEndpointListingUtilities()}

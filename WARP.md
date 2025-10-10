@@ -368,7 +368,7 @@ Automatic Zod validation for all CRUD operations (always enabled, cannot be disa
 Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
 
 **OpenAPI Documentation**
-Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints. Includes complete request/response schemas, can be extended with custom endpoints, and supports Scalar API Reference integration.
+Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints with automatically generated documentation endpoints (`/cog/openapi.json` and `/cog/reference`). Includes complete request/response schemas, can be extended with custom endpoints, and features beautiful Scalar API Reference UI.
 
 ## OpenAPI Specification Generation
 
@@ -385,6 +385,44 @@ COG automatically generates a complete OpenAPI 3.1.0 specification for all gener
 **`generated/rest/openapi.json`**
 - Static JSON file with the OpenAPI specification
 - Can be served directly or used with API documentation tools
+
+### Auto-Generated Documentation Endpoints
+
+COG automatically registers two documentation endpoints when you call `initializeGenerated()`:
+
+**`/cog/openapi.json`**
+- Serves the complete OpenAPI 3.1.0 specification in JSON format
+- Accessible immediately after initialization
+- No additional configuration required
+- Use for importing into API clients, generating SDKs, or programmatic access
+
+**`/cog/reference`**
+- Interactive API documentation powered by Scalar
+- Beautiful, modern UI with search and "Try it" functionality
+- Default theme: purple (customizable in `generated/rest/index.ts`)
+- Mobile-responsive with dark mode support
+- Browse endpoints by model/tag
+
+**Example:**
+```typescript
+import { Hono } from '@hono/hono';
+import { initializeGenerated } from './generated/index.ts';
+
+const app = new Hono();
+
+await initializeGenerated({
+  database: {
+    connectionString: 'postgresql://...',
+  },
+  app,
+});
+
+Deno.serve({ port: 3000 }, app.fetch);
+
+// Documentation is now automatically available at:
+// - http://localhost:3000/cog/openapi.json
+// - http://localhost:3000/cog/reference
+```
 
 ### What's Included
 
@@ -411,35 +449,49 @@ COG automatically generates a complete OpenAPI 3.1.0 specification for all gener
 - Descriptions for endpoints and parameters
 - HTTP status codes and response types
 
-### Serving the Specification
+### Customizing Documentation Endpoints
 
-**Basic Usage:**
+The documentation endpoints are automatically generated in `generated/rest/index.ts`. You can customize them if needed:
+
+**Change Scalar Theme:**
+
+Edit `generated/rest/index.ts`:
 ```typescript
-import { Hono } from '@hono/hono';
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
-
-const app = new Hono();
-
-// Serve the OpenAPI spec
-app.get('/openapi.json', (c) => c.json(generatedOpenAPISpec));
+// Find this section in registerRestRoutes()
+app.get('/cog/reference', apiReference({
+  url: '/cog/openapi.json',
+  theme: 'solarized',  // Change theme: 'alternate', 'default', 'moon', 'purple', 'solarized'
+}) as any);
 ```
 
-**With Scalar (Beautiful API Reference):**
+**Add Custom Endpoints to OpenAPI Spec:**
+
+If you need to add custom (non-generated) endpoints to the documentation:
+
 ```typescript
-import { apiReference } from '@scalar/hono-api-reference';
+import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
 
-app.get('/reference', apiReference({
-  url: '/openapi.json',
-  theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
-  pageTitle: 'My API Documentation',
-}));
+const customSpec = {
+  paths: {
+    '/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'User login',
+        // ... your custom endpoint spec
+      }
+    }
+  }
+};
 
-// Visit http://localhost:3000/reference to see your API documentation
+const completeSpec = mergeOpenAPISpec(customSpec);
+
+// Update the endpoint in generated/rest/index.ts or your main app
+app.get('/cog/openapi.json', (c) => c.json(completeSpec));
 ```
 
-### Extending with Custom Endpoints
+### Advanced OpenAPI Customization
 
-The `mergeOpenAPISpec()` function allows you to add your custom endpoints:
+For more complex scenarios, you can completely customize the OpenAPI specification:
 
 ```typescript
 import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
@@ -447,13 +499,28 @@ import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
 const customSpec = {
   info: {
     title: 'My Complete API',
+    version: '2.0.0',
     description: 'Generated CRUD operations plus custom endpoints',
+    contact: {
+      name: 'API Support',
+      email: 'support@example.com'
+    }
   },
+  servers: [
+    {
+      url: 'https://api.example.com',
+      description: 'Production server'
+    },
+    {
+      url: 'https://staging.api.example.com',
+      description: 'Staging server'
+    }
+  ],
   paths: {
     '/auth/login': {
       post: {
         tags: ['Authentication'],
-        summary: 'Login user',
+        summary: 'User login',
         operationId: 'loginUser',
         requestBody: {
           required: true,
@@ -490,25 +557,9 @@ const customSpec = {
           }
         }
       }
-    },
-    '/auth/refresh': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'Refresh access token',
-        // ... your endpoint spec
-      }
     }
   },
   components: {
-    schemas: {
-      LoginRequest: {
-        type: 'object',
-        properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string' }
-        }
-      }
-    },
     securitySchemes: {
       bearerAuth: {
         type: 'http',
@@ -522,8 +573,8 @@ const customSpec = {
 
 const completeSpec = mergeOpenAPISpec(customSpec);
 
-// Serve the combined specification
-app.get('/openapi.json', (c) => c.json(completeSpec));
+// Serve the customized specification
+app.get('/cog/openapi.json', (c) => c.json(completeSpec));
 ```
 
 ### Schema Type Mapping
