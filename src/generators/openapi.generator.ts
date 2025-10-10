@@ -331,9 +331,8 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     // Add soft delete field if enabled (not in input schemas)
     if (!isInput && model.softDelete) {
       schema.properties.deletedAt = {
-        type: 'string',
+        type: ['string', 'null'],
         format: 'date-time',
-        nullable: true,
         description: 'Deletion timestamp (null if not deleted)',
       };
     }
@@ -388,9 +387,11 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       };
     }
 
-    // Add nullable if not required
+    // Add nullable if not required (OpenAPI 3.1.0 uses type arrays for nullable)
     if (!field.required && !field.primaryKey) {
-      schema.nullable = true;
+      // Convert type to array format: ["string", "null"]
+      const currentType = schema.type;
+      schema.type = [currentType, 'null'];
     }
 
     // Add default value if specified

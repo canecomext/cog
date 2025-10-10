@@ -13,7 +13,7 @@ import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import type { Env } from './example-context.ts';
 import { printRegisteredEndpoints } from './generated/rest/index.ts';
-import { apiReference } from '@scalar/hono-api-reference';
+import { Scalar } from '@scalar/hono-api-reference';
 import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
 
 const app = new Hono<Env>();
@@ -88,11 +88,10 @@ async function startServer() {
 
     app.get(
       '/reference',
-      apiReference({
+      Scalar({
         url: '/openapi.json',
         theme: 'purple', // Try: 'alternate', 'default', 'moon', 'purple', 'solarized'
-        pageTitle: 'Generated CRUD API - Reference',
-      }),
+      }) as any,
     );
 
     app.get('/openapi.json', (c) => {
@@ -229,6 +228,83 @@ async function startServer() {
             message: err.message,
           },
         }, err.status);
+      }
+
+      // Handle Drizzle database errors
+      if (err.constructor.name === 'DrizzleQueryError' || err.name === 'DrizzleError') {
+        // Extract the underlying PostgreSQL error
+        const pgError = (err as any).cause;
+
+        if (pgError && pgError.code) {
+          // Map PostgreSQL error codes to user-friendly messages
+          switch (pgError.code) {
+            case '23505': {
+              // unique_violation
+              // Extract field name from constraint
+              const constraintMatch = pgError.constraint_name?.match(/_([^_]+)_unique$/);
+              const field = constraintMatch ? constraintMatch[1].replace(/_/g, ' ') : 'value';
+              return c.json({
+                error: {
+                  message: `This ${field} is already in use`,
+                },
+              }, 409);
+            }
+
+            case '23503': // foreign_key_violation
+              return c.json({
+                error: {
+                  message: 'The referenced resource does not exist',
+                },
+              }, 400);
+
+            case '23502': {
+              // not_null_violation
+              const columnMatch = pgError.message?.match(/column "([^"]+)"/);
+              const column = columnMatch ? columnMatch[1].replace(/_/g, ' ') : 'field';
+              return c.json({
+                error: {
+                  message: `The required field ${column} is missing`,
+                },
+              }, 400);
+            }
+
+            case '23514': // check_violation
+              return c.json({
+                error: {
+                  message: 'Invalid data provided',
+                },
+              }, 400);
+
+            case '22P02': // invalid_text_representation
+              return c.json({
+                error: {
+                  message: 'Invalid data format',
+                },
+              }, 400);
+
+            default:
+              console.error('Database error:', {
+                code: pgError.code,
+                message: pgError.message,
+                detail: pgError.detail,
+                constraint: pgError.constraint_name,
+              });
+              return c.json({
+                error: {
+                  message: 'Unable to process request',
+                },
+              }, 500);
+          }
+        }
+
+        // DrizzleQueryError without underlying PostgreSQL error
+        console.error('Drizzle error without cause:', err);
+        return c.json({
+          error: {
+            message: 'Unable to process request',
+            details: ['An error occurred while processing your request'],
+          },
+        }, 500);
       }
 
       // Handle all other errors
