@@ -35,9 +35,7 @@ export async function generateFromModels(
     features: {
       softDeletes: options.features?.softDeletes !== false,
       timestamps: options.features?.timestamps !== false,
-      uuid: options.features?.uuid !== false,
-      hooks: true,
-      validation: options.features?.validation !== false,
+      hooks: true
     },
     naming: {
       tableNaming: 'snake_case',
@@ -59,12 +57,29 @@ export async function generateFromModels(
     }
   }
 
+  // Apply global feature flag overrides to all models
+  for (const model of models) {
+    // Override softDeletes if explicitly disabled
+    if (config.features.softDeletes === false) {
+      model.softDelete = false;
+    }
+    // Override timestamps if explicitly disabled
+    if (config.features.timestamps === false) {
+      model.timestamps = false;
+    }
+    // Apply global schema if specified
+    if (config.database.schema) {
+      model.schema = config.database.schema;
+    }
+  }
+
   // Step 2: Generate code
   const files = new Map<string, string>();
 
   // Generate Drizzle schemas
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
     isCockroachDB: config.database.type === 'cockroachdb',
+    postgis: config.database.postgis,
   });
   const schemas = schemaGenerator.generateSchemas();
   schemas.forEach((content, path) => files.set(path, content));

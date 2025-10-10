@@ -1,22 +1,20 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@hono/hono@^4.6.0": "4.9.8",
+    "jsr:@hono/hono@^4.6.0": "4.9.10",
     "jsr:@std/crypto@^1.0.5": "1.0.5",
-    "jsr:@std/dotenv@*": "0.225.5",
     "jsr:@std/dotenv@~0.225.5": "0.225.5",
     "jsr:@std/internal@^1.0.10": "1.0.10",
-    "jsr:@std/path@*": "1.1.0",
     "jsr:@std/path@^1.1.2": "1.1.2",
     "npm:@scalar/hono-api-reference@~0.9.20": "0.9.20_hono@4.9.10",
-    "npm:drizzle-orm@~0.44.5": "0.44.5_postgres@3.4.7",
-    "npm:drizzle-zod@~0.8.3": "0.8.3_drizzle-orm@0.44.5__postgres@3.4.7_zod@4.1.11_postgres@3.4.7",
+    "npm:drizzle-orm@~0.44.5": "0.44.6_postgres@3.4.7",
+    "npm:drizzle-zod@~0.8.3": "0.8.3_drizzle-orm@0.44.6__postgres@3.4.7_zod@4.1.12_postgres@3.4.7",
     "npm:openapi-types@^12.1.3": "12.1.3",
     "npm:postgres@^3.4.7": "3.4.7"
   },
   "jsr": {
-    "@hono/hono@4.9.8": {
-      "integrity": "908150f13e90181a051a3af3bf15203aff00190682afedfd38824d0cb9299a95"
+    "@hono/hono@4.9.10": {
+      "integrity": "b416cf3bf42e33353e37ea13df409b08bd9a67fabc5fca630f76924fbadb01e5"
     },
     "@std/crypto@1.0.5": {
       "integrity": "0dcfbb319fe0bba1bd3af904ceb4f948cde1b92979ec1614528380ed308a3b40"
@@ -26,9 +24,6 @@
     },
     "@std/internal@1.0.10": {
       "integrity": "e3be62ce42cab0e177c27698e5d9800122f67b766a0bea6ca4867886cbde8cf7"
-    },
-    "@std/path@1.1.0": {
-      "integrity": "ddc94f8e3c275627281cbc23341df6b8bcc874d70374f75fec2533521e3d6886"
     },
     "@std/path@1.1.2": {
       "integrity": "c0b13b97dfe06546d5e16bf3966b1cadf92e1cc83e56ba5476ad8b498d9e3038",
@@ -54,7 +49,7 @@
     "@scalar/openapi-types@0.4.0": {
       "integrity": "sha512-vdFLzz7vETw6kS3bxWUHCBeFtJOnr1bk/+FXKyxKkd6TbcyT6USXkoelI704IaBdoXyOgGX10FD1IVrs4FwUow==",
       "dependencies": [
-        "zod"
+        "zod@4.1.11"
       ]
     },
     "@scalar/types@0.3.0": {
@@ -63,14 +58,11 @@
         "@scalar/openapi-types",
         "nanoid",
         "type-fest",
-        "zod"
+        "zod@4.1.11"
       ]
     },
-    "drizzle-orm@0.44.5": {
-      "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ=="
-    },
-    "drizzle-orm@0.44.5_postgres@3.4.7": {
-      "integrity": "sha512-jBe37K7d8ZSKptdKfakQFdeljtu3P2Cbo7tJoJSVZADzIKOBo9IAJPOmMsH2bZl90bZgh8FQlD8BjxXA/zuBkQ==",
+    "drizzle-orm@0.44.6_postgres@3.4.7": {
+      "integrity": "sha512-uy6uarrrEOc9K1u5/uhBFJbdF5VJ5xQ/Yzbecw3eAYOunv5FDeYkR2m8iitocdHBOHbvorviKOW5GVw0U1j4LQ==",
       "dependencies": [
         "postgres"
       ],
@@ -78,11 +70,11 @@
         "postgres"
       ]
     },
-    "drizzle-zod@0.8.3_drizzle-orm@0.44.5__postgres@3.4.7_zod@4.1.11_postgres@3.4.7": {
+    "drizzle-zod@0.8.3_drizzle-orm@0.44.6__postgres@3.4.7_zod@4.1.12_postgres@3.4.7": {
       "integrity": "sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==",
       "dependencies": [
-        "drizzle-orm@0.44.5_postgres@3.4.7",
-        "zod"
+        "drizzle-orm",
+        "zod@4.1.12"
       ]
     },
     "hono@4.9.10": {
@@ -103,23 +95,10 @@
     },
     "zod@4.1.11": {
       "integrity": "sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg=="
+    },
+    "zod@4.1.12": {
+      "integrity": "sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ=="
     }
-  },
-  "redirects": {
-    "https://deno.land/std/crypto/mod.ts": "https://deno.land/std@0.224.0/crypto/mod.ts"
-  },
-  "remote": {
-    "https://deno.land/std@0.224.0/assert/assert.ts": "09d30564c09de846855b7b071e62b5974b001bb72a4b797958fe0660e7849834",
-    "https://deno.land/std@0.224.0/assert/assertion_error.ts": "ba8752bd27ebc51f723702fac2f54d3e94447598f54264a6653d6413738a8917",
-    "https://deno.land/std@0.224.0/crypto/_wasm/lib/deno_std_wasm_crypto.generated.mjs": "7cd490ae1553c97459bd02de4c3f0a552768a85621949b2366003f3cf84b99d7",
-    "https://deno.land/std@0.224.0/crypto/_wasm/mod.ts": "e89fbbc3c4722602ff975dd85f18273c7741ec766a9b68f6de4fd1d9876409f8",
-    "https://deno.land/std@0.224.0/crypto/crypto.ts": "e58d78f3db111a499261dbab037ec78cc89da0516a50e1f0205665980a3417e3",
-    "https://deno.land/std@0.224.0/crypto/mod.ts": "9148fb70ca3d64977e9487b2002d3b1026e8ad8a2078774b807586ba3c77e3bb",
-    "https://deno.land/std@0.224.0/crypto/timing_safe_equal.ts": "bc3622b5aec05e2d8b735bf60633425c34333c06cfb6c4a9f102e4a0f3931ced",
-    "https://deno.land/std@0.224.0/crypto/unstable_keystack.ts": "c2a6f6ed67a4e78745e3c9b490ebb7c12f6066f5c2fe0c69d353961909dc82dd",
-    "https://deno.land/std@0.224.0/encoding/_util.ts": "beacef316c1255da9bc8e95afb1fa56ed69baef919c88dc06ae6cb7a6103d376",
-    "https://deno.land/std@0.224.0/encoding/base64.ts": "dd59695391584c8ffc5a296ba82bcdba6dd8a84d41a6a539fbee8e5075286eaf",
-    "https://deno.land/std@0.224.0/encoding/base64url.ts": "ef40e0f18315ab539f17cebcc32839779e018d86dea9df39d94d302f342a1713"
   },
   "workspace": {
     "dependencies": [

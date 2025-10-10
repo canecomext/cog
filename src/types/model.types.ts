@@ -119,9 +119,7 @@ export interface GeneratorConfig {
   features?: {
     softDeletes?: boolean;
     timestamps?: boolean;
-    uuid?: boolean;
     hooks?: boolean;
-    validation?: boolean;
   };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';
