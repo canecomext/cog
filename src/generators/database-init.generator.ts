@@ -483,7 +483,15 @@ export async function healthCheck(): Promise<boolean> {
       for (const idx of model.indexes) {
         const columns = idx.fields.map((f) => `"${this.toSnakeCase(f)}"`).join(', ');
         const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => this.toSnakeCase(f)).join('_')}`;
-        const method = idx.type || this.getDefaultIndexMethod();
+        
+        // Determine index method, respecting postgis setting
+        let method = idx.type || this.getDefaultIndexMethod();
+        
+        // If PostGIS is disabled and index type is GIST, fall back to GIN for JSONB
+        if (!this.postgis && method.toUpperCase() === 'GIST') {
+          method = 'GIN';
+        }
+        
         const methodClause = method ? `USING ${method}` : '';
 
         indexes.push({

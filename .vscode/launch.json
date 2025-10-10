@@ -9,7 +9,7 @@
       "name": "Launch generator",
       "type": "node",
       "program": "${workspaceFolder}/src/cli.ts",
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/example",
       "env": {},
       "runtimeExecutable": "/Users/zgobolos/.deno/bin/deno",
       "runtimeArgs": [
@@ -17,7 +17,14 @@
         "--inspect-wait",
         "--allow-all"
       ],
-      "attachSimplePort": 9228
+      "args": [
+        "--modelsPath",
+        "./models",
+        "--outputPath",
+        "./generated",
+        "--no-softDeletes"
+      ],
+      "attachSimplePort": 9229
     },
     {
       "request": "launch",

@@ -24,9 +24,7 @@ async function main() {
     },
     features: {
       softDeletes: args.softDeletes !== false,
-      timestamps: args.timestamps !== false,
-      uuid: args.uuid !== false,
-      validation: args.validation !== false
+      timestamps: args.timestamps !== false
     },
     verbose
   });
@@ -40,13 +38,20 @@ function parseArguments(): Record<string, any> {
   for (let i = 0; i < Deno.args.length; i++) {
     const arg = Deno.args[i];
     if (arg.startsWith('--')) {
-      const key = arg.slice(2);
-      const value = Deno.args[i + 1];
-      if (value && !value.startsWith('--')) {
-        args[key] = value;
-        i++;
+      let key = arg.slice(2);
+      
+      // Handle --no- prefixed flags
+      if (key.startsWith('no-')) {
+        const actualKey = key.slice(3); // Remove 'no-' prefix
+        args[actualKey] = false;
       } else {
-        args[key] = true;
+        const value = Deno.args[i + 1];
+        if (value && !value.startsWith('--')) {
+          args[key] = value;
+          i++;
+        } else {
+          args[key] = true;
+        }
       }
     }
   }
@@ -75,8 +80,6 @@ Options:
   --no-postgis           Disable PostGIS support
   --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
-  --no-uuid              Disable UUID support
-  --no-validation        Disable validation
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 

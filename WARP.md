@@ -362,7 +362,7 @@ Records are marked as deleted rather than removed, with automatic filtering.
 Composite indexes, unique indexes, partial indexes, and spatial indexes (GIST, GIN).
 
 **Input Validation**
-Automatic Zod validation for all CRUD operations. Schemas are generated from Drizzle table definitions and validate both initial input and pre-hook output. Includes field-level constraints: required, unique, length, precision, scale, and type checking.
+Automatic Zod validation for all CRUD operations (always enabled, cannot be disabled). Schemas are generated from Drizzle table definitions and validate both initial input and pre-hook output. Includes field-level constraints: required, unique, length, precision, scale, and type checking.
 
 **Custom Pluralization**
 Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
@@ -613,16 +613,111 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 ```
 
 ### Configuration Options
-- `--modelsPath <path>` - Location of JSON model files
-- `--outputPath <path>` - Where to generate code
-- `--dbType <type>` - Database type (postgresql/cockroachdb)
-- `--schema <name>` - Database schema name
-- `--no-postgis` - Disable PostGIS support
-- `--no-softDeletes` - Disable soft delete feature
-- `--no-timestamps` - Disable automatic timestamps
-- `--no-uuid` - Disable UUID support
-- `--no-validation` - Skip validation
-- `--verbose` - Show generated file paths
+
+#### Required Options
+- `--modelsPath <path>` - Location of JSON model files (default: `./models`)
+- `--outputPath <path>` - Where to generate code (default: `./generated`)
+
+#### Database Options
+- `--dbType <type>` - Database type: `postgresql` or `cockroachdb` (default: `postgresql`)
+- `--schema <name>` - Database schema name (optional, uses default schema if not specified)
+- `--no-postgis` - Disable PostGIS spatial extension support (default: enabled)
+
+#### Feature Options
+- `--no-softDeletes` - Disable soft delete feature globally for all models (default: enabled)
+- `--no-timestamps` - Disable automatic timestamps globally for all models (default: enabled)
+
+#### Output Options
+- `--verbose` - Show generated file paths during generation (default: false)
+- `--help` - Display help message with all available options
+
+### Global Feature Override Flags
+
+The `--no-*` flags provide **global overrides** that apply to all models, superseding individual model-level settings:
+
+#### `--no-softDeletes`
+
+When specified, this flag disables soft delete functionality across **all models**, regardless of their individual `"softDelete"` configuration in model JSON files:
+
+**Effect:**
+- Removes `deletedAt: timestamp('deleted_at')` field from all generated table schemas
+- Delete operations become permanent (hard deletes)
+- No automatic filtering of soft-deleted records in queries
+
+**Example:**
+```bash
+# All models will be generated without soft delete support
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softDeletes
+```
+
+**Use Case:** When you don't need soft delete functionality or prefer to implement custom deletion logic.
+
+#### `--no-timestamps`
+
+When specified, this flag disables automatic timestamp management across **all models**, regardless of their individual `"timestamps"` configuration:
+
+**Effect:**
+- Removes `createdAt: timestamp('created_at')` field from all tables
+- Removes `updatedAt: timestamp('updated_at')` field from all tables
+- No automatic timestamp updates on create or update operations
+
+**Example:**
+```bash
+# All models will be generated without automatic timestamps
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-timestamps
+```
+
+**Use Case:** When you want to manage timestamps manually or don't need audit trails.
+
+#### `--no-postgis`
+
+Disables PostGIS extension support:
+- Spatial field types (point, linestring, polygon, etc.) fall back to JSONB storage
+- GIST indexes are automatically converted to GIN indexes for JSONB compatibility
+- Useful when deploying to databases without PostGIS extension
+
+**Effect:**
+- All spatial types (`point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography`) are generated as `jsonb()` fields instead of PostGIS custom types
+- Spatial data must be stored as GeoJSON format in JSONB columns
+- GIST indexes on spatial fields are converted to GIN indexes (JSONB-compatible)
+- Database initialization does not attempt to enable PostGIS extension
+
+**Example:**
+```bash
+# Generate without PostGIS - spatial types become JSONB
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postgis
+```
+
+**Use Case:** When your database doesn't have the PostGIS extension installed or you don't need spatial query capabilities.
+
+#### Priority Rules
+
+**Important:** CLI flags have **higher priority** than model-level settings:
+
+```json
+// user.json - Model definition
+{
+  "name": "User",
+  "timestamps": true,     // ← Model says: enable timestamps
+  "softDelete": true      // ← Model says: enable soft delete
+}
+```
+
+```bash
+# CLI override - disables both features for ALL models
+deno run -A src/cli.ts --modelsPath ./models --no-timestamps --no-softDeletes
+```
+
+**Result:** The generated User model will have neither timestamps nor soft delete fields, regardless of the JSON configuration.
+
+### Important Note on Validation
+
+**Zod validation is always enabled and cannot be disabled.** COG automatically generates Zod schemas from Drizzle table definitions and applies validation at two critical points:
+
+1. **Initial Input Validation** - Before pre-hooks execute
+2. **Pre-hook Output Validation** - Before database operations
+
+This dual-validation approach ensures data integrity and prevents hooks from emitting malformed data. All CRUD operations (create, update) automatically validate input against the generated Zod schemas, providing runtime type safety that matches your TypeScript types.
 
 ## Integration Example
 

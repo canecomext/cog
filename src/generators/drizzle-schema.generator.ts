@@ -6,13 +6,15 @@ import { FieldDefinition, ModelDefinition, RelationshipDefinition } from '../typ
 export class DrizzleSchemaGenerator {
   private models: ModelDefinition[];
   private isCockroachDB: boolean;
+  private postgis: boolean;
 
   constructor(
     models: ModelDefinition[],
-    options: { isCockroachDB?: boolean } = {},
+    options: { isCockroachDB?: boolean; postgis?: boolean } = {},
   ) {
     this.models = models;
     this.isCockroachDB = options.isCockroachDB || false;
+    this.postgis = options.postgis !== false;
   }
 
   /**
@@ -91,7 +93,7 @@ export class DrizzleSchemaGenerator {
     }
 
     // Check if we need customType for PostGIS
-    if (this.hasPostGISFields(model)) {
+    if (this.postgis && this.hasPostGISFields(model)) {
       drizzleImports.add('customType');
     }
 
@@ -306,7 +308,12 @@ export class DrizzleSchemaGenerator {
       case 'multipolygon':
       case 'geometry':
       case 'geography':
-        definition += this.generatePostGISField(field);
+        if (this.postgis) {
+          definition += this.generatePostGISField(field);
+        } else {
+          // Fall back to JSONB when PostGIS is disabled
+          definition += `jsonb('${this.toSnakeCase(field.name)}')`;
+        }
         break;
       default:
         definition += `text('${this.toSnakeCase(field.name)}')`;
