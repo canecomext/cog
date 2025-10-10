@@ -196,6 +196,50 @@ async function startServer() {
 
     printRegisteredEndpoints(app);
 
+    app.onError((err, c) => {
+      // Handle Zod validation errors
+      if (err.name === 'ZodError') {
+        try {
+          const zodErrors = JSON.parse(err.message);
+          const formattedErrors = zodErrors.reduce((acc: string[], curr: any) => {
+            return [...acc, ...curr.path.map((p: string | number) => `${p}: ${curr.message}`)];
+          }, []);
+
+          return c.json({
+            error: {
+              message: 'Validation failed',
+              details: formattedErrors,
+            },
+          }, 400);
+        } catch {
+          // If JSON parse fails, return raw message
+          return c.json({
+            error: {
+              message: 'Validation failed',
+              details: [err.message],
+            },
+          }, 400);
+        }
+      }
+
+      // Handle HTTPException
+      if (err instanceof HTTPException) {
+        return c.json({
+          error: {
+            message: err.message,
+          },
+        }, err.status);
+      }
+
+      // Handle all other errors
+      console.error('Unhandled error:', err);
+      return c.json({
+        error: {
+          message: 'Internal server error',
+        },
+      }, 500);
+    });
+
     Deno.serve({
       port: 3000,
       onListen(addr) {

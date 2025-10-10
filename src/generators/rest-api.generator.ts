@@ -40,6 +40,7 @@ export class RestAPIGenerator {
     const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     return `import { Hono } from '@hono/hono';
+import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import type { DefaultEnv } from './types.ts';
@@ -94,10 +95,10 @@ ${modelNameLower}Routes.get('/:id', async (c) => {
   );
 
   if (!result) {
-    return c.json({ error: '${modelName} not found' }, 404);
+    throw new HTTPException(404, { message: '${modelName} not found' });
   }
 
-  return c.json(result);
+  return c.json({ data: result });
 });
 
 /**
@@ -115,7 +116,7 @@ ${modelNameLower}Routes.post('/', async (c) => {
     );
   });
 
-  return c.json(result, 201);
+  return c.json({ data: result }, 201);
 });
 
 /**
@@ -126,23 +127,16 @@ ${modelNameLower}Routes.put('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
 
-  try {
-    const result = await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.update(
-        id,
-        body,
-        tx,
-        c.var // Pass all context variables to hooks
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.update(
+      id,
+      body,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json(result);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 /**
@@ -153,23 +147,16 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
 
-  try {
-    const result = await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.update(
-        id,
-        body,
-        tx,
-        c.var // Pass all context variables to hooks
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.update(
+      id,
+      body,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json(result);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 /**
@@ -179,22 +166,15 @@ ${modelNameLower}Routes.patch('/:id', async (c) => {
 ${modelNameLower}Routes.delete('/:id', async (c) => {
   const id = c.req.param('id');
 
-  try {
-    await withTransaction(async (tx) => {
-      return await ${modelNameLower}Domain.delete(
-        id,
-        tx,
-        c.var // Pass all context variables to hooks
-      );
-    });
+  const result = await withTransaction(async (tx) => {
+    return await ${modelNameLower}Domain.delete(
+      id,
+      tx,
+      c.var // Pass all context variables to hooks
+    );
+  });
 
-    return c.json({ message: '${modelName} deleted successfully' });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return c.json({ error: '${modelName} not found' }, 404);
-    }
-    throw error;
-  }
+  return c.json({ data: result });
 });
 
 ${this.generateRelationshipEndpoints(model)}
@@ -257,7 +237,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   
   const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
   
-  return c.json(result);
+  return c.json({ data: result });
 });`);
       } else if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
@@ -277,7 +257,7 @@ ${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
   
   const result = await ${modelNameLower}Domain.get${RelName}(id);
   
-  return c.json(result);
+  return c.json({ data: result });
 });
 
 /**
@@ -293,7 +273,7 @@ ${modelNameLower}Routes.post('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} added successfully' }, 201);
+  return c.json({ data: { message: '${RelName} added successfully' } }, 201);
 });
 
 /**
@@ -309,7 +289,7 @@ ${modelNameLower}Routes.put('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} updated successfully' });
+  return c.json({ data: { message: '${RelName} updated successfully' } });
 });
 
 /**
@@ -324,7 +304,7 @@ ${modelNameLower}Routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
     await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
   });
   
-  return c.json({ message: '${SingularRel} added successfully' }, 201);
+  return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
 });
 
 /**
@@ -339,7 +319,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}/:${singularRel}Id', async (c) =>
     await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
   });
   
-  return c.json({ message: '${SingularRel} removed successfully' });
+  return c.json({ data: { message: '${SingularRel} removed successfully' } });
 });
 
 /**
@@ -355,7 +335,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
     await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
   });
   
-  return c.json({ message: '${RelName} removed successfully' });
+  return c.json({ data: { message: '${RelName} removed successfully' } });
 });`);
       }
     }

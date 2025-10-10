@@ -130,6 +130,7 @@ export interface PaginationOptions {
       : "import { eq, desc, asc, sql } from 'drizzle-orm';";
 
     return `${drizzleImports}
+import { HTTPException } from '@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
@@ -339,7 +340,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
       .returning();
 
     if (!updated) {
-      throw new Error(\`${modelName} with id \${id} not found\`);
+      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
     }
 
     // Post-update hook
@@ -375,7 +376,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     ${model.softDelete ? this.generateSoftDelete(model, 'tx') : this.generateHardDelete(model, 'tx')}
 
     if (!deleted) {
-      throw new Error(\`${modelName} with id \${id} not found\`);
+      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
     }
 
     // Post-delete hook
