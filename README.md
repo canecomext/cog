@@ -783,7 +783,7 @@ Edit `generated/rest/index.ts` to change the documentation theme:
 // Find the /cog/reference endpoint in registerRestRoutes()
 app.get(
   '/cog/reference',
-  apiReference({
+  Scalar({
     url: '/cog/openapi.json',
     theme: 'solarized', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
   }) as any,

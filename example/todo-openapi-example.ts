@@ -227,26 +227,26 @@ app.post('/auth/refresh', async (c) => {
 
 // Scalar API Reference - Beautiful API documentation
 // Install: npm install @scalar/hono-api-reference
-import { apiReference } from '@scalar/hono-api-reference';
+import { Scalar } from '@scalar/hono-api-reference';
 
 // Serve Scalar API Reference
 app.get(
   '/reference',
-  apiReference({
+  Scalar({
     url: '/openapi.json',
     theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
     pageTitle: 'Generated CRUD API Documentation',
-  })
+  }),
 );
 
 // Or with complete spec (generated + custom)
 app.get(
   '/api-docs/reference',
-  apiReference({
+  Scalar({
     url: '/api-docs/openapi.json',
     theme: 'purple',
     pageTitle: 'My Complete API Documentation',
-  })
+  }),
 );
 
 console.log('OpenAPI example endpoints:');

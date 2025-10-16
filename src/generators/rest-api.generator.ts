@@ -10,7 +10,7 @@ export class RestAPIGenerator {
 
   constructor(
     models: ModelDefinition[],
-    options: { docsEnabled?: boolean; docsPath?: string } = {}
+    options: { docsEnabled?: boolean; docsPath?: string } = {},
   ) {
     this.models = models;
     this.docsEnabled = options.docsEnabled !== false;
@@ -368,7 +368,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
     if (this.docsEnabled) {
       code += `
 import { generatedOpenAPISpec } from './openapi.ts';
-import { apiReference } from '@scalar/hono-api-reference';`;
+import { Scalar } from '@scalar/hono-api-reference';`;
     }
 
     code += `
@@ -403,11 +403,15 @@ ${
         return `        '${plural}'`;
       }).join(',\n')
     }
-      ]${this.docsEnabled ? `,
+      ]${
+      this.docsEnabled
+        ? `,
       documentation: {
         openapi: '${this.docsPath}/openapi.json',
         reference: '${this.docsPath}/reference'
-      }` : ''}
+      }`
+        : ''
+    }
     });
   });
 `;
@@ -420,13 +424,13 @@ ${
   });
 
   // Scalar API reference documentation
-  app.get('${this.docsPath}/reference', apiReference({
+  app.get('${this.docsPath}/reference', Scalar({
     url: '${this.docsPath}/openapi.json',
     theme: 'purple',
   }) as any);
 `;
     }
-    
+
     code += `}
 
 ${this.generateEndpointListingUtilities()}
