@@ -30,6 +30,10 @@ async function main() {
       enabled: args.documentation !== false,
       path: args.docsPath || '/cog',
     },
+    documentation: {
+      enabled: args.documentation !== false,
+      path: args.docsPath || '/cog',
+    },
     verbose,
   });
 }

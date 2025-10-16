@@ -261,63 +261,6 @@ input data at two points:
 This ensures data integrity and prevents malformed data from reaching your database. The validation schemas are
 automatically generated from your Drizzle table definitions using [drizzle-zod](https://orm.drizzle.team/docs/zod).
 
-### Global Feature Flags
-
-The `--no-*` flags provide global control over features across all models:
-
-#### `--no-softDeletes`
-
-Disables soft delete functionality for **all models**, regardless of model-level `"softDelete"` settings:
-
-- Removes `deletedAt` timestamp field from all tables
-- Disables soft delete filtering in queries
-- Delete operations become hard deletes
-
-```bash
-# Generate without soft deletes
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softDeletes
-```
-
-#### `--no-timestamps`
-
-Disables automatic timestamp fields for **all models**, regardless of model-level `"timestamps"` settings:
-
-- Removes `createdAt` and `updatedAt` fields from all tables
-- No automatic timestamp management on create/update operations
-
-```bash
-# Generate without timestamps
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-timestamps
-```
-
-#### `--no-postgis`
-
-Disables PostGIS spatial data type support:
-
-- Spatial field types (point, polygon, etc.) fall back to JSONB
-- GIST indexes are converted to GIN indexes for JSONB compatibility
-- Spatial data stored as GeoJSON in JSONB columns
-- Database initialization skips PostGIS extension setup
-
-```bash
-# Generate without PostGIS
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postgis
-```
-
-**Note:** CLI flags **override** model-level settings. If you use `--no-timestamps`, all models will be generated
-without timestamps even if `"timestamps": true` is set in individual model JSON files.
-
-### Validation is Always Enabled
-
-**Important:** Zod validation is mandatory and cannot be disabled in COG. All CRUD operations automatically validate
-input data at two points:
-
-1. **Initial validation** before pre-hooks execute
-2. **Pre-hook output validation** before database operations
-
-This ensures data integrity and prevents malformed data from reaching your database. The validation schemas are
-automatically generated from your Drizzle table definitions using [drizzle-zod](https://orm.drizzle.team/docs/zod).
-
 ## Model Definition Format
 
 Models are defined in JSON with this structure:
@@ -842,7 +785,7 @@ Edit `generated/rest/index.ts` to change the documentation theme:
 // Find the /cog/reference endpoint in registerRestRoutes()
 app.get(
   '/cog/reference',
-  apiReference({
+  Scalar({
     url: '/cog/openapi.json',
     theme: 'solarized', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
   }) as any,

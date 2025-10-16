@@ -684,7 +684,7 @@ Edit `generated/rest/index.ts`:
 // Find this section in registerRestRoutes()
 app.get(
   '/cog/reference',
-  apiReference({
+  Scalar({
     url: '/cog/openapi.json',
     theme: 'solarized', // Change theme: 'alternate', 'default', 'moon', 'purple', 'solarized'
   }) as any,

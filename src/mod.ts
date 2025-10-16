@@ -95,6 +95,22 @@ export async function generateFromModels(
     }
   }
 
+  // Apply global feature flag overrides to all models
+  for (const model of models) {
+    // Override softDeletes if explicitly disabled
+    if (config.features.softDeletes === false) {
+      model.softDelete = false;
+    }
+    // Override timestamps if explicitly disabled
+    if (config.features.timestamps === false) {
+      model.timestamps = false;
+    }
+    // Apply global schema if specified
+    if (config.database.schema) {
+      model.schema = config.database.schema;
+    }
+  }
+
   // Step 2: Generate code
   const files = new Map<string, string>();
 

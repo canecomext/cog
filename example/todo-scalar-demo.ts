@@ -1,15 +1,15 @@
 /**
  * Scalar API Reference Demo
- * 
+ *
  * This example demonstrates how to serve beautiful API documentation
  * using Scalar with the generated OpenAPI specification.
- * 
+ *
  * Run: deno run -A scalar-demo.ts
  * Then visit: http://localhost:3000/reference
  */
 
 import { Hono } from '@hono/hono';
-import { apiReference } from '@scalar/hono-api-reference';
+import { Scalar } from '@scalar/hono-api-reference';
 import { generatedOpenAPISpec, mergeOpenAPISpec } from './generated/rest/openapi.ts';
 
 const app = new Hono();
@@ -17,11 +17,14 @@ const app = new Hono();
 // =============================================================================
 // Example 1: Serve documentation for generated CRUD endpoints only
 // =============================================================================
-app.get('/reference', apiReference({
-  url: '/openapi.json',
-  theme: 'purple', // Try: 'alternate', 'default', 'moon', 'purple', 'solarized'
-  pageTitle: 'Generated CRUD API - Reference',
-}));
+app.get(
+  '/reference',
+  Scalar({
+    url: '/openapi.json',
+    theme: 'purple', // Try: 'alternate', 'default', 'moon', 'purple', 'solarized'
+    pageTitle: 'Generated CRUD API - Reference',
+  }),
+);
 
 app.get('/openapi.json', (c) => {
   return c.json(generatedOpenAPISpec);
@@ -243,11 +246,14 @@ const customEndpointsSpec = {
 const completeSpec = mergeOpenAPISpec(customEndpointsSpec);
 
 // Serve complete documentation
-app.get('/docs/reference', apiReference({
-  url: '/docs/openapi.json',
-  theme: 'purple',
-  pageTitle: 'Complete API Documentation',
-}));
+app.get(
+  '/docs/reference',
+  Scalar({
+    url: '/docs/openapi.json',
+    theme: 'purple',
+    pageTitle: 'Complete API Documentation',
+  }),
+);
 
 app.get('/docs/openapi.json', (c) => {
   return c.json(completeSpec);
@@ -258,8 +264,8 @@ app.get('/docs/openapi.json', (c) => {
 // =============================================================================
 app.get('/reference/custom', (c) => {
   const theme = c.req.query('theme') || 'purple';
-  
-  return apiReference({
+
+  return Scalar({
     url: '/openapi.json',
     theme: theme as any,
     pageTitle: `API Reference - ${theme} theme`,
@@ -272,7 +278,7 @@ app.get('/reference/custom', (c) => {
 
 app.post('/auth/login', async (c) => {
   const { email, password } = await c.req.json();
-  
+
   // Mock authentication (replace with real logic)
   if (email && password) {
     return c.json({
@@ -286,7 +292,7 @@ app.post('/auth/login', async (c) => {
       },
     });
   }
-  
+
   return c.json({ error: 'Invalid email or password' }, 401);
 });
 
@@ -296,14 +302,14 @@ app.post('/auth/logout', (c) => {
 
 app.post('/auth/refresh', async (c) => {
   const { refreshToken } = await c.req.json();
-  
+
   if (refreshToken) {
     return c.json({
       token: 'new.jwt.token.example',
       expiresIn: 3600,
     });
   }
-  
+
   return c.json({ error: 'Invalid refresh token' }, 401);
 });
 
