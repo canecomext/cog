@@ -37,6 +37,10 @@ export async function generateFromModels(
       timestamps: options.features?.timestamps !== false,
       hooks: true,
     },
+    documentation: {
+      enabled: options.documentation?.enabled !== false,
+      path: options.documentation?.path || '/cog',
+    },
     naming: {
       tableNaming: "snake_case",
       columnNaming: "snake_case",
@@ -104,14 +108,19 @@ export async function generateFromModels(
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
-  const restGenerator = new RestAPIGenerator(models);
+  const restGenerator = new RestAPIGenerator(models, {
+    docsEnabled: config.documentation?.enabled,
+    docsPath: config.documentation?.path,
+  });
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
-  // Generate OpenAPI specification
-  const openAPIGenerator = new OpenAPIGenerator(models);
-  const openAPIFiles = openAPIGenerator.generateOpenAPI();
-  openAPIFiles.forEach((content, path) => files.set(path, content));
+  // Generate OpenAPI specification (only if docs are enabled)
+  if (config.documentation?.enabled !== false) {
+    const openAPIGenerator = new OpenAPIGenerator(models);
+    const openAPIFiles = openAPIGenerator.generateOpenAPI();
+    openAPIFiles.forEach((content, path) => files.set(path, content));
+  }
 
   // Generate main index file
   files.set("index.ts", generateMainIndex(models));

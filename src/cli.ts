@@ -26,6 +26,10 @@ async function main() {
       softDeletes: args.softDeletes !== false,
       timestamps: args.timestamps !== false
     },
+    documentation: {
+      enabled: args.documentation !== false,
+      path: args.docsPath || '/cog'
+    },
     verbose
   });
 }
@@ -80,6 +84,8 @@ Options:
   --no-postgis           Disable PostGIS support
   --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
+  --no-documentation     Disable OpenAPI documentation generation
+  --docsPath <path>      Base path for documentation endpoints (default: /cog)
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 

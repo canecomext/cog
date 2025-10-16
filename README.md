@@ -155,17 +155,19 @@ The example showcases:
 deno run -A src/cli.ts [options]
 ```
 
-| Option             | Description                                   | Default       |
-| ------------------ | --------------------------------------------- | ------------- |
-| `--modelsPath`     | Path to JSON model files                      | `./models`    |
-| `--outputPath`     | Where to generate code                        | `./generated` |
-| `--dbType`         | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
-| `--schema`         | Database schema name                          | (default)     |
-| `--no-postgis`     | Disable PostGIS support                       | enabled       |
-| `--no-timestamps`  | Disable automatic timestamps globally         | enabled       |
-| `--no-softDeletes` | Disable soft delete feature globally          | enabled       |
-| `--verbose`        | Show generated file paths                     | false         |
-| `--help`           | Show help message                             | -             |
+| Option              | Description                                   | Default       |
+| ------------------- | --------------------------------------------- | ------------- |
+| `--modelsPath`      | Path to JSON model files                      | `./models`    |
+| `--outputPath`      | Where to generate code                        | `./generated` |
+| `--dbType`          | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
+| `--schema`          | Database schema name                          | (default)     |
+| `--no-postgis`      | Disable PostGIS support                       | enabled       |
+| `--no-timestamps`   | Disable automatic timestamps globally         | enabled       |
+| `--no-softDeletes`  | Disable soft delete feature globally          | enabled       |
+| `--no-documentation`| Disable OpenAPI documentation generation      | enabled       |
+| `--docsPath`        | Base path for documentation endpoints         | `/cog`        |
+| `--verbose`         | Show generated file paths                     | false         |
+| `--help`            | Show help message                             | -             |
 
 ### Global Feature Flags
 
@@ -212,6 +214,39 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postg
 
 **Note:** CLI flags **override** model-level settings. If you use `--no-timestamps`, all models will be generated
 without timestamps even if `"timestamps": true` is set in individual model JSON files.
+
+#### `--no-documentation`
+
+Disables OpenAPI documentation generation entirely:
+- No `openapi.ts` or `openapi.json` files generated
+- No documentation endpoints registered
+- No Scalar API reference UI
+- Reduces generated code size
+
+```bash
+# Generate without documentation
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
+```
+
+**Use Case:** Production builds where you don't want to expose API documentation.
+
+#### `--docsPath <path>`
+
+Customize the base path for documentation endpoints (default: `/cog`):
+
+```bash
+# Use /docs instead of /cog
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /docs
+
+# Use /api/documentation
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api/documentation
+```
+
+**Generated endpoints:**
+- `{docsPath}/openapi.json` - OpenAPI specification
+- `{docsPath}/reference` - Scalar API reference UI
+
+**Use Case:** Integrate with existing API documentation structure or avoid path conflicts.
 
 ### Validation is Always Enabled
 

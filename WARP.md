@@ -530,6 +530,8 @@ Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints with aut
 
 COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
 
+> **Configuration:** Documentation generation can be disabled with `--no-documentation` or customized with `--docsPath <path>`. See [Command-Line Usage](#command-line-usage) for details.
+
 ### Generated Files
 
 **`generated/rest/openapi.ts`**
@@ -546,18 +548,29 @@ COG automatically generates a complete OpenAPI 3.1.0 specification for all gener
 
 COG automatically registers two documentation endpoints when you call `initializeGenerated()`:
 
-**`/cog/openapi.json`**
+**`/cog/openapi.json`** (default path, configurable with `--docsPath`)
 - Serves the complete OpenAPI 3.1.0 specification in JSON format
 - Accessible immediately after initialization
 - No additional configuration required
 - Use for importing into API clients, generating SDKs, or programmatic access
 
-**`/cog/reference`**
+**`/cog/reference`** (default path, configurable with `--docsPath`)
 - Interactive API documentation powered by Scalar
 - Beautiful, modern UI with search and "Try it" functionality
 - Default theme: purple (customizable in `generated/rest/index.ts`)
 - Mobile-responsive with dark mode support
 - Browse endpoints by model/tag
+
+**Path Configuration:**
+```bash
+# Use custom path
+deno run -A src/cli.ts --modelsPath ./models --docsPath /docs
+# Generates: /docs/openapi.json and /docs/reference
+
+# Disable documentation
+deno run -A src/cli.ts --modelsPath ./models --no-documentation
+# No documentation endpoints or files generated
+```
 
 **Example:**
 ```typescript
@@ -834,6 +847,10 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 - `--no-softDeletes` - Disable soft delete feature globally for all models (default: enabled)
 - `--no-timestamps` - Disable automatic timestamps globally for all models (default: enabled)
 
+#### Documentation Options
+- `--no-documentation` - Disable OpenAPI documentation generation (default: enabled)
+- `--docsPath <path>` - Base path for documentation endpoints (default: `/cog`)
+
 #### Output Options
 - `--verbose` - Show generated file paths during generation (default: false)
 - `--help` - Display help message with all available options
@@ -897,6 +914,51 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postg
 
 **Use Case:** When your database doesn't have the PostGIS extension installed or you don't need spatial query capabilities.
 
+#### `--no-documentation`
+
+Disables OpenAPI documentation generation entirely:
+
+**Effect:**
+- No `openapi.ts` or `openapi.json` files generated in the `rest/` directory
+- No documentation endpoints (`/cog/openapi.json`, `/cog/reference`) registered
+- No Scalar API reference UI included
+- Reduces generated code size and eliminates documentation dependencies
+
+**Example:**
+```bash
+# Generate without documentation
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
+```
+
+**Use Case:** Production builds where you don't want to expose API documentation, or when you have a custom documentation solution.
+
+#### `--docsPath <path>`
+
+Customize the base path for documentation endpoints:
+
+**Effect:**
+- Changes the base path from the default `/cog` to your specified path
+- Updates both OpenAPI spec endpoint and Scalar reference UI paths
+- Helps avoid path conflicts with existing routes
+
+**Examples:**
+```bash
+# Use /docs as the base path
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /docs
+# Generates: /docs/openapi.json and /docs/reference
+
+# Use /api-docs as the base path
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api-docs
+# Generates: /api-docs/openapi.json and /api-docs/reference
+
+# Use a nested path
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api/v1/documentation
+# Generates: /api/v1/documentation/openapi.json and /api/v1/documentation/reference
+```
+
+**Use Case:** Integrate with existing API documentation structure, follow organizational standards, or avoid route conflicts.
+
+#### Priority Rules
 #### Priority Rules
 
 **Important:** CLI flags have **higher priority** than model-level settings:
