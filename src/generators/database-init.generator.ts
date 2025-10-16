@@ -224,12 +224,35 @@ export async function healthCheck(): Promise<boolean> {
    * Generate SQL statements for dropping tables
    */
   private generateTableDropSQL(): string {
-    // Get models in dependency order, then reverse for dropping
+    const drops: string[] = [];
+    
+    // First, drop junction tables (they depend on main tables)
+    const processedJunctions = new Set<string>();
+    for (const model of this.models) {
+      if (!model.relationships) continue;
+      for (const rel of model.relationships) {
+        if (rel.type === 'manyToMany' && rel.through) {
+          if (!processedJunctions.has(rel.through)) {
+            processedJunctions.add(rel.through);
+            const junctionTableName = rel.through.toLowerCase();
+            drops.push(
+              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${junctionTableName}');`
+            );
+          }
+        }
+      }
+    }
+    
+    // Then drop main tables in reverse dependency order
     const sortedModels = this.sortModelsByDependencies().reverse();
-    return sortedModels.map((model) => {
+    for (const model of sortedModels) {
       const tableName = this.toSnakeCase(model.name);
-      return `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${tableName}');`;
-    }).join('\n');
+      drops.push(
+        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${tableName}');`
+      );
+    }
+    
+    return drops.join('\n');
   }
 
   /**

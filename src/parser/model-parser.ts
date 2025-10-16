@@ -116,12 +116,20 @@ export class ModelParser {
       return null;
     }
 
+    // Validate enums if present
+    let enums: any[] | undefined;
+    if (data.enums) {
+      enums = this.validateEnums(data.enums, data.name);
+      if (!enums) return null;
+    }
+
     // Build the model
     const model: ModelDefinition = {
       name: data.name,
       tableName: data.tableName,
       plural: data.plural, // Add support for custom plural
       fields,
+      enums,
       schema: data.schema,
       relationships: data.relationships || [],
       indexes: data.indexes || [],
@@ -226,6 +234,50 @@ export class ModelParser {
         }
       }
 
+      // Validate enum fields
+      if (field.type === 'enum') {
+        if (!field.enumName && !field.enumValues) {
+          this.errors.push({
+            model: modelName,
+            field: field.name,
+            message: `Enum field '${field.name}' must have either 'enumName' or 'enumValues'`,
+            severity: 'error'
+          });
+          return null;
+        }
+        if (field.enumName && field.enumValues) {
+          this.errors.push({
+            model: modelName,
+            field: field.name,
+            message: `Enum field '${field.name}' cannot have both 'enumName' and 'enumValues'`,
+            severity: 'error'
+          });
+          return null;
+        }
+        if (field.enumValues) {
+          if (!Array.isArray(field.enumValues) || field.enumValues.length === 0) {
+            this.errors.push({
+              model: modelName,
+              field: field.name,
+              message: `Enum field '${field.name}' must have at least one value`,
+              severity: 'error'
+            });
+            return null;
+          }
+          // Check for duplicate values
+          const uniqueValues = new Set(field.enumValues);
+          if (uniqueValues.size !== field.enumValues.length) {
+            this.errors.push({
+              model: modelName,
+              field: field.name,
+              message: `Enum field '${field.name}' has duplicate values`,
+              severity: 'error'
+            });
+            return null;
+          }
+        }
+      }
+
       validatedFields.push(field);
     }
 
@@ -280,11 +332,77 @@ export class ModelParser {
   }
 
   /**
+   * Validate enum definitions
+   */
+  private validateEnums(enums: any[], modelName: string): any[] | null {
+    const validatedEnums: any[] = [];
+    const enumNames = new Set<string>();
+
+    for (const enumDef of enums) {
+      if (!enumDef.name || typeof enumDef.name !== 'string') {
+        this.errors.push({
+          model: modelName,
+          message: `Enum definition is missing a valid 'name'`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      // Check for duplicate enum names
+      if (enumNames.has(enumDef.name)) {
+        this.errors.push({
+          model: modelName,
+          message: `Duplicate enum name: ${enumDef.name}`,
+          severity: 'error'
+        });
+        return null;
+      }
+      enumNames.add(enumDef.name);
+
+      if (!Array.isArray(enumDef.values) || enumDef.values.length === 0) {
+        this.errors.push({
+          model: modelName,
+          message: `Enum '${enumDef.name}' must have at least one value`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      // Check that all values are non-empty strings
+      for (const value of enumDef.values) {
+        if (typeof value !== 'string' || value.trim() === '') {
+          this.errors.push({
+            model: modelName,
+            message: `Enum '${enumDef.name}' has invalid value: ${value}`,
+            severity: 'error'
+          });
+          return null;
+        }
+      }
+
+      // Check for duplicate values
+      const uniqueValues = new Set(enumDef.values);
+      if (uniqueValues.size !== enumDef.values.length) {
+        this.errors.push({
+          model: modelName,
+          message: `Enum '${enumDef.name}' has duplicate values`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      validatedEnums.push(enumDef);
+    }
+
+    return validatedEnums;
+  }
+
+  /**
    * Check if a type is valid
    */
   private isValidDataType(type: string): boolean {
     const validTypes = [
-      'text', 'string', 'integer', 'bigint', 'decimal', 'boolean', 'date', 'uuid', 'json', 'jsonb',
+      'text', 'string', 'integer', 'bigint', 'decimal', 'boolean', 'date', 'uuid', 'json', 'jsonb', 'enum',
       'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
     ];
     return validTypes.includes(type);

@@ -3,7 +3,7 @@
  */
 
 // Supported primitive data types
-export type PrimitiveType = 
+export type PrimitiveType =
   | 'text'
   | 'string'
   | 'integer'
@@ -13,10 +13,11 @@ export type PrimitiveType =
   | 'date'
   | 'uuid'
   | 'json'
-  | 'jsonb';
+  | 'jsonb'
+  | 'enum';
 
 // PostGIS data types (supporting both standard and CockroachDB implementations)
-export type PostGISType = 
+export type PostGISType =
   | 'point'
   | 'linestring'
   | 'polygon'
@@ -27,6 +28,13 @@ export type PostGISType =
   | 'geography';
 
 export type DataType = PrimitiveType | PostGISType;
+
+// Enum definition
+export interface EnumDefinition {
+  name: string; // Enum name (e.g., "Gender")
+  values: string[]; // Allowed values (e.g., ["man", "woman", "non_binary"])
+  useBitwise?: boolean; // Store as integer with bitwise flags for efficient queries
+}
 
 // Field definition
 export interface FieldDefinition {
@@ -40,6 +48,8 @@ export interface FieldDefinition {
   precision?: number; // For decimal type
   scale?: number; // For decimal type
   array?: boolean; // Support for array types
+  enumName?: string; // For enum type: reference to enum name
+  enumValues?: string[]; // For inline enum definition (alternative to enumName)
   srid?: number; // For PostGIS types (Spatial Reference ID)
   geometryType?: string; // For PostGIS geometry specification
   dimensions?: number; // For PostGIS dimensions (2D, 3D, 4D)
@@ -85,6 +95,7 @@ export interface ModelDefinition {
   plural?: string; // Custom plural form (e.g., "indices" for "index")
   schema?: string; // Database schema name
   fields: FieldDefinition[];
+  enums?: EnumDefinition[]; // Enum definitions for this model
   relationships?: RelationshipDefinition[];
   indexes?: IndexDefinition[];
   timestamps?: boolean | {
@@ -120,6 +131,10 @@ export interface GeneratorConfig {
     softDeletes?: boolean;
     timestamps?: boolean;
     hooks?: boolean;
+  };
+  documentation?: {
+    enabled?: boolean; // Enable/disable documentation generation (default: true)
+    path?: string; // Base path for documentation endpoints (default: '/cog')
   };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';

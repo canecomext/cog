@@ -5,9 +5,16 @@ import { ModelDefinition } from '../types/model.types.ts';
  */
 export class RestAPIGenerator {
   private models: ModelDefinition[];
+  private docsEnabled: boolean;
+  private docsPath: string;
 
-  constructor(models: ModelDefinition[]) {
+  constructor(
+    models: ModelDefinition[],
+    options: { docsEnabled?: boolean; docsPath?: string } = {}
+  ) {
     this.models = models;
+    this.docsEnabled = options.docsEnabled !== false;
+    this.docsPath = options.docsPath || '/cog';
   }
 
   /**
@@ -53,12 +60,15 @@ export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
  * List all ${modelNamePlural} with pagination
  */
 ${modelNameLower}Routes.get('/', async (c) => {
-  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc' } = c.req.query();
+  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
+  
+  // Parse include parameter
+  const includeArray = include ? include.split(',') : undefined;
   
   // No transaction needed for read operations
   const result = await ${modelNameLower}Domain.findMany(
     undefined, // No transaction
-    undefined, // No filter
+    includeArray ? { include: includeArray } : undefined, // Filter with include
     {
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -355,6 +365,12 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
       code += `import { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
+    if (this.docsEnabled) {
+      code += `
+import { generatedOpenAPISpec } from './openapi.ts';
+import { apiReference } from '@scalar/hono-api-reference';`;
+    }
+
     code += `
 
 /**
@@ -387,10 +403,31 @@ ${
         return `        '${plural}'`;
       }).join(',\n')
     }
-      ]
+      ]${this.docsEnabled ? `,
+      documentation: {
+        openapi: '${this.docsPath}/openapi.json',
+        reference: '${this.docsPath}/reference'
+      }` : ''}
     });
   });
-}
+`;
+
+    if (this.docsEnabled) {
+      code += `
+  // OpenAPI documentation endpoints
+  app.get('${this.docsPath}/openapi.json', (c) => {
+    return c.json(generatedOpenAPISpec);
+  });
+
+  // Scalar API reference documentation
+  app.get('${this.docsPath}/reference', apiReference({
+    url: '${this.docsPath}/openapi.json',
+    theme: 'purple',
+  }) as any);
+`;
+    }
+    
+    code += `}
 
 ${this.generateEndpointListingUtilities()}
 

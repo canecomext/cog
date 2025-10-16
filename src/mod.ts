@@ -35,7 +35,11 @@ export async function generateFromModels(
     features: {
       softDeletes: options.features?.softDeletes !== false,
       timestamps: options.features?.timestamps !== false,
-      hooks: true
+      hooks: true,
+    },
+    documentation: {
+      enabled: options.documentation?.enabled !== false,
+      path: options.documentation?.path || '/cog',
     },
     naming: {
       tableNaming: 'snake_case',
@@ -52,8 +56,26 @@ export async function generateFromModels(
 
   if (errors.length > 0) {
     const hasErrors = errors.some((e) => e.severity === 'error');
+    console.log(errors.filter((e) => e.severity === 'error'));
+
     if (hasErrors) {
       throw new Error('Generation aborted due to validation errors');
+    }
+  }
+
+  // Apply global feature flag overrides to all models
+  for (const model of models) {
+    // Override softDeletes if explicitly disabled
+    if (config.features.softDeletes === false) {
+      model.softDelete = false;
+    }
+    // Override timestamps if explicitly disabled
+    if (config.features.timestamps === false) {
+      model.timestamps = false;
+    }
+    // Apply global schema if specified
+    if (config.database.schema) {
+      model.schema = config.database.schema;
     }
   }
 
@@ -91,7 +113,10 @@ export async function generateFromModels(
   });
 
   files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());
-  files.set('db/initialize-database.ts', dbInitGenerator.generateDatabaseInitialization());
+  files.set(
+    'db/initialize-database.ts',
+    dbInitGenerator.generateDatabaseInitialization(),
+  );
 
   // Generate domain APIs
   const domainGenerator = new DomainAPIGenerator(models);
@@ -99,14 +124,19 @@ export async function generateFromModels(
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
-  const restGenerator = new RestAPIGenerator(models);
+  const restGenerator = new RestAPIGenerator(models, {
+    docsEnabled: config.documentation?.enabled,
+    docsPath: config.documentation?.path,
+  });
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
-  // Generate OpenAPI specification
-  const openAPIGenerator = new OpenAPIGenerator(models);
-  const openAPIFiles = openAPIGenerator.generateOpenAPI();
-  openAPIFiles.forEach((content, path) => files.set(path, content));
+  // Generate OpenAPI specification (only if docs are enabled)
+  if (config.documentation?.enabled !== false) {
+    const openAPIGenerator = new OpenAPIGenerator(models);
+    const openAPIFiles = openAPIGenerator.generateOpenAPI();
+    openAPIFiles.forEach((content, path) => files.set(path, content));
+  }
 
   // Generate main index file
   files.set('index.ts', generateMainIndex(models));
@@ -164,11 +194,15 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   // Initialize domain layers with hooks if provided
   if (config.hooks) {
     ${
-    models.map((m) => `
+    models
+      .map(
+        (m) => `
     if (config.hooks.${m.name.toLowerCase()}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain, 
         new domain.${m.name}Domain(config.hooks.${m.name.toLowerCase()}));
-    }`).join('')
+    }`,
+      )
+      .join('')
   }
   }
 

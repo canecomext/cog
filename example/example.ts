@@ -13,8 +13,6 @@ import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import type { Env } from './example-context.ts';
 import { printRegisteredEndpoints } from './generated/rest/index.ts';
-import { Scalar } from '@scalar/hono-api-reference';
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
 
 const app = new Hono<Env>();
 
@@ -93,18 +91,6 @@ async function startServer() {
       }
     });
 
-    app.get(
-      '/reference',
-      Scalar({
-        url: '/openapi.json',
-        theme: 'purple', // Try: 'alternate', 'default', 'moon', 'purple', 'solarized'
-      }) as any,
-    );
-
-    app.get('/openapi.json', (c) => {
-      return c.json(generatedOpenAPISpec);
-    });
-
     // =============================================================================
     // Landing page with links to all documentation
     // =============================================================================
@@ -157,9 +143,9 @@ async function startServer() {
         <div class="card">
           <h2>📚 Generated CRUD API</h2>
           <p>Auto-generated REST API for all your models with CRUD operations.</p>
-          <a href="/reference" target="_blank">→ View Documentation</a>
+          <a href="/cog/reference" target="_blank">→ View Documentation</a>
           <br><br>
-          <small>OpenAPI Spec: <a href="/openapi.json" target="_blank">/openapi.json</a></small>
+          <small>OpenAPI Spec: <a href="/cog/openapi.json" target="_blank">/cog/openapi.json</a></small>
         </div>
         
         <!--

@@ -7,7 +7,7 @@ This directory contains a comprehensive example demonstrating the full capabilit
 The example showcases a blog-like application with users, posts, comments, categories, tags, and locations with spatial
 data. It demonstrates:
 
-- All supported data types including PostGIS spatial types
+- All supported data types including PostgreSQL enums and PostGIS spatial types
 - All relationship patterns (one-to-many, many-to-many, one-to-one, self-referential)
 - Hook system implementation
 - Transaction management
@@ -25,6 +25,7 @@ comments, and roles.
 
 - UUID primary keys
 - Email and username uniqueness
+- **Enum type for account type** (free/premium)
 - JSON metadata storage
 - Array fields for tags
 - Decimal type for balance
@@ -300,6 +301,7 @@ curl -X POST http://localhost:3000/api/users \
     "username": "testuser",
     "fullName": "Test User",
     "passwordHash": "hashed_password",
+    "accountType": "premium",
     "isActive": true
   }'
 ```

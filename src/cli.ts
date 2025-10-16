@@ -20,13 +20,17 @@ async function main() {
     database: {
       type: dbType,
       postgis: args.postgis !== false,
-      schema: args.schema
+      schema: args.schema,
     },
     features: {
       softDeletes: args.softDeletes !== false,
-      timestamps: args.timestamps !== false
+      timestamps: args.timestamps !== false,
     },
-    verbose
+    documentation: {
+      enabled: args.documentation !== false,
+      path: args.docsPath || '/cog',
+    },
+    verbose,
   });
 }
 
@@ -39,7 +43,7 @@ function parseArguments(): Record<string, any> {
     const arg = Deno.args[i];
     if (arg.startsWith('--')) {
       let key = arg.slice(2);
-      
+
       // Handle --no- prefixed flags
       if (key.startsWith('no-')) {
         const actualKey = key.slice(3); // Remove 'no-' prefix
@@ -80,6 +84,8 @@ Options:
   --no-postgis           Disable PostGIS support
   --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
+  --no-documentation     Disable OpenAPI documentation generation
+  --docsPath <path>      Base path for documentation endpoints (default: /cog)
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 
@@ -87,7 +93,6 @@ Example:
   deno run -A src/cli.ts --modelsPath ./my-models --outputPath ./src/generated
   `);
 }
-
 
 // Run the CLI
 if (import.meta.main) {

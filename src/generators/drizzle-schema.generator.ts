@@ -54,11 +54,12 @@ export class DrizzleSchemaGenerator {
    */
   private generateModelSchema(model: ModelDefinition): string {
     const imports = this.generateImports(model);
+    const enumDefinitions = this.generateEnumDefinitions(model);
     const tableDefinition = this.generateTableDefinition(model);
     const typeExports = this.generateTypeExports(model);
     const zodSchemas = this.generateZodSchemas(model);
 
-    return `${imports}\n\n${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
+    return `${imports}\n\n${enumDefinitions}${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
   }
 
   /**
@@ -71,6 +72,12 @@ export class DrizzleSchemaGenerator {
     drizzleImports.add('pgTable');
     if (model.schema) {
       drizzleImports.add('pgSchema');
+    }
+
+    // Check if model has enum fields
+    const hasEnums = model.enums && model.enums.length > 0;
+    if (hasEnums) {
+      drizzleImports.add('pgEnum');
     }
 
     // Check if this table has self-referential foreign keys
@@ -146,6 +153,7 @@ export class DrizzleSchemaGenerator {
       'uuid': 'uuid',
       'json': 'json',
       'jsonb': 'jsonb',
+      'enum': null, // Enums use pgEnum, not a direct import
       // PostGIS types don't have direct imports, they use customType
       'point': null,
       'linestring': null,
@@ -158,6 +166,31 @@ export class DrizzleSchemaGenerator {
     };
 
     return typeMap[field.type] || null;
+  }
+
+  /**
+   * Generate enum definitions
+   */
+  private generateEnumDefinitions(model: ModelDefinition): string {
+    if (!model.enums || model.enums.length === 0) {
+      return '';
+    }
+
+    let code = '// Enum definitions\n';
+    
+    // Add CockroachDB compatibility note
+    if (this.isCockroachDB) {
+      code += '// Note: CockroachDB supports enums from v22.2+\n';
+      code += '// For earlier versions, consider using varchar with CHECK constraints\n';
+    }
+    
+    for (const enumDef of model.enums) {
+      const enumName = `${enumDef.name.toLowerCase()}Enum`;
+      const values = enumDef.values.map(v => `'${v}'`).join(', ');
+      code += `export const ${enumName} = pgEnum('${this.toSnakeCase(enumDef.name)}', [${values}]);\n`;
+    }
+    code += '\n';
+    return code;
   }
 
   /**
@@ -300,6 +333,9 @@ export class DrizzleSchemaGenerator {
       case 'jsonb':
         definition += `jsonb('${this.toSnakeCase(field.name)}')`;
         break;
+      case 'enum':
+        definition += this.generateEnumField(field, model);
+        break;
       case 'point':
       case 'linestring':
       case 'polygon':
@@ -370,6 +406,44 @@ export class DrizzleSchemaGenerator {
     definition += modifiers.join('') + comment;
 
     return definition;
+  }
+
+  /**
+   * Generate enum field definition
+   */
+  private generateEnumField(field: FieldDefinition, model: ModelDefinition): string {
+    const fieldName = this.toSnakeCase(field.name);
+    
+    // Check if using named enum from model.enums
+    if (field.enumName) {
+      const enumDef = model.enums?.find(e => e.name === field.enumName);
+      if (!enumDef) {
+        throw new Error(`Enum '${field.enumName}' not found in model '${model.name}'`);
+      }
+      
+      // Check if using bitwise storage
+      if (enumDef.useBitwise) {
+        // Store as integer for bitwise operations
+        return `integer('${fieldName}')`;
+      } else {
+        // Use pgEnum
+        const enumName = `${enumDef.name.toLowerCase()}Enum`;
+        return `${enumName}('${fieldName}')`;
+      }
+    }
+    
+    // Inline enum values (create inline pgEnum)
+    if (field.enumValues) {
+      // For inline enums, create an inline pgEnum - not recommended but supported
+      const values = field.enumValues.map(v => `'${v}'`).join(', ');
+      const enumName = `${field.name.toLowerCase()}Enum`;
+      // This would need to be defined earlier - for now throw error
+      throw new Error(
+        `Field '${field.name}' uses inline enumValues. Please define enums in model.enums instead.`
+      );
+    }
+    
+    throw new Error(`Enum field '${field.name}' must have either enumName or enumValues`);
   }
 
   /**
