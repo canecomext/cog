@@ -2,6 +2,12 @@
   "name": "User",
   "tableName": "users",
   "description": "User account model with all features",
+  "enums": [
+    {
+      "name": "AccountType",
+      "values": ["free", "premium"]
+    }
+  ],
   "fields": [
     {
       "name": "id",
@@ -43,6 +49,13 @@
       "type": "boolean",
       "defaultValue": true,
       "required": true
+    },
+    {
+      "name": "accountType",
+      "type": "enum",
+      "enumName": "AccountType",
+      "required": true,
+      "defaultValue": "free"
     },
     {
       "name": "age",

@@ -91,6 +91,7 @@ HTTP interface using Hono framework. Translates HTTP requests to domain operatio
 - `date` - Timestamps stored as epoch milliseconds
 - `uuid` - Universally unique identifiers
 - `json`/`jsonb` - Structured JSON data
+- `enum` - PostgreSQL enum type with single or multiple value support (via bitwise flags)
 
 ### Spatial Types (PostGIS)
 - `point` - Single coordinate
@@ -106,6 +107,161 @@ Each spatial type supports:
 - SRID (Spatial Reference ID) specification
 - Geometry type constraints
 - Dimension configuration (2D, 3D, 4D)
+
+### Enum Types
+
+COG supports PostgreSQL enum types with two modes: standard enums (single value) and bitwise enums (multiple values).
+
+#### Standard Enum Mode
+
+For fields that can only have ONE value from a predefined set:
+
+```json
+{
+  "name": "User",
+  "enums": [
+    {
+      "name": "Role",
+      "values": ["admin", "editor", "viewer"]
+    }
+  ],
+  "fields": [
+    {
+      "name": "role",
+      "type": "enum",
+      "enumName": "Role",
+      "required": true
+    }
+  ]
+}
+```
+
+Generates:
+
+```typescript
+export const roleEnum = pgEnum('role', ['admin', 'editor', 'viewer']);
+
+export const userTable = pgTable('user', {
+  role: roleEnum('role').notNull(),
+  // ...
+});
+```
+
+#### Bitwise Enum Mode
+
+For fields that can have MULTIPLE values stored as bitwise flags (efficient for preferences, permissions, filters):
+
+```json
+{
+  "name": "Profile",
+  "enums": [
+    {
+      "name": "Gender",
+      "values": ["man", "woman", "non_binary"]
+    }
+  ],
+  "fields": [
+    {
+      "name": "gender",
+      "type": "enum",
+      "enumName": "Gender",
+      "required": true
+    },
+    {
+      "name": "genderPreference",
+      "type": "integer",
+      "required": true,
+      "defaultValue": 7
+    }
+  ]
+}
+```
+
+**Bit Mapping:**
+- Each enum value is assigned a power of 2
+- `man` = 1 (2^0), `woman` = 2 (2^1), `non_binary` = 4 (2^2)
+- Combine values using bitwise OR: `1 | 2 | 4 = 7` (all values)
+- Check values using bitwise AND: `(value & flag) > 0`
+
+**Querying with bitwise operations:**
+
+```typescript
+import { sql, and } from 'drizzle-orm';
+
+// Find profiles matching gender preferences (bidirectional)
+const genderBits = { 'man': 1, 'woman': 2, 'non_binary': 4 };
+const myGenderBit = genderBits[currentProfile.gender];
+
+const matches = await tx
+  .select()
+  .from(profileTable)
+  .where(
+    and(
+      // Their preference includes my gender
+      sql`(${profileTable.genderPreference} & ${myGenderBit}) > 0`,
+      
+      // My preference includes their gender
+      sql`(${currentProfile.genderPreference} & 
+        CASE ${profileTable.gender}
+          WHEN 'man' THEN 1
+          WHEN 'woman' THEN 2
+          WHEN 'non_binary' THEN 4
+        END) > 0`
+    )
+  );
+```
+
+**Use cases for bitwise enums:**
+- User preferences (dating apps, content filtering)
+- Permission systems (read, write, execute flags)
+- Feature flags (multiple enabled features)
+- Multi-select filters
+
+**Benefits:**
+- Efficient storage: 4 bytes for up to 32 flags (or 8 bytes for 64 flags with bigint)
+- Fast queries: Bitwise operations are very performant
+- Index-friendly: Can create standard B-tree indexes on integer columns
+- Compact: No junction tables or array types needed
+
+**Limitations:**
+- Maximum 32 values with integer (64 with bigint)
+- Requires application-level bit mapping
+- Less readable than array types without helper constants
+
+#### Array of Enums (Alternative)
+
+For more readable multi-value enums when performance is less critical:
+
+```json
+{
+  "name": "genderPreferences",
+  "type": "enum",
+  "enumName": "Gender",
+  "array": true
+}
+```
+
+Generates:
+```typescript
+genderPreferences: genderEnum('gender_preferences').array()
+```
+
+This provides better readability and doesn't require bit mapping, but queries using array operators (`@>`, `&&`) are slower than bitwise operations.
+
+#### CockroachDB Compatibility
+
+**Enum Support:**
+- PostgreSQL-style enums are supported in **CockroachDB v22.2+** (released December 2022)
+- Earlier CockroachDB versions do NOT support enum types
+- For older versions, use `varchar` fields with `CHECK` constraints as an alternative
+
+**Bitwise Operations:**
+- Fully supported in all CockroachDB versions
+- Bitwise operators (`&`, `|`, `^`, `~`) work identically to PostgreSQL
+- Recommended approach for multi-value enums on CockroachDB
+
+**Generated Code:**
+When generating for CockroachDB (`--dbType cockroachdb`), schemas include comments noting the v22.2+ requirement for enum types.
 
 ## Relationships
 

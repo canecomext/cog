@@ -305,7 +305,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
         continue;
       }
 
-      schema.properties[field.name] = this.generateFieldSchema(field);
+      schema.properties[field.name] = this.generateFieldSchema(field, model);
 
       // Add to required array if field is required and not an update schema
       if (!isUpdate && (field.required || field.primaryKey) && !field.defaultValue) {
@@ -348,7 +348,12 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate schema for a field
    */
-  private generateFieldSchema(field: FieldDefinition): any {
+  private generateFieldSchema(field: FieldDefinition, model?: ModelDefinition): any {
+    // Handle enum fields specially
+    if (field.type === 'enum') {
+      return this.generateEnumFieldSchema(field, model);
+    }
+
     const schema: any = this.getBaseTypeSchema(field.type);
 
     // Add description if available
@@ -403,6 +408,70 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   }
 
   /**
+   * Generate schema for enum field
+   */
+  private generateEnumFieldSchema(field: FieldDefinition, model?: ModelDefinition): any {
+    let enumValues: string[] = [];
+    let enumDef: any = null;
+
+    // Get enum values
+    if (field.enumName && model) {
+      enumDef = model.enums?.find(e => e.name === field.enumName);
+      if (enumDef) {
+        enumValues = enumDef.values;
+      }
+    } else if (field.enumValues) {
+      enumValues = field.enumValues;
+    }
+
+    // Check if using bitwise storage
+    if (enumDef?.useBitwise) {
+      // For bitwise enums, use integer in OpenAPI
+      const schema: any = {
+        type: 'integer',
+        description: `Bitwise flags for ${field.name}. Values: ${enumValues.join(', ')}`,
+      };
+
+      if (!field.required && !field.primaryKey) {
+        schema.type = ['integer', 'null'];
+      }
+
+      return schema;
+    }
+
+    // Standard enum field
+    const schema: any = {
+      type: 'string',
+      enum: enumValues,
+    };
+
+    // Add description
+    if (field.name) {
+      const description = field.name.replace(/([A-Z])/g, ' $1').trim();
+      schema.description = `${description.charAt(0).toUpperCase() + description.slice(1)}. Allowed values: ${enumValues.join(', ')}`;
+    }
+
+    // Handle arrays
+    if (field.array) {
+      return {
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: enumValues,
+        },
+        description: `Array of enum values. Allowed values: ${enumValues.join(', ')}`,
+      };
+    }
+
+    // Add nullable if not required
+    if (!field.required && !field.primaryKey) {
+      schema.type = ['string', 'null'];
+    }
+
+    return schema;
+  }
+
+  /**
    * Get base OpenAPI schema type for a data type
    */
   private getBaseTypeSchema(type: DataType): any {
@@ -417,6 +486,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       uuid: { type: 'string', format: 'uuid' },
       json: { type: 'object' },
       jsonb: { type: 'object' },
+      enum: { type: 'string' }, // Will be overridden by generateEnumFieldSchema
       // PostGIS types - represented as objects or strings
       point: { type: 'object', description: 'GeoJSON Point' },
       linestring: { type: 'object', description: 'GeoJSON LineString' },

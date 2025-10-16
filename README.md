@@ -101,6 +101,7 @@ COG generates a complete backend stack with:
 ### Comprehensive Data Type Support
 
 - All PostgreSQL primitive types (text, integer, boolean, date, etc.)
+- PostgreSQL Enum types with standard and bitwise modes
 - PostGIS spatial types (point, polygon, linestring, etc.)
 - JSON/JSONB for structured data
 - Arrays and composite types
@@ -173,6 +174,7 @@ The `--no-*` flags provide global control over features across all models:
 #### `--no-softDeletes`
 
 Disables soft delete functionality for **all models**, regardless of model-level `"softDelete"` settings:
+
 - Removes `deletedAt` timestamp field from all tables
 - Disables soft delete filtering in queries
 - Delete operations become hard deletes
@@ -185,6 +187,7 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softD
 #### `--no-timestamps`
 
 Disables automatic timestamp fields for **all models**, regardless of model-level `"timestamps"` settings:
+
 - Removes `createdAt` and `updatedAt` fields from all tables
 - No automatic timestamp management on create/update operations
 
@@ -196,6 +199,7 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-times
 #### `--no-postgis`
 
 Disables PostGIS spatial data type support:
+
 - Spatial field types (point, polygon, etc.) fall back to JSONB
 - GIST indexes are converted to GIN indexes for JSONB compatibility
 - Spatial data stored as GeoJSON in JSONB columns
@@ -206,16 +210,19 @@ Disables PostGIS spatial data type support:
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postgis
 ```
 
-**Note:** CLI flags **override** model-level settings. If you use `--no-timestamps`, all models will be generated without timestamps even if `"timestamps": true` is set in individual model JSON files.
+**Note:** CLI flags **override** model-level settings. If you use `--no-timestamps`, all models will be generated
+without timestamps even if `"timestamps": true` is set in individual model JSON files.
 
 ### Validation is Always Enabled
 
-**Important:** Zod validation is mandatory and cannot be disabled in COG. All CRUD operations automatically validate input data at two points:
+**Important:** Zod validation is mandatory and cannot be disabled in COG. All CRUD operations automatically validate
+input data at two points:
 
 1. **Initial validation** before pre-hooks execute
 2. **Pre-hook output validation** before database operations
 
-This ensures data integrity and prevents malformed data from reaching your database. The validation schemas are automatically generated from your Drizzle table definitions using [drizzle-zod](https://orm.drizzle.team/docs/zod).
+This ensures data integrity and prevents malformed data from reaching your database. The validation schemas are
+automatically generated from your Drizzle table definitions using [drizzle-zod](https://orm.drizzle.team/docs/zod).
 
 ## Model Definition Format
 
@@ -225,6 +232,12 @@ Models are defined in JSON with this structure:
 {
   "name": "ModelName",
   "tableName": "table_name",
+  "enums": [
+    {
+      "name": "EnumName",
+      "values": ["value1", "value2", "value3"]
+    }
+  ],
   "fields": [
     {
       "name": "fieldName",
@@ -233,6 +246,8 @@ Models are defined in JSON with this structure:
       "unique": false,
       "required": true,
       "defaultValue": "value",
+      "enumName": "EnumName",
+      "array": false,
       "references": {
         "model": "OtherModel",
         "field": "id",
@@ -258,6 +273,24 @@ Models are defined in JSON with this structure:
   ]
 }
 ```
+
+### Field Properties
+
+| Property       | Type    | Description                                                                                                                       |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `name`         | string  | Field name                                                                                                                        |
+| `type`         | string  | Data type: `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date`, `uuid`, `json`, `jsonb`, `enum`, or PostGIS types |
+| `primaryKey`   | boolean | Mark as primary key                                                                                                               |
+| `unique`       | boolean | Add unique constraint                                                                                                             |
+| `required`     | boolean | Mark as NOT NULL                                                                                                                  |
+| `defaultValue` | any     | Default value for the field                                                                                                       |
+| `enumName`     | string  | Reference to enum (when `type: "enum"`)                                                                                           |
+| `array`        | boolean | Mark as array type                                                                                                                |
+| `maxLength`    | number  | Max length for `string` type                                                                                                      |
+| `precision`    | number  | Precision for `decimal` type                                                                                                      |
+| `scale`        | number  | Scale for `decimal` type                                                                                                          |
+| `index`        | boolean | Create index on this field                                                                                                        |
+| `references`   | object  | Foreign key reference to another model                                                                                            |
 
 ## Documentation
 
@@ -329,20 +362,347 @@ export const userUpdateSchema = createUpdateSchema(userTable);
 export const userSelectSchema = createSelectSchema(userTable);
 ```
 
+## Enum Types
+
+> COG supports PostgreSQL enum types with two powerful modes
+
+COG provides first-class support for enum types, perfect for fields with predefined values like user roles, statuses, or
+preferences.
+
+### Standard Enum (Single Value)
+
+Use when a field can only have **one value** from the enum.
+
+#### Example: User Gender
+
+**Model Definition:**
+
+```json
+{
+  "name": "Profile",
+  "enums": [
+    {
+      "name": "Gender",
+      "values": ["man", "woman", "non_binary"]
+    }
+  ],
+  "fields": [
+    {
+      "name": "gender",
+      "type": "enum",
+      "enumName": "Gender",
+      "required": true
+    }
+  ]
+}
+```
+
+**Generated Schema:**
+
+```typescript
+export const genderEnum = pgEnum('gender', ['man', 'woman', 'non_binary']);
+
+export const profileTable = pgTable('profile', {
+  gender: genderEnum('gender').notNull(),
+  // ...
+});
+```
+
+**Usage:**
+
+```typescript
+// Create a profile
+await profileDomain.create({
+  gender: 'woman', // Only one value allowed
+  // ...
+}, tx);
+
+// Query by gender
+const profiles = await tx
+  .select()
+  .from(profileTable)
+  .where(eq(profileTable.gender, 'man'));
+```
+
+### Bitwise Enum (Multiple Values)
+
+Use when a field can have **multiple values** from the enum, stored efficiently as bitwise flags.
+
+#### Example: Dating App Preferences
+
+**Perfect for:**
+
+- User preferences (e.g., interested in multiple genders)
+- Permission systems (e.g., read + write + execute)
+- Feature flags (e.g., multiple enabled features)
+- Filter selections (e.g., multiple categories)
+
+**Model Definition:**
+
+```json
+{
+  "name": "Profile",
+  "enums": [
+    {
+      "name": "Gender",
+      "values": ["man", "woman", "non_binary"]
+    }
+  ],
+  "fields": [
+    {
+      "name": "gender",
+      "type": "enum",
+      "enumName": "Gender",
+      "required": true
+    },
+    {
+      "name": "genderPreference",
+      "type": "integer",
+      "required": true,
+      "defaultValue": 7
+    }
+  ]
+}
+```
+
+**Bit Mapping:**
+
+Each enum value gets a power of 2:
+
+| Value        | Bit Position | Integer Value |
+| ------------ | ------------ | ------------- |
+| `man`        | 0            | 1             |
+| `woman`      | 1            | 2             |
+| `non_binary` | 2            | 4             |
+
+**Combining Values:**
+
+```typescript
+// Helper constants
+const GenderBits = {
+  MAN: 1,
+  WOMAN: 2,
+  NON_BINARY: 4,
+  ALL: 7, // 1 | 2 | 4
+};
+
+// Interested in men and women only
+const preference1 = GenderBits.MAN | GenderBits.WOMAN; // = 3
+
+// Interested in all genders
+const preference2 = GenderBits.ALL; // = 7
+
+// Interested in women and non-binary only
+const preference3 = GenderBits.WOMAN | GenderBits.NON_BINARY; // = 6
+```
+
+**Querying with Bitwise Operations:**
+
+```typescript
+import { and, sql } from 'drizzle-orm';
+
+// Find profiles where mutual preferences match
+const currentProfile = {
+  id: 'uuid-here',
+  gender: 'man', // Their actual gender
+  genderPreference: 6, // Interested in: woman (2) + non_binary (4)
+};
+
+const genderBits = { 'man': 1, 'woman': 2, 'non_binary': 4 };
+const currentGenderBit = genderBits[currentProfile.gender]; // 1
+
+const matches = await tx
+  .select()
+  .from(profileTable)
+  .where(
+    and(
+      // Their preference includes my gender
+      sql`(${profileTable.genderPreference} & ${currentGenderBit}) > 0`,
+      // My preference includes their gender
+      sql`(${currentProfile.genderPreference} & 
+        CASE ${profileTable.gender}
+          WHEN 'man' THEN 1
+          WHEN 'woman' THEN 2
+          WHEN 'non_binary' THEN 4
+        END) > 0`,
+    ),
+  );
+```
+
+Complete Dating App Example
+
+**Models:**
+
+```json
+// models/profile.json
+{
+  "name": "Profile",
+  "enums": [
+    {
+      "name": "Gender",
+      "values": ["man", "woman", "non_binary"]
+    }
+  ],
+  "fields": [
+    {"name": "id", "type": "uuid", "primaryKey": true},
+    {"name": "userId", "type": "uuid", "required": true, "unique": true},
+    {"name": "displayName", "type": "string", "required": true},
+    {"name": "gender", "type": "enum", "enumName": "Gender", "required": true},
+    {"name": "genderPreference", "type": "integer", "required": true, "defaultValue": 7},
+    {"name": "location", "type": "point", "required": true, "index": true},
+    {"name": "maxDistance", "type": "integer", "defaultValue": 50}
+  ],
+  "timestamps": true
+}
+
+// models/swipe.json
+{
+  "name": "Swipe",
+  "fields": [
+    {"name": "id", "type": "uuid", "primaryKey": true},
+    {"name": "swiperId", "type": "uuid", "required": true},
+    {"name": "swipedId", "type": "uuid", "required": true},
+    {"name": "liked", "type": "boolean", "required": true}
+  ],
+  "indexes": [
+    {"fields": ["swiperId", "swipedId"], "unique": true}
+  ]
+}
+```
+
+**Find Matching Profiles Query:**
+
+```typescript
+import { and, ne, sql } from 'drizzle-orm';
+
+async function findMatches(currentProfileId: string, tx: DbTransaction) {
+  const currentProfile = await tx
+    .select()
+    .from(profileTable)
+    .where(eq(profileTable.id, currentProfileId))
+    .limit(1)
+    .then((rows) => rows[0]);
+
+  const genderBits = { 'man': 1, 'woman': 2, 'non_binary': 4 };
+  const myGenderBit = genderBits[currentProfile.gender];
+
+  return await tx
+    .select()
+    .from(profileTable)
+    .where(
+      and(
+        ne(profileTable.id, currentProfileId),
+        // Mutual gender preference match
+        sql`(${profileTable.genderPreference} & ${myGenderBit}) > 0`,
+        sql`(${currentProfile.genderPreference} & 
+          CASE ${profileTable.gender}
+            WHEN 'man' THEN 1
+            WHEN 'woman' THEN 2  
+            WHEN 'non_binary' THEN 4
+          END) > 0`,
+        // Within distance (PostGIS)
+        sql`ST_DWithin(
+          ${profileTable.location}::geography,
+          ${currentProfile.location}::geography,
+          ${currentProfile.maxDistance * 1000}
+        )`,
+        // Not already swiped
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${swipeTable}
+          WHERE ${swipeTable.swiperId} = ${currentProfileId}
+            AND ${swipeTable.swipedId} = ${profileTable.id}
+        )`,
+      ),
+    );
+}
+```
+
+### Array of Enums (Alternative)
+
+For cases where you need to list all selected values individually:
+
+```json
+{
+  "name": "genderPreferences",
+  "type": "enum",
+  "enumName": "Gender",
+  "array": true
+}
+```
+
+**Generated:**
+
+```typescript
+genderPreferences: genderEnum('gender_preferences').array();
+```
+
+### ⚡ Performance Comparison
+
+| Feature           | Bitwise Integer | Array of Enums |
+| ----------------- | --------------- | -------------- |
+| Storage           | 4 bytes         | Variable       |
+| Query Performance | Very Fast       | Slower         |
+| Index Support     | Standard        | GIN needed     |
+| Readability       | Needs mapping   | Clear          |
+| Max Values        | 32 (or 64)      | Unlimited      |
+| Best For          | Flags, filters  | Lists, arrays  |
+
+### When to Use Which?
+
+**Standard Enum:**
+
+- Field has only ONE value (e.g., user status, account type)
+- Need PostgreSQL enum constraints
+- Want database-level type safety
+
+**Bitwise Enum (Integer):**
+
+- Field can have MULTIPLE values (e.g., preferences, permissions)
+- Need fast bitwise queries
+- Have < 32 distinct values
+- Want efficient storage and indexing
+
+**Array of Enums:**
+
+- Need to list all selected values
+- More readable code
+- Don't need maximum query performance
+- Have > 32 possible values
+
+### CockroachDB Compatibility
+
+**PostgreSQL Enums:**
+
+- **Supported** in CockroachDB v22.2+ (December 2022)
+- **Not supported** in earlier CockroachDB versions
+- Alternative: Use `varchar` with `CHECK` constraints for older versions
+
+**Bitwise Integer Operations:**
+
+- **Fully supported** in all CockroachDB versions
+- Standard bitwise operators (`&`, `|`, `^`) work identically
+- Recommended for multi-value scenarios on CockroachDB
+
+**Generated Code Note:** When using `--dbType cockroachdb`, generated schemas include compatibility comments reminding
+you of the v22.2+ requirement for enum types.
+
 ## OpenAPI Documentation
 
-COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints and provides automatic documentation endpoints.
+COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints and provides automatic
+documentation endpoints.
 
 ### Auto-Generated Documentation Endpoints
 
 When you call `initializeGenerated()`, two documentation endpoints are automatically registered:
 
 #### `/cog/openapi.json`
+
 - Serves the complete OpenAPI 3.1.0 specification in JSON format
 - Ready to use immediately - no configuration required
 - Import into Postman, Insomnia, or use with OpenAPI Generator
 
 #### `/cog/reference`
+
 - Beautiful, interactive API documentation powered by [Scalar](https://scalar.com)
 - Modern UI with search, "Try it" functionality, and dark mode
 - Browse endpoints by model/tag
@@ -386,10 +746,13 @@ Edit `generated/rest/index.ts` to change the documentation theme:
 
 ```typescript
 // Find the /cog/reference endpoint in registerRestRoutes()
-app.get('/cog/reference', apiReference({
-  url: '/cog/openapi.json',
-  theme: 'solarized',  // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
-}) as any);
+app.get(
+  '/cog/reference',
+  apiReference({
+    url: '/cog/openapi.json',
+    theme: 'solarized', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
+  }) as any,
+);
 ```
 
 **Add Custom Endpoints:**
@@ -417,20 +780,20 @@ const customSpec = {
                 type: 'object',
                 properties: {
                   email: { type: 'string', format: 'email' },
-                  password: { type: 'string' }
+                  password: { type: 'string' },
                 },
-                required: ['email', 'password']
-              }
-            }
-          }
+                required: ['email', 'password'],
+              },
+            },
+          },
         },
         responses: {
           '200': {
-            description: 'Login successful'
-          }
-        }
-      }
-    }
+            description: 'Login successful',
+          },
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
