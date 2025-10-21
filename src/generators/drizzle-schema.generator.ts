@@ -53,11 +53,14 @@ export class DrizzleSchemaGenerator {
    * Generate schema for a single model
    */
   private generateModelSchema(model: ModelDefinition): string {
-    const imports = this.generateImports(model);
-    const enumDefinitions = this.generateEnumDefinitions(model);
-    const tableDefinition = this.generateTableDefinition(model);
-    const typeExports = this.generateTypeExports(model);
-    const zodSchemas = this.generateZodSchemas(model);
+    // Add foreign key fields from incoming relationships
+    const enhancedModel = this.addForeignKeyFields(model);
+    
+    const imports = this.generateImports(enhancedModel);
+    const enumDefinitions = this.generateEnumDefinitions(enhancedModel);
+    const tableDefinition = this.generateTableDefinition(enhancedModel);
+    const typeExports = this.generateTypeExports(enhancedModel);
+    const zodSchemas = this.generateZodSchemas(enhancedModel);
 
     return `${imports}\n\n${enumDefinitions}${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
   }
@@ -824,5 +827,50 @@ export class DrizzleSchemaGenerator {
   private toSnakeCase(str: string): string {
     return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
       .replace(/^_/, '');
+  }
+
+  /**
+   * Add foreign key fields from incoming oneToMany relationships
+   */
+  private addForeignKeyFields(model: ModelDefinition): ModelDefinition {
+    // Create a copy of the model to avoid mutations
+    const enhancedModel = { ...model, fields: [...model.fields] };
+    
+    // Find all models that have oneToMany relationships pointing to this model
+    for (const sourceModel of this.models) {
+      if (!sourceModel.relationships) continue;
+      
+      for (const rel of sourceModel.relationships) {
+        if (rel.type === 'oneToMany' && rel.target === model.name) {
+          // Check if the foreign key field already exists
+          const foreignKeyField = rel.foreignKey || this.toSnakeCase(sourceModel.name) + 'Id';
+          const fieldExists = enhancedModel.fields.some(f => f.name === foreignKeyField);
+          
+          if (!fieldExists) {
+            // Find the primary key of the source model
+            const sourcePK = sourceModel.fields.find(f => f.primaryKey);
+            if (sourcePK) {
+              // Add the foreign key field
+              const fkField: FieldDefinition = {
+                name: foreignKeyField,
+                type: sourcePK.type, // Match the type of the source primary key
+                required: false, // Usually nullable for oneToMany
+                references: {
+                  model: sourceModel.name,
+                  field: sourcePK.name
+                }
+              };
+              
+              // Add index for the foreign key for better performance
+              fkField.index = true;
+              
+              enhancedModel.fields.push(fkField);
+            }
+          }
+        }
+      }
+    }
+    
+    return enhancedModel;
   }
 }
