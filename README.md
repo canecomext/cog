@@ -155,19 +155,18 @@ The example showcases:
 deno run -A src/cli.ts [options]
 ```
 
-| Option              | Description                                   | Default       |
-| ------------------- | --------------------------------------------- | ------------- |
-| `--modelsPath`      | Path to JSON model files                      | `./models`    |
-| `--outputPath`      | Where to generate code                        | `./generated` |
-| `--dbType`          | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
-| `--schema`          | Database schema name                          | (default)     |
-| `--no-postgis`      | Disable PostGIS support                       | enabled       |
-| `--no-timestamps`   | Disable automatic timestamps globally         | enabled       |
-| `--no-softDeletes`  | Disable soft delete feature globally          | enabled       |
-| `--no-documentation`| Disable OpenAPI documentation generation      | enabled       |
-| `--docsPath`        | Base path for documentation endpoints         | `/cog`        |
-| `--verbose`         | Show generated file paths                     | false         |
-| `--help`            | Show help message                             | -             |
+| Option               | Description                                   | Default       |
+| -------------------- | --------------------------------------------- | ------------- |
+| `--modelsPath`       | Path to JSON model files                      | `./models`    |
+| `--outputPath`       | Where to generate code                        | `./generated` |
+| `--dbType`           | Database type (`postgresql` or `cockroachdb`) | `postgresql`  |
+| `--schema`           | Database schema name                          | (default)     |
+| `--no-postgis`       | Disable PostGIS support                       | enabled       |
+| `--no-timestamps`    | Disable automatic timestamps globally         | enabled       |
+| `--no-softDeletes`   | Disable soft delete feature globally          | enabled       |
+| `--no-documentation` | Disable OpenAPI documentation generation      | enabled       |
+| `--verbose`          | Show generated file paths                     | false         |
+| `--help`             | Show help message                             | -             |
 
 ### Global Feature Flags
 
@@ -218,6 +217,7 @@ without timestamps even if `"timestamps": true` is set in individual model JSON 
 #### `--no-documentation`
 
 Disables OpenAPI documentation generation entirely:
+
 - No `openapi.ts` or `openapi.json` files generated
 - No documentation endpoints registered
 - No Scalar API reference UI
@@ -230,23 +230,8 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-docum
 
 **Use Case:** Production builds where you don't want to expose API documentation.
 
-#### `--docsPath <path>`
-
-Customize the base path for documentation endpoints (default: `/cog`):
-
-```bash
-# Use /docs instead of /cog
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /docs
-
-# Use /api/documentation
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api/documentation
-```
-
-**Generated endpoints:**
-- `{docsPath}/openapi.json` - OpenAPI specification
-- `{docsPath}/reference` - Scalar API reference UI
-
-**Use Case:** Integrate with existing API documentation structure or avoid path conflicts.
+**Note:** The documentation base path can be customized at runtime via `InitializationConfig.docs.baseUrl` (default:
+`/docs`). See the OpenAPI Documentation section below for details.
 
 ### Validation is Always Enabled
 
@@ -730,13 +715,13 @@ documentation endpoints.
 
 When you call `initializeGenerated()`, two documentation endpoints are automatically registered:
 
-#### `/cog/openapi.json`
+#### `/docs/openapi.json`
 
 - Serves the complete OpenAPI 3.1.0 specification in JSON format
 - Ready to use immediately - no configuration required
 - Import into Postman, Insomnia, or use with OpenAPI Generator
 
-#### `/cog/reference`
+#### `/docs/reference`
 
 - Beautiful, interactive API documentation powered by [Scalar](https://scalar.com)
 - Modern UI with search, "Try it" functionality, and dark mode
@@ -762,8 +747,8 @@ await initializeGenerated({
 Deno.serve({ port: 3000 }, app.fetch);
 
 // Documentation is now automatically available at:
-// http://localhost:3000/cog/openapi.json - OpenAPI JSON spec
-// http://localhost:3000/cog/reference - Interactive API docs
+// http://localhost:3000/docs/openapi.json - OpenAPI JSON spec
+// http://localhost:3000/docs/reference - Interactive API docs
 ```
 
 ### Generated Files
@@ -775,16 +760,37 @@ COG also generates static documentation files:
 
 ### Customization
 
+**Customize Documentation Path:**
+
+You can change the documentation base URL at runtime:
+
+```typescript
+await initializeGenerated({
+  database: {
+    connectionString: 'postgresql://user:pass@localhost/mydb',
+  },
+  app,
+  docs: {
+    enabled: true, // Enable/disable docs endpoints (default: true)
+    baseUrl: '/docs/v1', // Custom path (default: '/docs')
+  },
+});
+
+// Docs now available at:
+// http://localhost:3000/docs/v1/openapi.json
+// http://localhost:3000/docs/v1/reference
+```
+
 **Change Scalar Theme:**
 
 Edit `generated/rest/index.ts` to change the documentation theme:
 
 ```typescript
-// Find the /cog/reference endpoint in registerRestRoutes()
+// Find the reference endpoint in registerRestRoutes()
 app.get(
-  '/cog/reference',
+  `${docsPrefix}/reference`,
   Scalar({
-    url: '/cog/openapi.json',
+    url: `${docsPrefix}/openapi.json`,
     theme: 'solarized', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
   }) as any,
 );
@@ -845,7 +851,7 @@ const customSpec = {
 const completeSpec = mergeOpenAPISpec(customSpec);
 
 // Update the endpoint in your app or generated/rest/index.ts
-app.get('/cog/openapi.json', (c) => c.json(completeSpec));
+app.get('/docs/openapi.json', (c) => c.json(completeSpec));
 ```
 
 ### Features

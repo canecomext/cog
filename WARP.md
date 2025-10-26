@@ -566,15 +566,15 @@ constraints: required, unique, length, precision, scale, and type checking.
 **Custom Pluralization** Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
 
 **OpenAPI Documentation** Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints with automatically
-generated documentation endpoints (`/cog/openapi.json` and `/cog/reference`). Includes complete request/response
+generated documentation endpoints (`/docs/openapi.json` and `/docs/reference` by default, runtime configurable). Includes complete request/response
 schemas, can be extended with custom endpoints, and features beautiful Scalar API Reference UI.
 
 ## OpenAPI Specification Generation
 
 COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
 
-> **Configuration:** Documentation generation can be disabled with `--no-documentation` or customized with
-> `--docsPath <path>`. See [Command-Line Usage](#command-line-usage) for details.
+> **Configuration:** Documentation generation can be disabled with `--no-documentation` at generation time.
+> The documentation base URL path is runtime-configurable via `InitializationConfig.docs.baseUrl`. See [Command-Line Usage](#command-line-usage) for details.
 
 ### Generated Files
 
@@ -594,14 +594,14 @@ COG automatically generates a complete OpenAPI 3.1.0 specification for all gener
 
 COG automatically registers two documentation endpoints when you call `initializeGenerated()`:
 
-**`/cog/openapi.json`** (default path, configurable with `--docsPath`)
+**`/docs/openapi.json`** (default path, runtime configurable)
 
 - Serves the complete OpenAPI 3.1.0 specification in JSON format
 - Accessible immediately after initialization
 - No additional configuration required
 - Use for importing into API clients, generating SDKs, or programmatic access
 
-**`/cog/reference`** (default path, configurable with `--docsPath`)
+**`/docs/reference`** (default path, runtime configurable)
 
 - Interactive API documentation powered by Scalar
 - Beautiful, modern UI with search and "Try it" functionality
@@ -609,14 +609,23 @@ COG automatically registers two documentation endpoints when you call `initializ
 - Mobile-responsive with dark mode support
 - Browse endpoints by model/tag
 
-**Path Configuration:**
+**Runtime Path Configuration:**
+
+```typescript
+await initializeGenerated({
+  database: { connectionString: 'postgresql://...' },
+  app,
+  docs: {
+    enabled: true,           // Enable/disable docs endpoints (default: true)
+    baseUrl: '/docs/v1', // Custom base path (default: '/docs')
+  },
+});
+// Docs available at: /docs/v1/openapi.json and /docs/v1/reference
+```
+
+**Disable Documentation at Generation Time:**
 
 ```bash
-# Use custom path
-deno run -A src/cli.ts --modelsPath ./models --docsPath /docs
-# Generates: /docs/openapi.json and /docs/reference
-
-# Disable documentation
 deno run -A src/cli.ts --modelsPath ./models --no-documentation
 # No documentation endpoints or files generated
 ```
@@ -639,8 +648,8 @@ await initializeGenerated({
 Deno.serve({ port: 3000 }, app.fetch);
 
 // Documentation is now automatically available at:
-// - http://localhost:3000/cog/openapi.json
-// - http://localhost:3000/cog/reference
+// - http://localhost:3000/docs/openapi.json
+// - http://localhost:3000/docs/reference
 ```
 
 ### What's Included
@@ -683,9 +692,9 @@ Edit `generated/rest/index.ts`:
 ```typescript
 // Find this section in registerRestRoutes()
 app.get(
-  '/cog/reference',
+  `${docsPrefix}/reference`,
   Scalar({
-    url: '/cog/openapi.json',
+    url: `${docsPrefix}/openapi.json`,
     theme: 'solarized', // Change theme: 'alternate', 'default', 'moon', 'purple', 'solarized'
   }) as any,
 );
@@ -713,7 +722,7 @@ const customSpec = {
 const completeSpec = mergeOpenAPISpec(customSpec);
 
 // Update the endpoint in generated/rest/index.ts or your main app
-app.get('/cog/openapi.json', (c) => c.json(completeSpec));
+app.get('/docs/openapi.json', (c) => c.json(completeSpec));
 ```
 
 ### Advanced OpenAPI Customization
@@ -801,7 +810,7 @@ const customSpec = {
 const completeSpec = mergeOpenAPISpec(customSpec);
 
 // Serve the customized specification
-app.get('/cog/openapi.json', (c) => c.json(completeSpec));
+app.get('/docs/openapi.json', (c) => c.json(completeSpec));
 ```
 
 ### Schema Type Mapping
@@ -917,7 +926,6 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 #### Documentation Options
 
 - `--no-documentation` - Disable OpenAPI documentation generation (default: enabled)
-- `--docsPath <path>` - Base path for documentation endpoints (default: `/cog`)
 
 #### Output Options
 
@@ -1001,7 +1009,7 @@ Disables OpenAPI documentation generation entirely:
 **Effect:**
 
 - No `openapi.ts` or `openapi.json` files generated in the `rest/` directory
-- No documentation endpoints (`/cog/openapi.json`, `/cog/reference`) registered
+- No documentation endpoints registered
 - No Scalar API reference UI included
 - Reduces generated code size and eliminates documentation dependencies
 
@@ -1015,34 +1023,7 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-docum
 **Use Case:** Production builds where you don't want to expose API documentation, or when you have a custom
 documentation solution.
 
-#### `--docsPath <path>`
-
-Customize the base path for documentation endpoints:
-
-**Effect:**
-
-- Changes the base path from the default `/cog` to your specified path
-- Updates both OpenAPI spec endpoint and Scalar reference UI paths
-- Helps avoid path conflicts with existing routes
-
-**Examples:**
-
-```bash
-# Use /docs as the base path
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /docs
-# Generates: /docs/openapi.json and /docs/reference
-
-# Use /api-docs as the base path
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api-docs
-# Generates: /api-docs/openapi.json and /api-docs/reference
-
-# Use a nested path
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api/v1/documentation
-# Generates: /api/v1/documentation/openapi.json and /api/v1/documentation/reference
-```
-
-**Use Case:** Integrate with existing API documentation structure, follow organizational standards, or avoid route
-conflicts.
+**Note:** The documentation base path is now runtime-configurable via `InitializationConfig.docs.baseUrl` (default: `/docs`). You can enable/disable docs and customize the path when calling `initializeGenerated()`.
 
 #### Priority Rules
 

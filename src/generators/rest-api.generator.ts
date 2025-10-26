@@ -6,15 +6,13 @@ import { ModelDefinition } from '../types/model.types.ts';
 export class RestAPIGenerator {
   private models: ModelDefinition[];
   private docsEnabled: boolean;
-  private docsPath: string;
 
   constructor(
     models: ModelDefinition[],
-    options: { docsEnabled?: boolean; docsPath?: string } = {},
+    options: { docsEnabled?: boolean } = {},
   ) {
     this.models = models;
     this.docsEnabled = options.docsEnabled !== false;
-    this.docsPath = options.docsPath || '/cog';
   }
 
   /**
@@ -378,9 +376,12 @@ import { Scalar } from '@scalar/hono-api-reference';`;
  * Note: Global middlewares should be registered before calling this function
  * @param app - The Hono app instance
  * @param baseUrl - Optional base URL prefix for API routes (defaults to '/api')
+ * @param docs - Optional documentation configuration
  */
-export function registerRestRoutes(app: Hono<any>, baseUrl?: string) {
+export function registerRestRoutes(app: Hono<any>, baseUrl?: string, docs?: { enabled?: boolean; baseUrl?: string }) {
   const apiPrefix = baseUrl || '/api';
+  const docsEnabled = docs?.enabled !== false; // Default to true if docs were generated
+  const docsPrefix = docs?.baseUrl || '/docs';
   
   // Register model routes
 `;
@@ -403,13 +404,13 @@ ${
         return `        '${plural}'`;
       }).join(',\n')
     }
-      ]${
-      this.docsEnabled
-        ? `,
+      ]${this.docsEnabled ? `,
       documentation: {
-        openapi: '${this.docsPath}/openapi.json',
-        reference: '${this.docsPath}/reference'
-      }`
+        openapi: \`\${docsPrefix}/openapi.json\`,
+        reference: \`\${docsPrefix}/reference\`
+      }` : ''}
+    });
+  });
         : ''
     }
     });
@@ -418,16 +419,18 @@ ${
 
     if (this.docsEnabled) {
       code += `
-  // OpenAPI documentation endpoints
-  app.get('${this.docsPath}/openapi.json', (c) => {
-    return c.json(generatedOpenAPISpec);
-  });
+  // OpenAPI documentation endpoints (only registered if docsEnabled is true)
+  if (docsEnabled) {
+    app.get(\`\${docsPrefix}/openapi.json\`, (c) => {
+      return c.json(generatedOpenAPISpec);
+    });
 
-  // Scalar API reference documentation
-  app.get('${this.docsPath}/reference', Scalar({
-    url: '${this.docsPath}/openapi.json',
-    theme: 'purple',
-  }) as any);
+    // Scalar API reference documentation
+    app.get(\`\${docsPrefix}/reference\`, Scalar({
+      url: \`\${docsPrefix}/openapi.json\`,
+      theme: 'purple',
+    }) as any);
+  }
 `;
     }
 

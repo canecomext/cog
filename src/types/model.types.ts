@@ -134,7 +134,6 @@ export interface GeneratorConfig {
   };
   documentation?: {
     enabled?: boolean; // Enable/disable documentation generation (default: true)
-    path?: string; // Base path for documentation endpoints (default: '/cog')
   };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';

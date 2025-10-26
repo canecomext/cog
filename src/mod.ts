@@ -2,15 +2,15 @@
  * Main module exports for the CRUD Operations Generator
  */
 
-import { ModelParser } from "./parser/model-parser.ts";
-import { DrizzleSchemaGenerator } from "./generators/drizzle-schema.generator.ts";
-import { DatabaseInitGenerator } from "./generators/database-init.generator.ts";
-import { DomainAPIGenerator } from "./generators/domain-api.generator.ts";
-import { RestAPIGenerator } from "./generators/rest-api.generator.ts";
-import { OpenAPIGenerator } from "./generators/openapi.generator.ts";
-import { GeneratorConfig } from "./types/model.types.ts";
+import { ModelParser } from './parser/model-parser.ts';
+import { DrizzleSchemaGenerator } from './generators/drizzle-schema.generator.ts';
+import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
+import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
+import { RestAPIGenerator } from './generators/rest-api.generator.ts';
+import { OpenAPIGenerator } from './generators/openapi.generator.ts';
+import { GeneratorConfig } from './types/model.types.ts';
 
-export * from "./types/model.types.ts";
+export * from './types/model.types.ts';
 
 /**
  * Generate CRUD backend code from model definitions
@@ -21,14 +21,14 @@ export * from "./types/model.types.ts";
 export async function generateFromModels(
   modelsPath: string,
   outputPath: string,
-  options: Partial<GeneratorConfig> = {}
+  options: Partial<GeneratorConfig> = {},
 ) {
   // Default configuration
   const config: GeneratorConfig = {
     modelsPath,
     outputPath,
     database: {
-      type: options.database?.type || "postgresql",
+      type: options.database?.type || 'postgresql',
       postgis: options.database?.postgis !== false,
       schema: options.database?.schema,
     },
@@ -39,11 +39,10 @@ export async function generateFromModels(
     },
     documentation: {
       enabled: options.documentation?.enabled !== false,
-      path: options.documentation?.path || '/cog',
     },
     naming: {
-      tableNaming: "snake_case",
-      columnNaming: "snake_case",
+      tableNaming: 'snake_case',
+      columnNaming: 'snake_case',
     },
     verbose: options.verbose,
   };
@@ -55,11 +54,11 @@ export async function generateFromModels(
   const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
   if (errors.length > 0) {
-    const hasErrors = errors.some((e) => e.severity === "error");
-    console.log(errors.filter((e) => e.severity === "error"));
+    const hasErrors = errors.some((e) => e.severity === 'error');
+    console.log(errors.filter((e) => e.severity === 'error'));
 
     if (hasErrors) {
-      throw new Error("Generation aborted due to validation errors");
+      throw new Error('Generation aborted due to validation errors');
     }
   }
 
@@ -84,7 +83,7 @@ export async function generateFromModels(
 
   // Generate Drizzle schemas
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
-    isCockroachDB: config.database.type === "cockroachdb",
+    isCockroachDB: config.database.type === 'cockroachdb',
     postgis: config.database.postgis,
   });
   const schemas = schemaGenerator.generateSchemas();
@@ -96,10 +95,10 @@ export async function generateFromModels(
     postgis: config.database.postgis,
   });
 
-  files.set("db/database.ts", dbInitGenerator.generateDatabaseInit());
+  files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());
   files.set(
-    "db/initialize-database.ts",
-    dbInitGenerator.generateDatabaseInitialization()
+    'db/initialize-database.ts',
+    dbInitGenerator.generateDatabaseInitialization(),
   );
 
   // Generate domain APIs
@@ -110,7 +109,6 @@ export async function generateFromModels(
   // Generate REST APIs
   const restGenerator = new RestAPIGenerator(models, {
     docsEnabled: config.documentation?.enabled,
-    docsPath: config.documentation?.path,
   });
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
@@ -123,7 +121,7 @@ export async function generateFromModels(
   }
 
   // Generate main index file
-  files.set("index.ts", generateMainIndex(models));
+  files.set('index.ts', generateMainIndex(models));
 
   // Step 3: Write files
   await writeGeneratedFiles(outputPath, files, verbose);
@@ -156,7 +154,11 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   database: DatabaseConfig;
   app: Hono<Env>;
   api?: {
-    baseUrl?: string; // Optional base URL prefix for API routes (e.g., '/api/v1')
+    baseUrl?: string; // Optional base URL prefix for API routes (e.g., '/api/v1', default: '/api')
+  };
+  docs?: {
+    enabled?: boolean; // Enable/disable documentation endpoints (default: true if generated)
+    baseUrl?: string; // Optional base URL prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
   };
   hooks?: {
     [modelName: string]: any;
@@ -173,19 +175,21 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   const { db, sql } = await connect(config.database);
 
   // Register REST routes after all global middlewares
-  registerRestRoutes(config.app, config.api?.baseUrl);
+  registerRestRoutes(config.app, config.api?.baseUrl, config.docs);
 
   // Initialize domain layers with hooks if provided
   if (config.hooks) {
-    ${models
+    ${
+    models
       .map(
         (m) => `
     if (config.hooks.${m.name.toLowerCase()}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain, 
         new domain.${m.name}Domain(config.hooks.${m.name.toLowerCase()}));
-    }`
+    }`,
       )
-      .join("")}
+      .join('')
+  }
   }
 
   return {
@@ -211,14 +215,14 @@ export type { DefaultEnv } from './rest/types.ts';
 async function writeGeneratedFiles(
   outputPath: string,
   files: Map<string, string>,
-  verbose = false
+  verbose = false,
 ) {
   // Create output directory
   await Deno.mkdir(outputPath, { recursive: true });
 
   for (const [relativePath, content] of files) {
     const fullPath = `${outputPath}/${relativePath}`;
-    const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
 
     // Create directory if needed
     await Deno.mkdir(dir, { recursive: true });

@@ -27,8 +27,7 @@ async function main() {
       timestamps: args.timestamps !== false
     },
     documentation: {
-      enabled: args.documentation !== false,
-      path: args.docsPath || '/cog'
+      enabled: args.documentation !== false
     },
     verbose
   });
@@ -85,7 +84,6 @@ Options:
   --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
   --no-documentation     Disable OpenAPI documentation generation
-  --docsPath <path>      Base path for documentation endpoints (default: /cog)
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 
