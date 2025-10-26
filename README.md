@@ -230,7 +230,7 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-docum
 
 **Use Case:** Production builds where you don't want to expose API documentation.
 
-**Note:** The documentation base path can be customized at runtime via `InitializationConfig.docs.baseUrl` (default:
+**Note:** The documentation base path can be customized at runtime via `InitializationConfig.docs.basePath` (default:
 `/docs`). See the OpenAPI Documentation section below for details.
 
 ### Validation is Always Enabled
@@ -771,8 +771,8 @@ await initializeGenerated({
   },
   app,
   docs: {
-    enabled: true, // Enable/disable docs endpoints (default: true)
-    baseUrl: '/docs/v1', // Custom path (default: '/docs')
+    enabled: true,           // Enable/disable docs endpoints (default: true)
+    basePath: '/docs/v1', // Custom path (default: '/docs')
   },
 });
 

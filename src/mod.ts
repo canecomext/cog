@@ -154,11 +154,11 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   database: DatabaseConfig;
   app: Hono<Env>;
   api?: {
-    baseUrl?: string; // Optional base URL prefix for API routes (e.g., '/api/v1', default: '/api')
+    basePath?: string; // Optional base path prefix for API routes (e.g., '/api/v1', default: '/api')
   };
   docs?: {
     enabled?: boolean; // Enable/disable documentation endpoints (default: true if generated)
-    baseUrl?: string; // Optional base URL prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
+    basePath?: string; // Optional base path prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
   };
   hooks?: {
     [modelName: string]: any;
@@ -175,7 +175,7 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   const { db, sql } = await connect(config.database);
 
   // Register REST routes after all global middlewares
-  registerRestRoutes(config.app, config.api?.baseUrl, config.docs);
+  registerRestRoutes(config.app, config.api?.basePath, config.docs);
 
   // Initialize domain layers with hooks if provided
   if (config.hooks) {

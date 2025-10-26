@@ -375,13 +375,13 @@ import { Scalar } from '@scalar/hono-api-reference';`;
  * Register all REST routes
  * Note: Global middlewares should be registered before calling this function
  * @param app - The Hono app instance
- * @param baseUrl - Optional base URL prefix for API routes (defaults to '/api')
+ * @param basePath - Optional base path prefix for API routes (defaults to '/api')
  * @param docs - Optional documentation configuration
  */
-export function registerRestRoutes(app: Hono<any>, baseUrl?: string, docs?: { enabled?: boolean; baseUrl?: string }) {
-  const apiPrefix = baseUrl || '/api';
+export function registerRestRoutes(app: Hono<any>, basePath?: string, docs?: { enabled?: boolean; basePath?: string }) {
+  const apiPrefix = basePath || '/api';
   const docsEnabled = docs?.enabled !== false; // Default to true if docs were generated
-  const docsPrefix = docs?.baseUrl || '/docs';
+  const docsPrefix = docs?.basePath || '/docs';
   
   // Register model routes
 `;
@@ -396,7 +396,7 @@ export function registerRestRoutes(app: Hono<any>, baseUrl?: string, docs?: { en
   app.get(\`\${apiPrefix}\`, (c) => {
     return c.json({
       version: '1.0.0',
-      baseUrl: apiPrefix,
+      basePath: apiPrefix,
       endpoints: [
 ${
       this.models.map((m) => {

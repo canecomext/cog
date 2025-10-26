@@ -574,7 +574,7 @@ schemas, can be extended with custom endpoints, and features beautiful Scalar AP
 COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
 
 > **Configuration:** Documentation generation can be disabled with `--no-documentation` at generation time.
-> The documentation base URL path is runtime-configurable via `InitializationConfig.docs.baseUrl`. See [Command-Line Usage](#command-line-usage) for details.
+> The documentation base path is runtime-configurable via `InitializationConfig.docs.basePath`. See [Command-Line Usage](#command-line-usage) for details.
 
 ### Generated Files
 
@@ -617,7 +617,7 @@ await initializeGenerated({
   app,
   docs: {
     enabled: true,           // Enable/disable docs endpoints (default: true)
-    baseUrl: '/docs/v1', // Custom base path (default: '/docs')
+    basePath: '/docs/v1', // Custom base path (default: '/docs')
   },
 });
 // Docs available at: /docs/v1/openapi.json and /docs/v1/reference
@@ -1023,7 +1023,7 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-docum
 **Use Case:** Production builds where you don't want to expose API documentation, or when you have a custom
 documentation solution.
 
-**Note:** The documentation base path is now runtime-configurable via `InitializationConfig.docs.baseUrl` (default: `/docs`). You can enable/disable docs and customize the path when calling `initializeGenerated()`.
+**Note:** The documentation base path is now runtime-configurable via `InitializationConfig.docs.basePath` (default: `/docs`). You can enable/disable docs and customize the path when calling `initializeGenerated()`.
 
 #### Priority Rules
 
