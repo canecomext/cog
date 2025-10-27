@@ -604,8 +604,20 @@ export class DrizzleSchemaGenerator {
     const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
     const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
 
+    // Determine what imports we need based on the primary key types
+    const imports = new Set<string>(['pgTable', 'timestamp', 'primaryKey', 'index']);
+    
+    // Add the appropriate type import for each foreign key
+    const sourceDrizzleType = this.getDrizzleImportForType(sourcePK);
+    if (sourceDrizzleType) imports.add(sourceDrizzleType);
+    else if (sourcePK.type === 'uuid') imports.add('uuid');
+    
+    const targetDrizzleType = this.getDrizzleImportForType(targetPK);
+    if (targetDrizzleType) imports.add(targetDrizzleType);
+    else if (targetPK.type === 'uuid') imports.add('uuid');
+    
     // Generate imports
-    let code = `import { pgTable, uuid, timestamp, primaryKey, index } from 'drizzle-orm/pg-core';
+    let code = `import { ${Array.from(imports).join(', ')} } from 'drizzle-orm/pg-core';
 `;
     code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
 `;
@@ -617,24 +629,15 @@ export class DrizzleSchemaGenerator {
     code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
 `;
 
-    // Add foreign key columns
-    if (sourcePK.type === 'uuid') {
-      code += `  ${sourceFKColumn}: uuid('${sourceFKColumn}')
+    // Generate source foreign key column
+    code += this.generateJunctionFKColumn(sourceFKColumn, sourcePK, sourceModel.name.toLowerCase(), sourcePK.name);
+    code += `,
 `;
-      code += `    .notNull()
-`;
-      code += `    .references(() => ${sourceModel.name.toLowerCase()}Table.${sourcePK.name}, { onDelete: 'cascade' }),
-`;
-    }
 
-    if (targetPK.type === 'uuid') {
-      code += `  ${targetFKColumn}: uuid('${targetFKColumn}')
+    // Generate target foreign key column
+    code += this.generateJunctionFKColumn(targetFKColumn, targetPK, targetModel.name.toLowerCase(), targetPK.name);
+    code += `,
 `;
-      code += `    .notNull()
-`;
-      code += `    .references(() => ${targetModel.name.toLowerCase()}Table.${targetPK.name}, { onDelete: 'cascade' }),
-`;
-    }
 
     // Add timestamps if enabled globally
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
@@ -666,6 +669,44 @@ export class DrizzleSchemaGenerator {
     code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;`;
 
     return code;
+  }
+
+  /**
+   * Generate foreign key column for junction table
+   */
+  private generateJunctionFKColumn(
+    columnName: string,
+    pkField: FieldDefinition,
+    tableName: string,
+    pkName: string
+  ): string {
+    let columnDef = '';
+    
+    // Generate the appropriate column type based on the primary key type
+    switch (pkField.type) {
+      case 'uuid':
+        columnDef = `  ${columnName}: uuid('${columnName}')`;
+        break;
+      case 'string':
+        const maxLength = pkField.maxLength || 255;
+        columnDef = `  ${columnName}: varchar('${columnName}', { length: ${maxLength} })`;
+        break;
+      case 'integer':
+        columnDef = `  ${columnName}: integer('${columnName}')`;
+        break;
+      case 'bigint':
+        columnDef = `  ${columnName}: bigint('${columnName}', { mode: 'number' })`;
+        break;
+      default:
+        // Fallback to text for unknown types
+        columnDef = `  ${columnName}: text('${columnName}')`;
+    }
+    
+    // Add the not null and references modifiers
+    columnDef += `\n    .notNull()`;
+    columnDef += `\n    .references(() => ${tableName}Table.${pkName}, { onDelete: 'cascade' })`;
+    
+    return columnDef;
   }
 
   /**

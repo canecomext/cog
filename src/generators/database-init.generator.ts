@@ -325,6 +325,10 @@ export async function healthCheck(): Promise<boolean> {
 
           if (!sourcePK || !targetPK) continue;
 
+          // Get the SQL types for the foreign key columns
+          const sourceFKType = this.getColumnType(sourcePK).replace(' PRIMARY KEY', '').replace(' NOT NULL', '');
+          const targetFKType = this.getColumnType(targetPK).replace(' PRIMARY KEY', '').replace(' NOT NULL', '');
+
           // Generate the junction table name and columns
           const tableName = rel.through.toLowerCase();
           const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
@@ -332,10 +336,10 @@ export async function healthCheck(): Promise<boolean> {
 
           let tableSQL = `    await sql\`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
-        ${sourceFKColumn} UUID NOT NULL REFERENCES "${
+        ${sourceFKColumn} ${sourceFKType} NOT NULL REFERENCES "${
             this.toSnakeCase(model.name)
           }"(${sourcePK.name}) ON DELETE CASCADE,
-        ${targetFKColumn} UUID NOT NULL REFERENCES "${
+        ${targetFKColumn} ${targetFKType} NOT NULL REFERENCES "${
             this.toSnakeCase(targetModel.name)
           }"(${targetPK.name}) ON DELETE CASCADE,`;
 
