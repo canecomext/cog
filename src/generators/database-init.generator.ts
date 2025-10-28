@@ -47,11 +47,14 @@ ${createPostgis}
     // Drop existing tables (in reverse dependency order)
 ${this.generateTableDropSQL()}
 
-    // Create tables
+    // Create tables (without foreign key constraints)
 ${this.generateTableCreationSQL()}
 
-    // Create junction tables for many-to-many relationships
+    // Create junction tables for many-to-many relationships (without foreign key constraints)
 ${this.generateJunctionTableCreationSQL()}
+
+    // Add foreign key constraints (after all tables exist)
+${this.generateForeignKeyConstraintsSQL()}
 
     // Create indexes
 ${this.generateIndexCreationSQL()}
@@ -336,12 +339,8 @@ export async function healthCheck(): Promise<boolean> {
 
           let tableSQL = `    await sql\`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
-        ${sourceFKColumn} ${sourceFKType} NOT NULL REFERENCES "${
-            this.toSnakeCase(model.name)
-          }"(${sourcePK.name}) ON DELETE CASCADE,
-        ${targetFKColumn} ${targetFKType} NOT NULL REFERENCES "${
-            this.toSnakeCase(targetModel.name)
-          }"(${targetPK.name}) ON DELETE CASCADE,`;
+        ${sourceFKColumn} ${sourceFKType} NOT NULL,
+        ${targetFKColumn} ${targetFKType} NOT NULL,`;
 
           // Add timestamps if enabled
           const hasTimestamps = model.timestamps || targetModel.timestamps;
@@ -429,7 +428,7 @@ export async function healthCheck(): Promise<boolean> {
   }
 
   /**
-   * Generate constraints for a table
+   * Generate constraints for a table (excluding foreign key constraints)
    */
   private generateConstraintsSQL(model: ModelDefinition): string {
     const constraints = [];
@@ -442,24 +441,87 @@ export async function healthCheck(): Promise<boolean> {
       }
     }
 
-    // Foreign key constraints
-    for (const field of model.fields) {
-      if (field.references) {
-        const columnName = this.toSnakeCase(field.name);
-        const refTable = this.toSnakeCase(field.references.model);
-        const refColumn = field.references.field || 'id';
-        const onDelete = field.references.onDelete || 'NO ACTION';
-        const onUpdate = field.references.onUpdate || 'NO ACTION';
+    // Foreign key constraints are now added separately after all tables are created
+    // This avoids circular dependency issues
 
-        constraints.push(
-          `CONSTRAINT "${model.name.toLowerCase()}_${columnName}_fk" ` +
+    return constraints.join(',\n        ');
+  }
+
+  /**
+   * Generate SQL statements for foreign key constraint creation
+   */
+  private generateForeignKeyConstraintsSQL(): string {
+    const constraints: string[] = [];
+
+    // Add FK constraints for main tables
+    for (const model of this.models) {
+      const tableName = this.toSnakeCase(model.name);
+      
+      for (const field of model.fields) {
+        if (field.references) {
+          const columnName = this.toSnakeCase(field.name);
+          const refTable = this.toSnakeCase(field.references.model);
+          const refColumn = field.references.field || 'id';
+          const onDelete = field.references.onDelete || 'NO ACTION';
+          const onUpdate = field.references.onUpdate || 'NO ACTION';
+          const constraintName = `${model.name.toLowerCase()}_${columnName}_fk`;
+
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${constraintName}" ` +
             `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
-            `ON DELETE ${onDelete} ON UPDATE ${onUpdate}`,
-        );
+            `ON DELETE ${onDelete} ON UPDATE ${onUpdate};\`;\n` +
+            `    console.log('Added FK constraint: ${constraintName}');`
+          );
+        }
       }
     }
 
-    return constraints.join(',\n        ');
+    // Add FK constraints for junction tables
+    const processedJunctions = new Set<string>();
+    for (const model of this.models) {
+      if (!model.relationships) continue;
+
+      for (const rel of model.relationships) {
+        if (rel.type === 'manyToMany' && rel.through) {
+          if (processedJunctions.has(rel.through)) continue;
+          processedJunctions.add(rel.through);
+
+          const targetModel = this.models.find((m) => m.name === rel.target);
+          if (!targetModel) continue;
+
+          const sourcePK = model.fields.find((f) => f.primaryKey);
+          const targetPK = targetModel.fields.find((f) => f.primaryKey);
+          if (!sourcePK || !targetPK) continue;
+
+          const tableName = rel.through.toLowerCase();
+          const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
+          const targetFKColumn = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+
+          // Add FK constraint for source table
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${tableName}_${sourceFKColumn}_fk" ` +
+            `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
+              this.toSnakeCase(model.name)
+            }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
+            `    console.log('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`
+          );
+
+          // Add FK constraint for target table
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${tableName}_${targetFKColumn}_fk" ` +
+            `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
+              this.toSnakeCase(targetModel.name)
+            }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
+            `    console.log('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`
+          );
+        }
+      }
+    }
+
+    return constraints.join('\n\n');
   }
 
   /**
