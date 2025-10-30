@@ -14,7 +14,7 @@
     "strict": true
   },
   "tasks": {
-    "generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated",
+    "generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
     "db:init": "deno run -A example-init.ts",
     "run:example": "deno run -A ./example.ts"
   },
