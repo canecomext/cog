@@ -2,7 +2,8 @@ import { type Context, type ErrorHandler, Hono } from '@hono/hono';
 import { HTTPException } from '@hono/hono/http-exception';
 import {
   type DbTransaction,
-  HookContext,
+  DomainHookContext,
+  RestHookContext,
   initializeGenerated,
   userDomain,
   withTransaction,
@@ -48,13 +49,13 @@ async function startServer() {
       domainHooks: {
         user: {
           // Pre-create hook: Validate email format
-          async preCreate(input: any, tx: DbTransaction, context?: HookContext) {
+          async preCreate(input: any, tx: DbTransaction, context?: DomainHookContext) {
             // throw new HTTPException(401, { message: 'Not authorized' });
             return { data: input, context };
           },
 
           // Post-create hook: Enrich response with computed field
-          async postCreate(input: any, result: any, tx: DbTransaction, context?: HookContext) {
+          async postCreate(input: any, result: any, tx: DbTransaction, context?: DomainHookContext) {
             return {
               data: {
                 ...result,
@@ -64,7 +65,7 @@ async function startServer() {
           },
 
           // After-create hook: Log creation (async)
-          async afterCreate(result: any, context?: HookContext) {
+          async afterCreate(result: any, context?: DomainHookContext) {
             console.log(
               `User created: ${result.id} at ${new Date().toISOString()}`,
             );
@@ -75,7 +76,7 @@ async function startServer() {
       restHooks: {
         user: {
           // Pre-create hook: Log HTTP request details
-          async preCreate(input: any, c: any, context?: HookContext) {
+          async preCreate(input: any, c: any, context?: RestHookContext) {
             console.log('HTTP Request:', {
               method: c.req.method,
               path: c.req.path,
@@ -86,7 +87,7 @@ async function startServer() {
           },
 
           // Post-create hook: Add custom response headers
-          async postCreate(input: any, result: any, c: any, context?: HookContext) {
+          async postCreate(input: any, result: any, c: any, context?: RestHookContext) {
             c.header('X-Resource-Id', result.id);
             c.header('X-Created-At', new Date().toISOString());
 
@@ -97,7 +98,7 @@ async function startServer() {
           },
 
           // Pre-findMany hook: Simple authorization check
-          async preFindMany(c: any, context?: HookContext) {
+          async preFindMany(c: any, context?: RestHookContext) {
             // Example: Check for authorization header
             const auth = c.req.header('authorization');
             if (!auth && c.req.query('requireAuth') === 'true') {

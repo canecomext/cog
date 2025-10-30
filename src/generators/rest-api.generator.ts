@@ -59,12 +59,12 @@ import type { DefaultEnv } from './types.ts';
  * ${modelName} REST Routes
  * Handles HTTP endpoints with optional pre/post hooks at the REST layer
  */
-class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string, any>> {
-  public routes: Hono<{ Variables: EnvVars }>;
-  private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
+class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>> {
+  public routes: Hono<{ Variables: RestEnvVars }>;
+  private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>;
 
-  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
-    this.routes = new Hono<{ Variables: EnvVars }>();
+  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>) {
+    this.routes = new Hono<{ Variables: RestEnvVars }>();
     this.hooks = hooks || {};
     this.registerRoutes();
   }
@@ -75,7 +75,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
      * List all ${modelNamePlural} with pagination
      */
     this.routes.get('/', async (c) => {
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preFindMany) {
@@ -124,7 +124,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
      */
     this.routes.get('/:id', async (c) => {
       let id = c.req.param('id');
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preFindById) {
@@ -163,7 +163,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
      */
     this.routes.post('/', async (c) => {
       let body = await c.req.json();
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preCreate) {
@@ -197,7 +197,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
     this.routes.put('/:id', async (c) => {
       let id = c.req.param('id');
       let body = await c.req.json();
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preUpdate) {
@@ -232,7 +232,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
     this.routes.patch('/:id', async (c) => {
       let id = c.req.param('id');
       let body = await c.req.json();
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preUpdate) {
@@ -266,7 +266,7 @@ class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string
      */
     this.routes.delete('/:id', async (c) => {
       let id = c.req.param('id');
-      let context = c.var as EnvVars;
+      let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preDelete) {
@@ -301,8 +301,8 @@ ${this.generateRelationshipEndpointsWithHooks(model)}
 export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
 
 // Export function to initialize with hooks
-export function initialize${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string, any>>(
-  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>
+export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>>(
+  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>
 ) {
   const instance = new ${modelName}RestRoutes(hooks);
   ${modelNameLower}Routes = instance.routes as any;
@@ -318,20 +318,20 @@ export function initialize${modelName}RestRoutes<EnvVars extends Record<string, 
     return `import { Context } from '@hono/hono';
 
 /**
- * Hook context that receives all variables from the Hono context.
- * The generic EnvVars type will contain all custom variables defined
+ * REST hook context that receives all variables from the Hono context.
+ * The generic RestEnvVars type will contain all custom variables defined
  * in your application's Env type.
  */
-export type HookContext<EnvVars extends Record<string, any> = Record<string, any>> = EnvVars;
+export type RestHookContext<RestEnvVars extends Record<string, any> = Record<string, any>> = RestEnvVars;
 
-export interface PreHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestPreHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
   data: T;
-  context?: HookContext<EnvVars>;
+  context?: RestHookContext<RestEnvVars>;
 }
 
-export interface PostHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestPostHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
   data: T;
-  context?: HookContext<EnvVars>;
+  context?: RestHookContext<RestEnvVars>;
 }
 
 /**
@@ -350,20 +350,20 @@ export interface PostHookResult<T, EnvVars extends Record<string, any> = Record<
  * Note: These hooks do NOT receive database transactions.
  * For database operations, use domain hooks instead.
  */
-export interface RestHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Record<string, any> = Record<string, any>> {
   // Pre-operation hooks (before domain operation, no transaction)
-  preCreate?: (input: CreateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<CreateInput, EnvVars>>;
-  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<UpdateInput, EnvVars>>;
-  preDelete?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindById?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindMany?: (c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<Record<string, any>, EnvVars>>;
+  preCreate?: (input: CreateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<CreateInput, RestEnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<UpdateInput, RestEnvVars>>;
+  preDelete?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
+  preFindById?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
+  preFindMany?: (c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<Record<string, any>, RestEnvVars>>;
 
   // Post-operation hooks (after domain operation, no transaction)
-  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postDelete?: (id: string, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postFindById?: (id: string, result: T | null, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T | null, EnvVars>>;
-  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<{ data: T[]; total: number }, EnvVars>>;
+  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postDelete?: (id: string, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postFindById?: (id: string, result: T | null, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T | null, RestEnvVars>>;
+  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<{ data: T[]; total: number }, RestEnvVars>>;
 }
 `;
   }
@@ -754,7 +754,7 @@ ${this.generateEndpointListingUtilities()}
 
     code += `\n// Re-export shared types\n`;
     code += `export type { DefaultEnv } from './types.ts';\n`;
-    code += `export type { RestHooks, HookContext as RestHookContext } from './hooks.types.ts';\n`;
+    code += `export type { RestHooks, RestHookContext } from './hooks.types.ts';\n`;
 
     return code;
   }
