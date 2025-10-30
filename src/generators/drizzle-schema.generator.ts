@@ -138,6 +138,21 @@ export class DrizzleSchemaGenerator {
       imports += `import { ${refLower}Table } from './${refLower}.schema.ts';\n`;
     }
 
+    // Import New* types for nested relations (for NewXWithRelations type)
+    // Skip self-references to avoid circular imports
+    if (model.relationships) {
+      const nestedRelModels = new Set<string>();
+      for (const rel of model.relationships) {
+        if ((rel.type === 'oneToOne' || rel.type === 'oneToMany') && rel.target !== model.name) {
+          nestedRelModels.add(rel.target);
+        }
+      }
+      for (const targetModel of nestedRelModels) {
+        const targetLower = targetModel.toLowerCase();
+        imports += `import type { New${targetModel} } from './${targetLower}.schema.ts';\n`;
+      }
+    }
+
     return imports;
   }
 
@@ -792,7 +807,66 @@ export class DrizzleSchemaGenerator {
   private generateTypeExports(model: ModelDefinition): string {
     let code = `// Type exports\n`;
     code += `export type ${model.name} = typeof ${model.name.toLowerCase()}Table.$inferSelect;\n`;
-    code += `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;`;
+    code += `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;\n\n`;
+
+    // Add nested relation types for CREATE operations
+    code += this.generateNestedTypes(model);
+
+    return code;
+  }
+
+  /**
+   * Generate nested input types for creating with relations
+   * Note: Only supports oneToOne and oneToMany (excludes manyToMany)
+   * Use explicit add methods (e.g., addRoles()) for manyToMany after creation
+   */
+  private generateNestedTypes(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    // Only include oneToOne and oneToMany (exclude manyToMany and manyToOne)
+    const embeddableRelations = model.relationships.filter(rel =>
+      rel.type === 'oneToOne' || rel.type === 'oneToMany'
+    );
+
+    if (embeddableRelations.length === 0) {
+      return '';
+    }
+
+    let code = `// Nested relation types for create operations\n`;
+    code += `// Note: Excludes manyToMany - use explicit add methods after creation\n`;
+
+    // Generate create type with nested relations
+    code += `export type New${model.name}WithRelations = Omit<New${model.name}, 'id'`;
+
+    // Omit auto-generated fields
+    if (model.timestamps) {
+      code += ` | 'createdAt' | 'updatedAt'`;
+    }
+
+    code += `> & {\n`;
+
+    // Add nested relation fields
+    for (const rel of embeddableRelations) {
+      const targetModel = this.models.find(m => m.name === rel.target);
+      if (!targetModel) continue;
+
+      const foreignKey = rel.foreignKey || this.toSnakeCase(model.name) + 'Id';
+
+      switch (rel.type) {
+        case 'oneToOne':
+          // For oneToOne, it's a single nested object (without the FK to parent)
+          code += `  ${rel.name}?: Omit<New${rel.target}, 'id' | '${foreignKey}'>;\n`;
+          break;
+        case 'oneToMany':
+          // For oneToMany, it's an array of nested objects (without FK to parent)
+          code += `  ${rel.name}?: Omit<New${rel.target}, 'id' | '${foreignKey}'>[];\n`;
+          break;
+      }
+    }
+
+    code += `};\n`;
 
     return code;
   }

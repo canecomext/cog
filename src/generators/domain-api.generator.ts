@@ -140,8 +140,8 @@ export interface PaginationOptions {
 
     return `${drizzleImports}
 import { HTTPException } from '@hono/hono/http-exception';
-import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
+import { withoutTransaction, withTransaction, type DbTransaction } from '../db/database.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${this.hasEmbeddableRelations(model) ? `type New${modelName}WithRelations, ` : ''}${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 import { DomainHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
@@ -179,7 +179,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postCreate) {
       const postResult = await this.hooks.postCreate(processedInput, created, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-create hook (outside transaction, after post-hook)
@@ -226,7 +226,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-find hook (outside transaction, after post-hook)
@@ -246,7 +246,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     tx?: DbTransaction,
     filter?: FilterOptions,
     pagination?: PaginationOptions,
-    context?: HookContext<EnvVars>,
+    context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
@@ -306,7 +306,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
           const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
-          context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+          context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
           return postResult.data;
         })()
       : results;
@@ -359,7 +359,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postUpdate) {
       const postResult = await this.hooks.postUpdate(id, processedInput, updated, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-update hook (outside transaction, after post-hook)
@@ -395,7 +395,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postDelete) {
       const postResult = await this.hooks.postDelete(id, deleted, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-delete hook (outside transaction, after post-hook)
@@ -407,6 +407,8 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
 
     return result;
   }
+
+  ${this.generateCreateWithRelationsMethod(model)}
 
   ${this.generateRelationshipMethods(model)}
 }
@@ -426,11 +428,18 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     const imports: string[] = [];
     const addedImports = new Set<string>();
+    const domainImports = new Set<string>();
 
     for (const rel of model.relationships) {
       if (rel.target !== model.name && !addedImports.has(rel.target)) {
+        // For oneToOne and oneToMany, we need New* types for nested creates
+        const needsNewType = rel.type === 'oneToOne' || rel.type === 'oneToMany';
+        const typeImports = needsNewType
+          ? `type ${rel.target}, type New${rel.target}`
+          : `type ${rel.target}`;
+
         imports.push(
-          `import { ${rel.target.toLowerCase()}Table, type ${rel.target} } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
+          `import { ${rel.target.toLowerCase()}Table, ${typeImports} } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
         );
         addedImports.add(rel.target);
       }
@@ -441,6 +450,16 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           `import { ${rel.through.toLowerCase()}Table } from '../schema/${rel.through.toLowerCase()}.schema.ts';`,
         );
         addedImports.add(rel.through);
+      }
+
+      // Add domain imports for createWithRelations (only for oneToOne and oneToMany, excluding self-references)
+      if ((rel.type === 'oneToOne' || rel.type === 'oneToMany') &&
+          rel.target !== model.name &&
+          !domainImports.has(rel.target)) {
+        imports.push(
+          `import { ${rel.target.toLowerCase()}Domain } from './${rel.target.toLowerCase()}.domain.ts';`,
+        );
+        domainImports.add(rel.target);
       }
     }
 
@@ -844,6 +863,120 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     }
 
     return methods.join('\n');
+  }
+
+  /**
+   * Generate createWithRelations method for nested creates
+   * Only supports oneToOne and oneToMany (excludes manyToMany)
+   */
+  private generateCreateWithRelationsMethod(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    // Only include oneToOne and oneToMany (exclude manyToMany)
+    const embeddableRelations = model.relationships.filter(rel =>
+      rel.type === 'oneToOne' || rel.type === 'oneToMany'
+    );
+
+    if (embeddableRelations.length === 0) {
+      return '';
+    }
+
+    const modelName = model.name;
+    const modelNameLower = model.name.toLowerCase();
+    const primaryKeyField = model.fields.find((f) => f.primaryKey)?.name || 'id';
+
+    let code = '\n  /**\n';
+    code += `   * Create ${modelName} with nested relations\n`;
+    code += `   * Supports: ${embeddableRelations.map(r => r.name).join(', ')}\n`;
+    code += `   * Note: Excludes manyToMany - use explicit add methods (e.g., addRoles()) after creation\n`;
+    code += '   */\n';
+    code += `  async createWithRelations(\n`;
+    code += `    data: New${modelName}WithRelations,\n`;
+    code += `    tx?: DbTransaction,\n`;
+    code += `    context?: DomainHookContext<DomainEnvVars>\n`;
+    code += `  ): Promise<${modelName}> {\n`;
+    code += `    // If no transaction provided, create one and recursively call self\n`;
+    code += `    if (!tx) {\n`;
+    code += `      return await withTransaction(async (transaction) => {\n`;
+    code += `        return this.createWithRelations(data, transaction, context);\n`;
+    code += `      });\n`;
+    code += `    }\n\n`;
+    code += `    // Separate relation data from base data\n`;
+    code += `    const { ${this.getRelationFieldNames(embeddableRelations).join(', ')}, ...baseData } = data;\n\n`;
+    code += `    // 1. Create parent record using own domain create method\n`;
+    code += `    const parent = await this.create(baseData as New${modelName}, tx, context);\n\n`;
+
+    // Generate domain delegation calls for each relationship
+    for (const rel of embeddableRelations) {
+      const targetName = rel.target;
+      const targetNameLower = targetName.toLowerCase();
+      const isSelfReference = targetName === model.name;
+      const targetDomain = isSelfReference ? 'this' : `${targetNameLower}Domain`;
+      const relName = rel.name;
+      const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
+
+      // Check if target model has nested relations (to determine which method to call)
+      const targetModel = this.models.find(m => m.name === targetName);
+      const hasNestedRelations = targetModel?.relationships?.some(r =>
+        r.type === 'oneToOne' || r.type === 'oneToMany'
+      );
+      const createMethod = hasNestedRelations ? 'createWithRelations' : 'create';
+
+      switch (rel.type) {
+        case 'oneToOne':
+          code += `    // Create ${relName} (oneToOne) via ${targetName} domain API\n`;
+          code += `    if (${relName}) {\n`;
+          code += `      await ${targetDomain}.${createMethod}(\n`;
+          code += `        { ...${relName}, ${foreignKey}: parent.${primaryKeyField} } as any,\n`;
+          code += `        tx,\n`;
+          code += `        context\n`;
+          code += `      );\n`;
+          code += `    }\n\n`;
+          break;
+
+        case 'oneToMany':
+          code += `    // Create ${relName} (oneToMany) via ${targetName} domain API\n`;
+          code += `    if (${relName} && ${relName}.length > 0) {\n`;
+          code += `      for (const item of ${relName}) {\n`;
+          code += `        await ${targetDomain}.${createMethod}(\n`;
+          code += `          { ...item, ${foreignKey}: parent.${primaryKeyField} } as any,\n`;
+          code += `          tx,\n`;
+          code += `          context\n`;
+          code += `        );\n`;
+          code += `      }\n`;
+          code += `    }\n\n`;
+          break;
+      }
+    }
+
+    code += `    // Return with relations loaded\n`;
+    code += `    return await this.findById(\n`;
+    code += `      parent.${primaryKeyField},\n`;
+    code += `      tx,\n`;
+    code += `      { include: [${embeddableRelations.map(r => `'${r.name}'`).join(', ')}] },\n`;
+    code += `      context\n`;
+    code += `    ) as ${modelName};\n`;
+    code += `  }\n`;
+
+    return code;
+  }
+
+  /**
+   * Get relation field names for destructuring
+   */
+  private getRelationFieldNames(relations: any[]): string[] {
+    return relations.map(rel => rel.name);
+  }
+
+  /**
+   * Check if model has embeddable relations (oneToOne or oneToMany)
+   */
+  private hasEmbeddableRelations(model: ModelDefinition): boolean {
+    return !!model.relationships?.some(rel =>
+      rel.type === 'oneToOne' || rel.type === 'oneToMany'
+    );
   }
 
   /**
