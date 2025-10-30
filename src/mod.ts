@@ -49,9 +49,9 @@ export async function generateFromModels(
 
   const verbose = config.verbose === true;
 
-  // Step 1: Parse models
+  // Step 1: Parse models and junction configs
   const parser = new ModelParser();
-  const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
+  const { models, junctionConfigs, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
   if (errors.length > 0) {
     const hasErrors = errors.some((e) => e.severity === 'error');
@@ -85,6 +85,7 @@ export async function generateFromModels(
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
     isCockroachDB: config.database.type === 'cockroachdb',
     postgis: config.database.postgis,
+    junctionConfigs,
   });
   const schemas = schemaGenerator.generateSchemas();
   schemas.forEach((content, path) => files.set(path, content));
@@ -102,7 +103,7 @@ export async function generateFromModels(
   );
 
   // Generate domain APIs
-  const domainGenerator = new DomainAPIGenerator(models);
+  const domainGenerator = new DomainAPIGenerator(models, junctionConfigs);
   const domainFiles = domainGenerator.generateDomainAPIs();
   domainFiles.forEach((content, path) => files.set(path, content));
 
@@ -143,7 +144,7 @@ function generateMainIndex(models: any[]): string {
  * This is the main entry point for the generated backend code.
  */
 
-import { Hono } from '@hono/hono';
+import { Hono } from 'jsr:@hono/hono';
 import { connect, type DatabaseConfig } from './db/database.ts';
 import { registerRestRoutes } from './rest/index.ts';
 import * as domain from './domain/index.ts';

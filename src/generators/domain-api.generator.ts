@@ -1,13 +1,15 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
 
 /**
  * Generates domain API layer with CRUD operations and hooks
  */
 export class DomainAPIGenerator {
   private models: ModelDefinition[];
+  private junctionConfigs: Map<string, JunctionTableConfig>;
 
-  constructor(models: ModelDefinition[]) {
+  constructor(models: ModelDefinition[], junctionConfigs?: Map<string, JunctionTableConfig>) {
     this.models = models;
+    this.junctionConfigs = junctionConfigs || new Map();
   }
 
   /**
@@ -35,7 +37,7 @@ export class DomainAPIGenerator {
    * Generate hooks types
    */
   private generateHooksTypes(): string {
-    return `import { SQL } from 'drizzle-orm';
+    return `import { SQL } from 'npm:drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
 
 /**
@@ -134,10 +136,10 @@ export interface PaginationOptions {
     } else if (hasRelationships) {
       drizzleImports += ", inArray";
     }
-    drizzleImports += " } from 'drizzle-orm';";
+    drizzleImports += " } from 'npm:drizzle-orm';";
 
     return `${drizzleImports}
-import { HTTPException } from '@hono/hono/http-exception';
+import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
@@ -729,8 +731,34 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
         const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
         const sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
-
-        // Import junction table at the top of the file (this will be handled separately)
+        
+        // Check if junction table has custom fields
+        const junctionConfig = this.junctionConfigs.get(rel.through);
+        const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
+        
+        // Generate type for extra fields if they exist
+        let extraFieldsType = '';
+        let extraFieldsParam = '';
+        let extraFieldsOptionalParam = '';
+        if (hasExtraFields && junctionConfig?.fields) {
+          // Create type for extra fields
+          const requiredFields = junctionConfig.fields.filter(f => f.required && !f.defaultValue);
+          const optionalFields = junctionConfig.fields.filter(f => !f.required || f.defaultValue);
+          
+          // Build type definition
+          let typeFields: string[] = [];
+          for (const field of junctionConfig.fields) {
+            const tsType = this.getTypeScriptType(field.type);
+            const optional = !field.required || field.defaultValue ? '?' : '';
+            typeFields.push(`${field.name}${optional}: ${tsType}`);
+          }
+          
+          if (typeFields.length > 0) {
+            extraFieldsType = `{ ${typeFields.join('; ')} }`;
+            extraFieldsParam = `, extraFields?: ${extraFieldsType}`;
+            extraFieldsOptionalParam = `, extraFields?: ${extraFieldsType}`;
+          }
+        }
 
         methods.push(`
   /**
@@ -746,33 +774,81 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       .where(eq(${junctionTable}Table.${sourceFK}, id));
     
     return result.map(r => r.${targetNameLower});
-  }
+  }${
+  hasExtraFields ? `
 
   /**
-   * Add ${relName} to ${model.name}
+   * Get ${relName} with junction data for ${model.name}
+   */
+  async get${RelName}WithJunctionData(id: string, tx?: DbTransaction): Promise<Array<${targetName} & { _junction: any }>> {
+    const db = tx || withoutTransaction();
+    
+    const result = await db
+      .select()
+      .from(${junctionTable}Table)
+      .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
+      .where(eq(${junctionTable}Table.${sourceFK}, id));
+    
+    return result.map(r => ({ 
+      ...r.${targetNameLower}, 
+      _junction: {
+        ${junctionConfig!.fields!.map(f => `${f.name}: r.${junctionTable}.${f.name}`).join(',\n        ')}
+      }
+    }));
+  }` : ''}
+
+  /**
+   * Add ${this.singularize(relName)} to ${model.name}
    */
   async add${this.singularize(RelName)}(id: string, ${
           this.singularize(targetNameLower)
-        }Id: string, tx: DbTransaction): Promise<void> {
+        }Id: string, tx: DbTransaction${extraFieldsOptionalParam ? `, extraFields?: ${extraFieldsType}` : ''}): Promise<void> {
     await tx.insert(${junctionTable}Table).values({
       ${sourceFK}: id,
-      ${targetFK}: ${this.singularize(targetNameLower)}Id
+      ${targetFK}: ${this.singularize(targetNameLower)}Id${
+      hasExtraFields ? `,
+      ...extraFields` : ''}
     });
   }
 
   /**
    * Add multiple ${relName} to ${model.name}
    */
-  async add${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
-    if (${targetNameLower}Ids.length === 0) return;
+  async add${RelName}(id: string, ${targetNameLower}Data: ${hasExtraFields 
+    ? `Array<{ id: string${extraFieldsOptionalParam ? `; extraFields?: ${extraFieldsType}` : ''} }>`
+    : 'string[]'}, tx: DbTransaction): Promise<void> {
+    if (${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Data`}.length === 0) return;
     
-    const values = ${targetNameLower}Ids.map(${this.singularize(targetNameLower)}Id => ({
+    const values = ${hasExtraFields 
+      ? `${targetNameLower}Data.map(item => ({
+      ${sourceFK}: id,
+      ${targetFK}: item.id,
+      ...item.extraFields
+    }))`
+      : `${targetNameLower}Data.map(${this.singularize(targetNameLower)}Id => ({
       ${sourceFK}: id,
       ${targetFK}: ${this.singularize(targetNameLower)}Id
-    }));
+    }))`};
     
     await tx.insert(${junctionTable}Table).values(values);
-  }
+  }${
+  hasExtraFields ? `
+
+  /**
+   * Update junction data for ${this.singularize(relName)} in ${model.name}
+   */
+  async update${this.singularize(RelName)}JunctionData(id: string, ${
+          this.singularize(targetNameLower)
+        }Id: string, extraFields: Partial<${extraFieldsType}>, tx: DbTransaction): Promise<void> {
+    await tx.update(${junctionTable}Table)
+      .set(extraFields)
+      .where(
+        and(
+          eq(${junctionTable}Table.${sourceFK}, id),
+          eq(${junctionTable}Table.${targetFK}, ${this.singularize(targetNameLower)}Id)
+        )
+      );
+  }` : ''}
 
   /**
    * Remove ${this.singularize(relName)} from ${model.name}
@@ -807,14 +883,16 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Set ${relName} for ${model.name} (replace all)
    */
-  async set${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+  async set${RelName}(id: string, ${targetNameLower}Data: ${hasExtraFields 
+    ? `Array<{ id: string${extraFieldsOptionalParam ? `; extraFields?: ${extraFieldsType}` : ''} }>`
+    : 'string[]'}, tx: DbTransaction): Promise<void> {
     // Delete all existing relationships
     await tx.delete(${junctionTable}Table)
       .where(eq(${junctionTable}Table.${sourceFK}, id));
     
     // Add new relationships
-    if (${targetNameLower}Ids.length > 0) {
-      await this.add${RelName}(id, ${targetNameLower}Ids, tx);
+    if (${targetNameLower}Data.length > 0) {
+      await this.add${RelName}(id, ${targetNameLower}Data, tx);
     }
   }
 
@@ -889,5 +967,34 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       return word.slice(0, -1);
     }
     return word;
+  }
+
+  /**
+   * Get TypeScript type for a field type
+   */
+  private getTypeScriptType(fieldType: string): string {
+    const typeMap: Record<string, string> = {
+      'text': 'string',
+      'string': 'string',
+      'integer': 'number',
+      'bigint': 'number',
+      'decimal': 'number',
+      'boolean': 'boolean',
+      'date': 'Date',
+      'uuid': 'string',
+      'json': 'any',
+      'jsonb': 'any',
+      'enum': 'string',
+      // PostGIS types
+      'point': 'any',
+      'linestring': 'any',
+      'polygon': 'any',
+      'multipoint': 'any',
+      'multilinestring': 'any',
+      'multipolygon': 'any',
+      'geometry': 'any',
+      'geography': 'any',
+    };
+    return typeMap[fieldType] || 'any';
   }
 }

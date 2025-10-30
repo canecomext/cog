@@ -44,8 +44,8 @@ export class RestAPIGenerator {
     const modelNameLower = model.name.toLowerCase();
     const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
-    return `import { Hono } from '@hono/hono';
-import { HTTPException } from '@hono/hono/http-exception';
+    return `import { Hono } from 'jsr:@hono/hono';
+import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import type { DefaultEnv } from './types.ts';
@@ -355,7 +355,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
    * Generate REST index file
    */
   private generateRestIndex(): string {
-    let code = `import { Hono } from '@hono/hono';
+    let code = `import { Hono } from 'jsr:@hono/hono';
 `;
 
     // Import all route files
@@ -366,7 +366,7 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
     if (this.docsEnabled) {
       code += `
 import { generatedOpenAPISpec } from './openapi.ts';
-import { Scalar } from '@scalar/hono-api-reference';`;
+import { Scalar } from 'npm:@scalar/hono-api-reference';`;
     }
 
     code += `

@@ -75,11 +75,11 @@ ${this.generateIndexCreationSQL()}
    * Generate database utility file
    */
   generateDatabaseInit(): string {
-    return `import { drizzle } from "drizzle-orm/postgres-js";
-import type { ExtractTablesWithRelations } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
-import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+    return `import { drizzle } from "npm:drizzle-orm/postgres-js";
+import type { ExtractTablesWithRelations } from "npm:drizzle-orm";
+import type { PgTransaction } from "npm:drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "npm:drizzle-orm/postgres-js";
+import postgres from "npm:postgres";
 import * as schema from "../schema/index.ts";
 
 // Export transaction type for use in domain layer

@@ -1,5 +1,5 @@
-import { type Context, type ErrorHandler, Hono } from '@hono/hono';
-import { HTTPException } from '@hono/hono/http-exception';
+import { type Context, type ErrorHandler, Hono } from 'jsr:@hono/hono';
+import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import {
   type DbTransaction,
   HookContext,
@@ -7,10 +7,10 @@ import {
   userDomain,
   withTransaction,
 } from './generated/index.ts';
-import { sql } from 'drizzle-orm';
-import { crypto } from '@std/crypto';
-import { load } from '@std/dotenv';
-import { join } from '@std/path';
+import { sql } from 'npm:drizzle-orm';
+import { crypto } from 'jsr:@std/crypto@1.0.3';
+import { load } from 'jsr:@std/dotenv@0.225.0';
+import { join } from 'jsr:@std/path@1.0.2';
 import type { Env } from './example-context.ts';
 import { printRegisteredEndpoints } from './generated/rest/index.ts';
 

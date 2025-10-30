@@ -1,25 +1,44 @@
-import { ModelDefinition, ValidationError, FieldDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import { 
+  ModelDefinition, 
+  ValidationError, 
+  FieldDefinition, 
+  RelationshipDefinition,
+  JunctionTableConfig,
+  JunctionTableConfigFile 
+} from '../types/model.types.ts';
 
 /**
  * Parser for reading and validating model definitions from JSON files
  */
 export class ModelParser {
   private models: Map<string, ModelDefinition> = new Map();
+  private junctionConfigs: Map<string, JunctionTableConfig> = new Map();
   private errors: ValidationError[] = [];
 
   /**
    * Parse models from a directory containing JSON files
    */
-  async parseModelsFromDirectory(dirPath: string): Promise<{ models: ModelDefinition[]; errors: ValidationError[] }> {
+  async parseModelsFromDirectory(dirPath: string): Promise<{ 
+    models: ModelDefinition[]; 
+    junctionConfigs: Map<string, JunctionTableConfig>;
+    errors: ValidationError[] 
+  }> {
     this.models.clear();
+    this.junctionConfigs.clear();
     this.errors = [];
 
     try {
+      // First, look for junction table configuration files
+      await this.parseJunctionConfigFiles(dirPath);
+      
       // Read all JSON files from the directory
       for await (const entry of Deno.readDir(dirPath)) {
         if (entry.isFile && entry.name.endsWith('.json')) {
           const filePath = `${dirPath}/${entry.name}`;
-          await this.parseModelFile(filePath);
+          // Skip files that contain junction configs
+          if (!await this.isJunctionConfigFile(filePath)) {
+            await this.parseModelFile(filePath);
+          }
         }
       }
 
@@ -28,6 +47,7 @@ export class ModelParser {
       
       return {
         models: Array.from(this.models.values()),
+        junctionConfigs: this.junctionConfigs,
         errors: this.errors
       };
     } catch (error) {
@@ -37,6 +57,7 @@ export class ModelParser {
       });
       return {
         models: [],
+        junctionConfigs: new Map(),
         errors: this.errors
       };
     }
@@ -416,5 +437,99 @@ export class ModelParser {
       'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
     ];
     return postgisTypes.includes(type);
+  }
+
+  /**
+   * Parse junction table configuration files
+   */
+  private async parseJunctionConfigFiles(dirPath: string): Promise<void> {
+    const junctionConfigFiles: string[] = [];
+
+    // Look for files containing manyToMany configuration
+    for await (const entry of Deno.readDir(dirPath)) {
+      if (entry.isFile && entry.name.endsWith('.json')) {
+        const filePath = `${dirPath}/${entry.name}`;
+        if (await this.isJunctionConfigFile(filePath)) {
+          junctionConfigFiles.push(filePath);
+        }
+      }
+    }
+
+    // Ensure only one junction config file exists
+    if (junctionConfigFiles.length > 1) {
+      this.errors.push({
+        message: `Multiple junction configuration files found. Only one file with 'manyToMany' configuration is allowed.`,
+        severity: 'error'
+      });
+      return;
+    }
+
+    // Parse the junction config file if found
+    if (junctionConfigFiles.length === 1) {
+      await this.parseJunctionConfigFile(junctionConfigFiles[0]);
+    }
+  }
+
+  /**
+   * Check if a file is a junction configuration file
+   */
+  private async isJunctionConfigFile(filePath: string): Promise<boolean> {
+    try {
+      const content = await Deno.readTextFile(filePath);
+      const data = JSON.parse(content);
+      return data.manyToMany !== undefined && Array.isArray(data.manyToMany);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Parse a junction configuration file
+   */
+  private async parseJunctionConfigFile(filePath: string): Promise<void> {
+    try {
+      const content = await Deno.readTextFile(filePath);
+      const data = JSON.parse(content) as JunctionTableConfigFile;
+
+      if (!Array.isArray(data.manyToMany)) {
+        this.errors.push({
+          message: `Junction config file '${filePath}' must have a 'manyToMany' array property`,
+          severity: 'error'
+        });
+        return;
+      }
+
+      for (const config of data.manyToMany) {
+        if (!config.through || typeof config.through !== 'string') {
+          this.errors.push({
+            message: `Junction config in '${filePath}' is missing required 'through' property`,
+            severity: 'error'
+          });
+          continue;
+        }
+
+        // Validate fields if present
+        if (config.fields) {
+          const validatedFields = this.validateFields(config.fields, `junction:${config.through}`);
+          if (!validatedFields) continue;
+          config.fields = validatedFields;
+        }
+
+        // Validate enums if present
+        if (config.enums) {
+          const validatedEnums = this.validateEnums(config.enums, `junction:${config.through}`);
+          if (!validatedEnums) continue;
+          config.enums = validatedEnums;
+        }
+
+        // Store the configuration
+        this.junctionConfigs.set(config.through, config);
+      }
+    } catch (error) {
+      this.errors.push({
+        message: `Failed to parse junction config file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+        severity: 'error'
+      });
+    }
   }
 }

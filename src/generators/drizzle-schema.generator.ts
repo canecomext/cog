@@ -1,18 +1,29 @@
-import { FieldDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import { 
+  FieldDefinition, 
+  ModelDefinition, 
+  RelationshipDefinition,
+  JunctionTableConfig 
+} from '../types/model.types.ts';
 
 /**
  * Generates Drizzle ORM schema files from model definitions
  */
 export class DrizzleSchemaGenerator {
   private models: ModelDefinition[];
+  private junctionConfigs: Map<string, JunctionTableConfig>;
   private isCockroachDB: boolean;
   private postgis: boolean;
 
   constructor(
     models: ModelDefinition[],
-    options: { isCockroachDB?: boolean; postgis?: boolean } = {},
+    options: { 
+      isCockroachDB?: boolean; 
+      postgis?: boolean;
+      junctionConfigs?: Map<string, JunctionTableConfig>;
+    } = {},
   ) {
     this.models = models;
+    this.junctionConfigs = options.junctionConfigs || new Map();
     this.isCockroachDB = options.isCockroachDB || false;
     this.postgis = options.postgis !== false;
   }
@@ -113,15 +124,15 @@ export class DrizzleSchemaGenerator {
     }
 
     // Base imports from pg-core and drizzle-orm
-    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'drizzle-orm/pg-core';\n`;
+    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
 
     // Always add index imports since we're using table-level definitions
-    imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
+    imports += `import { index, uniqueIndex } from 'npm:drizzle-orm/pg-core';\n`;
 
-    imports += `import { sql } from 'drizzle-orm';\n`;
+    imports += `import { sql } from 'npm:drizzle-orm';\n`;
     
     // Add Zod and drizzle-zod imports for schema validation
-    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
+    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
 
     // Import other tables referenced by foreign keys in this schema
     const referencedModels = new Set<string>();
@@ -600,11 +611,14 @@ export class DrizzleSchemaGenerator {
       throw new Error(`Primary keys not found for junction table ${tableName}`);
     }
 
+    // Check for custom junction configuration
+    const junctionConfig = this.junctionConfigs.get(tableName);
+
     // Determine the foreign key column names
     const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
     const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
 
-    // Determine what imports we need based on the primary key types
+    // Determine what imports we need based on the primary key types and custom fields
     const imports = new Set<string>(['pgTable', 'timestamp', 'primaryKey', 'index']);
     
     // Add the appropriate type import for each foreign key
@@ -615,15 +629,61 @@ export class DrizzleSchemaGenerator {
     const targetDrizzleType = this.getDrizzleImportForType(targetPK);
     if (targetDrizzleType) imports.add(targetDrizzleType);
     else if (targetPK.type === 'uuid') imports.add('uuid');
+
+    // Add imports for custom fields if junction config exists
+    if (junctionConfig?.fields) {
+      for (const field of junctionConfig.fields) {
+        const importType = this.getDrizzleImportForType(field);
+        if (importType) {
+          imports.add(importType);
+        }
+      }
+    }
+
+    // Add pgEnum import if custom enums exist
+    if (junctionConfig?.enums && junctionConfig.enums.length > 0) {
+      imports.add('pgEnum');
+    }
+
+    // Check if we need customType for PostGIS
+    if (this.postgis && junctionConfig?.fields) {
+      const hasPostGIS = junctionConfig.fields.some(f => 
+        ['point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'].includes(f.type)
+      );
+      if (hasPostGIS) {
+        imports.add('customType');
+      }
+    }
+    
+    // Note: sql is imported separately from drizzle-orm, not pg-core
     
     // Generate imports
-    let code = `import { ${Array.from(imports).join(', ')} } from 'drizzle-orm/pg-core';
+    let code = `import { ${Array.from(imports).join(', ')} } from 'npm:drizzle-orm/pg-core';
 `;
+    code += `import { sql } from 'npm:drizzle-orm';\n`;
     code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
 `;
     code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
 `;
+    
+    // Add Zod imports for validation
+    code += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
     code += `\n`;
+
+    // Generate enum definitions if custom enums exist
+    if (junctionConfig?.enums && junctionConfig.enums.length > 0) {
+      code += '// Enum definitions\n';
+      if (this.isCockroachDB) {
+        code += '// Note: CockroachDB supports enums from v22.2+\n';
+        code += '// For earlier versions, consider using varchar with CHECK constraints\n';
+      }
+      for (const enumDef of junctionConfig.enums) {
+        const enumName = `${enumDef.name.toLowerCase()}Enum`;
+        const values = enumDef.values.map(v => `'${v}'`).join(', ');
+        code += `export const ${enumName} = pgEnum('${this.toSnakeCase(enumDef.name)}', [${values}]);\n`;
+      }
+      code += '\n';
+    }
 
     // Generate table definition
     code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
@@ -636,37 +696,75 @@ export class DrizzleSchemaGenerator {
 
     // Generate target foreign key column
     code += this.generateJunctionFKColumn(targetFKColumn, targetPK, targetModel.name.toLowerCase(), targetPK.name);
-    code += `,
-`;
+
+    // Add custom fields if they exist
+    if (junctionConfig?.fields) {
+      for (const field of junctionConfig.fields) {
+        code += `,\n`;
+        // Create a temporary model object for field generation
+        const tempModel: ModelDefinition = {
+          name: tableName,
+          tableName: tableName.toLowerCase(),
+          fields: [],
+          enums: junctionConfig.enums
+        };
+        code += this.generateFieldDefinition(field, tempModel);
+      }
+    }
 
     // Add timestamps if enabled globally
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
     if (hasTimestamps) {
-      code += `  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
-`;
+      code += `,\n  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`;
     }
 
-    code += `}, (table) => [
-`;
+    code += `\n}, (table) => [\n`;
 
     // Add composite primary key
-    code += `  primaryKey({ columns: [table.${sourceFKColumn}, table.${targetFKColumn}] }),
-`;
+    code += `  primaryKey({ columns: [table.${sourceFKColumn}, table.${targetFKColumn}] }),\n`;
 
-    // Add indexes for performance
-    code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),
-`;
-    code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})
-`;
+    // Add indexes for foreign keys
+    code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),\n`;
+    code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})`;
 
-    code += `]);
-`;
+    // Add custom indexes if they exist
+    if (junctionConfig?.indexes && junctionConfig.indexes.length > 0) {
+      for (const idx of junctionConfig.indexes) {
+        code += `,\n`;
+        const indexName = idx.name || `idx_${tableName.toLowerCase()}_${idx.fields.join('_')}`;
+        const indexType = idx.unique ? 'uniqueIndex' : 'index';
+        const fields = idx.fields.map((f) => `table.${f}`).join(', ');
+        
+        // Check if any field is PostGIS type
+        const isPostGISIndex = junctionConfig.fields?.some(f => 
+          idx.fields.includes(f.name) && 
+          ['point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'].includes(f.type)
+        );
+        
+        if (this.postgis && isPostGISIndex) {
+          // Convert GIST to GIN if PostGIS is disabled
+          const indexMethod = this.postgis ? 'gist' : 'gin';
+          code += `  ${indexType}('${indexName}').using('${indexMethod}', ${fields})`;
+        } else {
+          code += `  ${indexType}('${indexName}').on(${fields})`;
+        }
+      }
+    }
+
+    code += `\n]);\n`;
     code += `\n`;
 
     // Add type exports
     code += `// Type exports\n`;
     code += `export type ${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
-    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;`;
+    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;\n`;
+    code += `\n`;
+    
+    // Add Zod schemas
+    code += `// Zod schemas for validation\n`;
+    code += `export const ${tableName.toLowerCase()}InsertSchema = createInsertSchema(${tableName.toLowerCase()}Table);\n`;
+    code += `export const ${tableName.toLowerCase()}UpdateSchema = createUpdateSchema(${tableName.toLowerCase()}Table);\n`;
+    code += `export const ${tableName.toLowerCase()}SelectSchema = createSelectSchema(${tableName.toLowerCase()}Table);`;
 
     return code;
   }
@@ -720,7 +818,7 @@ export class DrizzleSchemaGenerator {
    * Generate relations file
    */
   private generateRelations(): string {
-    let code = `import { relations } from 'drizzle-orm';\n`;
+    let code = `import { relations } from 'npm:drizzle-orm';\n`;
 
     // Import all tables
     for (const model of this.models) {

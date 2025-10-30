@@ -142,6 +142,19 @@ export interface GeneratorConfig {
   verbose?: boolean; // Show detailed generation progress
 }
 
+// Junction table configuration
+export interface JunctionTableConfig {
+  through: string; // Junction table name
+  enums?: EnumDefinition[]; // Enum definitions for junction table
+  fields?: FieldDefinition[]; // Additional fields for junction table
+  indexes?: IndexDefinition[]; // Indexes for junction table
+}
+
+// Junction table configuration file
+export interface JunctionTableConfigFile {
+  manyToMany: JunctionTableConfig[];
+}
+
 // Generated file metadata
 export interface GeneratedFile {
   path: string;

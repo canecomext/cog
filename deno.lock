@@ -2,23 +2,14 @@
   "version": "5",
   "specifiers": {
     "jsr:@hono/hono@*": "4.9.10",
-    "jsr:@hono/hono@^4.6.0": "4.9.10",
     "jsr:@std/crypto@1.0.3": "1.0.3",
-    "jsr:@std/crypto@^1.0.5": "1.0.5",
     "jsr:@std/dotenv@0.225.0": "0.225.0",
-    "jsr:@std/dotenv@~0.225.5": "0.225.5",
-    "jsr:@std/internal@^1.0.10": "1.0.10",
     "jsr:@std/path@1.0.2": "1.0.2",
-    "jsr:@std/path@^1.1.2": "1.1.2",
-    "npm:@scalar/hono-api-reference@*": "0.9.20_hono@4.9.10",
-    "npm:@scalar/hono-api-reference@~0.9.20": "0.9.20_hono@4.9.10",
+    "npm:@scalar/hono-api-reference@*": "0.9.21_hono@4.9.10",
     "npm:drizzle-orm@*": "0.44.6_postgres@3.4.7",
-    "npm:drizzle-orm@~0.44.5": "0.44.6_postgres@3.4.7",
     "npm:drizzle-zod@*": "0.8.3_drizzle-orm@0.44.6__postgres@3.4.7_zod@4.1.12_postgres@3.4.7",
-    "npm:drizzle-zod@~0.8.3": "0.8.3_drizzle-orm@0.44.6__postgres@3.4.7_zod@4.1.12_postgres@3.4.7",
     "npm:openapi-types@^12.1.3": "12.1.3",
-    "npm:postgres@*": "3.4.7",
-    "npm:postgres@^3.4.7": "3.4.7"
+    "npm:postgres@*": "3.4.7"
   },
   "jsr": {
     "@hono/hono@4.9.10": {
@@ -27,50 +18,35 @@
     "@std/crypto@1.0.3": {
       "integrity": "a2a32f51ddef632d299e3879cd027c630dcd4d1d9a5285d6e6788072f4e51e7f"
     },
-    "@std/crypto@1.0.5": {
-      "integrity": "0dcfbb319fe0bba1bd3af904ceb4f948cde1b92979ec1614528380ed308a3b40"
-    },
     "@std/dotenv@0.225.0": {
       "integrity": "44db32932c67df82790a3e6847d7007befb6cc22d71f2f3ee7b7d00e1f0d6c94"
     },
-    "@std/dotenv@0.225.5": {
-      "integrity": "9ce6f9d0ec3311f74a32535aa1b8c62ed88b1ab91b7f0815797d77a6f60c922f"
-    },
-    "@std/internal@1.0.10": {
-      "integrity": "e3be62ce42cab0e177c27698e5d9800122f67b766a0bea6ca4867886cbde8cf7"
-    },
     "@std/path@1.0.2": {
       "integrity": "a452174603f8c620bd278a380c596437a9eef50c891c64b85812f735245d9ec7"
-    },
-    "@std/path@1.1.2": {
-      "integrity": "c0b13b97dfe06546d5e16bf3966b1cadf92e1cc83e56ba5476ad8b498d9e3038",
-      "dependencies": [
-        "jsr:@std/internal"
-      ]
     }
   },
   "npm": {
-    "@scalar/core@0.3.18": {
-      "integrity": "sha512-STi6LiJTqOYwz4VhKi61SYhqOTT8TJ3M//XQyT3OwwfY0iBR/HNKUNnHsIWJdwaoGO4Ida5jj4L0JmpKtwQxTQ==",
+    "@scalar/core@0.3.19": {
+      "integrity": "sha512-pxyvpDqOc17W0IcvbqJMLfax5ovQzDpljxFH50njXIOcDcgDMcrLxnl3nXXNWQBTWStiZq4RoPP/qCpE2ecUNQ==",
       "dependencies": [
         "@scalar/types"
       ]
     },
-    "@scalar/hono-api-reference@0.9.20_hono@4.9.10": {
-      "integrity": "sha512-KZX+fN9E3UcH8HBDIuwm3e4bSonxnEEiRW2XdqHMPK3ToMrz4ulxckZL2/ByIuzzogO7umq7eRieJchfH61SHg==",
+    "@scalar/hono-api-reference@0.9.21_hono@4.9.10": {
+      "integrity": "sha512-Mum7m3OhmMc9LXAIG/J6H6CrrZ1BDPiRaE3SUjXqfddooMX6V0yhP1X9oXBZ30/cWtW58SntZG+6fuL+QZO+vg==",
       "dependencies": [
         "@scalar/core",
         "hono"
       ]
     },
-    "@scalar/openapi-types@0.4.0": {
-      "integrity": "sha512-vdFLzz7vETw6kS3bxWUHCBeFtJOnr1bk/+FXKyxKkd6TbcyT6USXkoelI704IaBdoXyOgGX10FD1IVrs4FwUow==",
+    "@scalar/openapi-types@0.4.1": {
+      "integrity": "sha512-JCXCbs/Sty/qosplTFP0YdR2yD7Jkzfy44+3Om3dlzNtOu92lVTcvcVU3MIn1J4zY4/gk23DhI3m137xxNITRw==",
       "dependencies": [
         "zod@4.1.11"
       ]
     },
-    "@scalar/types@0.3.0": {
-      "integrity": "sha512-RVL4waBX2jpshVBU8l1J8gsG+Ai9oRoTN1Zc1+yaO2WG/ZMXOBtq1noJWpUk2c2i16E1oxmRZC8/nPNFRbkxog==",
+    "@scalar/types@0.3.1": {
+      "integrity": "sha512-wTxhK6ByAcJRuSTJSwu3CCy0JvxxekAk1hHlseSnZ6/jKSANPmkCY/804wrRUW6A5TgyFx/4nVl4Vb3ymymHvg==",
       "dependencies": [
         "@scalar/openapi-types",
         "nanoid",
@@ -116,18 +92,5 @@
     "zod@4.1.12": {
       "integrity": "sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ=="
     }
-  },
-  "workspace": {
-    "dependencies": [
-      "jsr:@hono/hono@^4.6.0",
-      "jsr:@std/crypto@^1.0.5",
-      "jsr:@std/dotenv@~0.225.5",
-      "jsr:@std/path@^1.1.2",
-      "npm:@scalar/hono-api-reference@~0.9.20",
-      "npm:drizzle-orm@~0.44.5",
-      "npm:drizzle-zod@~0.8.3",
-      "npm:openapi-types@^12.1.3",
-      "npm:postgres@^3.4.7"
-    ]
   }
 }
