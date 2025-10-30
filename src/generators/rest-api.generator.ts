@@ -48,144 +48,263 @@ export class RestAPIGenerator {
 import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
+import { RestHooks } from '../domain/hooks.types.ts';
+import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
 
-// Routes use DefaultEnv but can be type-cast when registering
-export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
-
 /**
- * GET /${modelNamePlural}
- * List all ${modelNamePlural} with pagination
+ * ${modelName} REST Routes
+ * Handles HTTP endpoints with optional pre/post hooks at the REST layer
  */
-${modelNameLower}Routes.get('/', async (c) => {
-  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
-  
-  // Parse include parameter
-  const includeArray = include ? include.split(',') : undefined;
-  
-  // No transaction needed for read operations
-  const result = await ${modelNameLower}Domain.findMany(
-    undefined, // No transaction
-    includeArray ? { include: includeArray } : undefined, // Filter with include
-    {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      orderBy,
-      orderDirection: orderDirection as 'asc' | 'desc'
-    },
-    c.var // Pass all context variables to hooks
-  );
+class ${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string, any>> {
+  public routes: Hono<{ Variables: EnvVars }>;
+  private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
 
-  return c.json({
-    data: result.data,
-    pagination: {
-      total: result.total,
-      limit: parseInt(limit),
-      offset: parseInt(offset)
-    }
-  });
-});
-
-/**
- * GET /${modelNamePlural}/:id
- * Get a single ${modelName} by ID
- */
-${modelNameLower}Routes.get('/:id', async (c) => {
-  const id = c.req.param('id');
-  const include = c.req.query('include')?.split(',');
-
-  // No transaction needed for read operations
-  const result = await ${modelNameLower}Domain.findById(
-    id,
-    undefined, // No transaction
-    { include },
-    c.var // Pass all context variables to hooks
-  );
-
-  if (!result) {
-    throw new HTTPException(404, { message: '${modelName} not found' });
+  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
+    this.routes = new Hono<{ Variables: EnvVars }>();
+    this.hooks = hooks || {};
+    this.registerRoutes();
   }
 
-  return c.json({ data: result });
-});
+  private registerRoutes() {
+    /**
+     * GET /${modelNamePlural}
+     * List all ${modelNamePlural} with pagination
+     */
+    this.routes.get('/', async (c) => {
+      let context = c.var as EnvVars;
 
-/**
- * POST /${modelNamePlural}
- * Create a new ${modelName}
- */
-${modelNameLower}Routes.post('/', async (c) => {
-  const body = await c.req.json();
-  
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.create(
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
+      // Pre-hook (REST layer)
+      if (this.hooks.preFindMany) {
+        const preResult = await this.hooks.preFindMany(c as any, context);
+        context = { ...context, ...preResult.context };
+      }
 
-  return c.json({ data: result }, 201);
-});
+      const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
 
-/**
- * PUT /${modelNamePlural}/:id
- * Update a ${modelName}
- */
-${modelNameLower}Routes.put('/:id', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
+      // Parse include parameter
+      const includeArray = include ? include.split(',') : undefined;
 
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.update(
-      id,
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
+      // No transaction needed for read operations
+      let result = await ${modelNameLower}Domain.findMany(
+        undefined, // No transaction
+        includeArray ? { include: includeArray } : undefined, // Filter with include
+        {
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          orderBy,
+          orderDirection: orderDirection as 'asc' | 'desc'
+        },
+        context // Pass all context variables to domain hooks
+      );
 
-  return c.json({ data: result });
-});
+      // Post-hook (REST layer)
+      if (this.hooks.postFindMany) {
+        const postResult = await this.hooks.postFindMany(result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
 
-/**
- * PATCH /${modelNamePlural}/:id
- * Partially update a ${modelName}
- */
-${modelNameLower}Routes.patch('/:id', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
+      return c.json({
+        data: result.data,
+        pagination: {
+          total: result.total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      });
+    });
 
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.update(
-      id,
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
+    /**
+     * GET /${modelNamePlural}/:id
+     * Get a single ${modelName} by ID
+     */
+    this.routes.get('/:id', async (c) => {
+      let id = c.req.param('id');
+      let context = c.var as EnvVars;
 
-  return c.json({ data: result });
-});
+      // Pre-hook (REST layer)
+      if (this.hooks.preFindById) {
+        const preResult = await this.hooks.preFindById(id, c as any, context);
+        id = preResult.data.id;
+        context = { ...context, ...preResult.context };
+      }
 
-/**
- * DELETE /${modelNamePlural}/:id
- * Delete a ${modelName}
- */
-${modelNameLower}Routes.delete('/:id', async (c) => {
-  const id = c.req.param('id');
+      const include = c.req.query('include')?.split(',');
 
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.delete(
-      id,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
+      // No transaction needed for read operations
+      let result = await ${modelNameLower}Domain.findById(
+        id,
+        undefined, // No transaction
+        { include },
+        context // Pass all context variables to domain hooks
+      );
 
-  return c.json({ data: result });
-});
+      if (!result) {
+        throw new HTTPException(404, { message: '${modelName} not found' });
+      }
 
-${this.generateRelationshipEndpoints(model)}
+      // Post-hook (REST layer)
+      if (this.hooks.postFindById) {
+        const postResult = await this.hooks.postFindById(id, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * POST /${modelNamePlural}
+     * Create a new ${modelName}
+     */
+    this.routes.post('/', async (c) => {
+      let body = await c.req.json();
+      let context = c.var as EnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preCreate) {
+        const preResult = await this.hooks.preCreate(body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.create(
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postCreate) {
+        const postResult = await this.hooks.postCreate(body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result }, 201);
+    });
+
+    /**
+     * PUT /${modelNamePlural}/:id
+     * Update a ${modelName}
+     */
+    this.routes.put('/:id', async (c) => {
+      let id = c.req.param('id');
+      let body = await c.req.json();
+      let context = c.var as EnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preUpdate) {
+        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.update(
+          id,
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postUpdate) {
+        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * PATCH /${modelNamePlural}/:id
+     * Partially update a ${modelName}
+     */
+    this.routes.patch('/:id', async (c) => {
+      let id = c.req.param('id');
+      let body = await c.req.json();
+      let context = c.var as EnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preUpdate) {
+        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.update(
+          id,
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postUpdate) {
+        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id
+     * Delete a ${modelName}
+     */
+    this.routes.delete('/:id', async (c) => {
+      let id = c.req.param('id');
+      let context = c.var as EnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preDelete) {
+        const preResult = await this.hooks.preDelete(id, c as any, context);
+        id = preResult.data.id;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.delete(
+          id,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postDelete) {
+        const postResult = await this.hooks.postDelete(id, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+${this.generateRelationshipEndpointsWithHooks(model)}
+  }
+}
+
+// Export singleton instance (will be re-initialized with hooks if provided)
+export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
+
+// Export function to initialize with hooks
+export function initialize${modelName}RestRoutes<EnvVars extends Record<string, any> = Record<string, any>>(
+  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>
+) {
+  const instance = new ${modelName}RestRoutes(hooks);
+  ${modelNameLower}Routes = instance.routes as any;
+  return instance.routes;
+}
 `;
   }
 
@@ -220,7 +339,139 @@ export type DefaultEnv = {
   }
 
   /**
-   * Generate relationship endpoints
+   * Generate relationship endpoints with hooks support
+   */
+  private generateRelationshipEndpointsWithHooks(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    const endpoints: string[] = [];
+    const modelNameLower = model.name.toLowerCase();
+    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
+
+    for (const rel of model.relationships) {
+      if (rel.type === 'oneToMany') {
+        // Relationship names are typically already plural (e.g., "posts", "comments")
+        const relName = rel.name;
+        endpoints.push(`
+    /**
+     * GET /${modelNamePlural}/:id/${relName}
+     * Get ${relName} for a ${model.name}
+     */
+    this.routes.get('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+
+      const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
+
+      return c.json({ data: result });
+    });`);
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        const relName = rel.name;
+        const RelName = this.capitalize(relName);
+        const targetNameLower = rel.target.toLowerCase();
+        const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
+        const singularRel = this.singularize(relName);
+        const SingularRel = this.capitalize(singularRel);
+
+        endpoints.push(`
+    /**
+     * GET /${modelNamePlural}/:id/${relName}
+     * Get ${relName} for a ${model.name}
+     */
+    this.routes.get('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+
+      const result = await ${modelNameLower}Domain.get${RelName}(id);
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * POST /${modelNamePlural}/:id/${relName}
+     * Add ${relName} to a ${model.name}
+     */
+    this.routes.post('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} added successfully' } }, 201);
+    });
+
+    /**
+     * PUT /${modelNamePlural}/:id/${relName}
+     * Replace all ${relName} for a ${model.name}
+     */
+    this.routes.put('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} updated successfully' } });
+    });
+
+    /**
+     * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+     * Add a specific ${singularRel} to a ${model.name}
+     */
+    this.routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
+      const id = c.req.param('id');
+      const ${singularRel}Id = c.req.param('${singularRel}Id');
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
+      });
+
+      return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+     * Remove a specific ${singularRel} from a ${model.name}
+     */
+    this.routes.delete('/:id/${relName}/:${singularRel}Id', async (c) => {
+      const id = c.req.param('id');
+      const ${singularRel}Id = c.req.param('${singularRel}Id');
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
+      });
+
+      return c.json({ data: { message: '${SingularRel} removed successfully' } });
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id/${relName}
+     * Remove multiple ${relName} from a ${model.name}
+     */
+    this.routes.delete('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} removed successfully' } });
+    });`);
+      }
+    }
+
+    return endpoints.join('\n');
+  }
+
+  /**
+   * Generate relationship endpoints (legacy, kept for reference)
    */
   private generateRelationshipEndpoints(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
@@ -438,11 +689,12 @@ ${this.generateEndpointListingUtilities()}
 `;
 
     for (const model of this.models) {
-      code += `export { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
+      code += `export { ${model.name.toLowerCase()}Routes, initialize${model.name}RestRoutes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
     code += `\n// Re-export shared types\n`;
     code += `export type { DefaultEnv } from './types.ts';\n`;
+    code += `export type { RestHooks } from '../domain/hooks.types.ts';\n`;
 
     return code;
   }

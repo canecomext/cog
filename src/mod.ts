@@ -139,13 +139,13 @@ export async function generateFromModels(
 function generateMainIndex(models: any[]): string {
   return `/**
  * Generated CRUD Backend
- * 
+ *
  * This is the main entry point for the generated backend code.
  */
 
 import { Hono } from '@hono/hono';
 import { connect, type DatabaseConfig } from './db/database.ts';
-import { registerRestRoutes } from './rest/index.ts';
+import { registerRestRoutes, ${models.map((m) => `initialize${m.name}RestRoutes`).join(', ')} } from './rest/index.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
 
@@ -160,7 +160,10 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
     enabled?: boolean; // Enable/disable documentation endpoints (default: true if generated)
     basePath?: string; // Optional base path prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
   };
-  hooks?: {
+  domainHooks?: {
+    [modelName: string]: any;
+  };
+  restHooks?: {
     [modelName: string]: any;
   };
 }
@@ -174,23 +177,37 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   // Initialize database
   const { db, sql } = await connect(config.database);
 
-  // Register REST routes after all global middlewares
-  registerRestRoutes(config.app, config.api?.basePath, config.docs);
-
   // Initialize domain layers with hooks if provided
-  if (config.hooks) {
+  if (config.domainHooks) {
     ${
     models
       .map(
         (m) => `
-    if (config.hooks.${m.name.toLowerCase()}) {
-      Object.assign(domain.${m.name.toLowerCase()}Domain, 
-        new domain.${m.name}Domain(config.hooks.${m.name.toLowerCase()}));
+    if (config.domainHooks.${m.name.toLowerCase()}) {
+      Object.assign(domain.${m.name.toLowerCase()}Domain,
+        new domain.${m.name}Domain(config.domainHooks.${m.name.toLowerCase()}));
     }`,
       )
       .join('')
   }
   }
+
+  // Initialize REST routes with hooks if provided
+  if (config.restHooks) {
+    ${
+    models
+      .map(
+        (m) => `
+    if (config.restHooks.${m.name.toLowerCase()}) {
+      initialize${m.name}RestRoutes(config.restHooks.${m.name.toLowerCase()});
+    }`,
+      )
+      .join('')
+  }
+  }
+
+  // Register REST routes after hooks initialization
+  registerRestRoutes(config.app, config.api?.basePath, config.docs);
 
   return {
     db,

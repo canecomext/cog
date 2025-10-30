@@ -44,8 +44,8 @@ async function startServer() {
       },
       // Pass the Hono app instance
       app,
-      // Register hooks
-      hooks: {
+      // Register domain hooks (run within database transaction)
+      domainHooks: {
         user: {
           // Pre-create hook: Validate email format
           async preCreate(input: any, tx: DbTransaction, context?: HookContext) {
@@ -68,6 +68,43 @@ async function startServer() {
             console.log(
               `User created: ${result.id} at ${new Date().toISOString()}`,
             );
+          },
+        },
+      },
+      // Register REST hooks (run at HTTP layer, no transaction)
+      restHooks: {
+        user: {
+          // Pre-create hook: Log HTTP request details
+          async preCreate(input: any, c: any, context?: HookContext) {
+            console.log('HTTP Request:', {
+              method: c.req.method,
+              path: c.req.path,
+              userAgent: c.req.header('user-agent'),
+              ip: c.req.header('x-forwarded-for') || 'unknown',
+            });
+            return { data: input, context };
+          },
+
+          // Post-create hook: Add custom response headers
+          async postCreate(input: any, result: any, c: any, context?: HookContext) {
+            c.header('X-Resource-Id', result.id);
+            c.header('X-Created-At', new Date().toISOString());
+
+            // Remove sensitive fields from response
+            const { passwordHash, ...safeResult } = result;
+
+            return { data: safeResult, context };
+          },
+
+          // Pre-findMany hook: Simple authorization check
+          async preFindMany(c: any, context?: HookContext) {
+            // Example: Check for authorization header
+            const auth = c.req.header('authorization');
+            if (!auth && c.req.query('requireAuth') === 'true') {
+              throw new HTTPException(401, { message: 'Authorization required' });
+            }
+
+            return { data: {}, context };
           },
         },
       },

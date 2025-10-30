@@ -88,9 +88,11 @@ HTTP interface using Hono framework. Translates HTTP requests to domain operatio
 - Standard CRUD endpoints (GET, POST, PUT, DELETE)
 - Relationship endpoints (GET /users/:id/posts)
 - OpenAPI 3.1.0 specification for all endpoints
-- Automatic transaction wrapping
+- Automatic transaction wrapping for write operations
 - Error handling and status codes
 - Request/response validation
+- REST hook integration (pre/post hooks at HTTP layer)
+- Class-based route structure for dynamic hook injection
 
 ## Supported Data Types
 
@@ -461,67 +463,117 @@ try {
 
 ## The Hook System
 
-Hooks provide extension points for custom business logic. They execute in a specific order within the transaction
-boundary:
+COG provides two types of hooks that operate at different architectural layers, allowing you to customize behavior at both the HTTP and domain levels.
+
+### Two-Layer Hook Architecture
+
+**Domain Hooks** (`DomainHooks`)
+- Run at the domain layer within database transactions
+- Have access to database transaction for queries and modifications
+- Perfect for: data validation, business rules, database-dependent logic
+- Execute within transaction boundary
+- Configured via `domainHooks` parameter
+
+**REST Hooks** (`RestHooks`)
+- Run at the REST/HTTP layer outside of transactions
+- Have access to full Hono context (request, response, headers)
+- Perfect for: HTTP-specific logic, authorization, logging, rate limiting
+- Execute outside transaction boundary
+- Configured via `restHooks` parameter
 
 ### Execution Flow
 
 ```
-Begin Transaction
-  → Input Validation (Zod)
-  → Pre-hook (modify input)
-  → Pre-hook Output Validation (Zod)
-  → Main Operation
-  → Post-hook (modify output)
-Commit Transaction
-→ After-hook (async side effects)
+HTTP Request
+  → REST Pre-hook (HTTP layer, no transaction)
+    → Begin Transaction
+      → Input Validation (Zod)
+      → Domain Pre-hook (within transaction)
+      → Domain Pre-hook Output Validation (Zod)
+      → Main Operation (database)
+      → Domain Post-hook (within transaction)
+    → Commit Transaction
+  → REST Post-hook (HTTP layer, no transaction)
+  → Domain After-hook (async side effects, no transaction)
+→ HTTP Response
 ```
 
-### Hook Types
+### Domain Hook Types
 
 **Pre-operation hooks**
 
-- Execute before the main operation
+- Execute before the main database operation
 - Receive validated input (Zod validation already applied)
 - Can modify input data
 - Output is validated before main operation
 - Run within transaction
+- Receive `tx: DbTransaction` parameter
 
 **Post-operation hooks**
 
-- Execute after successful operation
+- Execute after successful database operation
 - Can modify response data
 - Can perform additional database operations
 - Run within same transaction
+- Receive `tx: DbTransaction` parameter
 
 **After-operation hooks**
 
 - Execute after transaction commits
 - Cannot modify response
 - Perfect for notifications, logging, external API calls
-- Run asynchronously
+- Run asynchronously outside transaction
+- Do NOT receive transaction parameter
+
+### REST Hook Types
+
+**Pre-operation hooks**
+
+- Execute before domain operation
+- Can access and modify request data
+- Can check authorization, rate limits
+- Can throw HTTPException to abort request
+- Run outside transaction
+- Receive `c: Context` (Hono context) parameter
+
+**Post-operation hooks**
+
+- Execute after domain operation completes
+- Can modify response data
+- Can set response headers
+- Can sanitize output (remove sensitive fields)
+- Run outside transaction
+- Receive `c: Context` (Hono context) parameter
 
 ### Hook Context
 
-Hooks receive a context object that flows through the entire operation:
+Both hook types receive a context object that flows through the operation:
 
 - `requestId` - Unique request identifier
 - `userId` - Current user (from authentication)
 - `metadata` - Custom data passed between hooks
+- Additional custom fields from your Hono context variables
+
+**Domain hooks** also receive:
 - `transaction` - Active database transaction
+
+**REST hooks** also receive:
+- `c` - Full Hono context (request, response, headers, etc.)
 
 ## Advanced Features
 
 ### Transaction Management
 
-Every REST endpoint automatically wraps operations in a transaction:
+Every REST write endpoint (POST, PUT, PATCH, DELETE) automatically wraps domain operations in a transaction:
 
-1. Begin transaction
-2. Execute pre-hooks
-3. Execute main operation
-4. Execute post-hooks
-5. Commit or rollback on error
-6. Execute after-hooks if successful
+1. Execute REST pre-hooks (outside transaction)
+2. Begin transaction
+3. Execute domain pre-hooks (within transaction)
+4. Execute main database operation
+5. Execute domain post-hooks (within transaction)
+6. Commit or rollback on error
+7. Execute REST post-hooks (outside transaction)
+8. Execute domain after-hooks if successful (outside transaction, async)
 
 ### Query Capabilities
 
@@ -1076,19 +1128,40 @@ await initializeGenerated({
     ssl: { ca: '...' },
   },
   app,
-  hooks: {
+  // Domain hooks - run within database transaction
+  domainHooks: {
     user: {
       async preCreate(input, tx, context) {
-        // Validate or modify input
+        // Validate or modify input at domain layer
+        // Can perform database queries within transaction
         return { data: input, context };
       },
       async postCreate(input, result, tx, context) {
-        // Enrich response
+        // Enrich response with additional data
         return { data: result, context };
       },
       async afterCreate(result, context) {
-        // Send notification
+        // Send notification (async, outside transaction)
         console.log('User created:', result.id);
+      },
+    },
+  },
+  // REST hooks - run at HTTP layer, no transaction
+  restHooks: {
+    user: {
+      async preCreate(input, c, context) {
+        // HTTP-layer validation, authorization, rate limiting
+        const auth = c.req.header('authorization');
+        if (!auth) {
+          throw new HTTPException(401, { message: 'Unauthorized' });
+        }
+        return { data: input, context };
+      },
+      async postCreate(input, result, c, context) {
+        // Set response headers, sanitize output
+        c.header('X-Resource-Id', result.id);
+        const { passwordHash, ...safeResult } = result;
+        return { data: safeResult, context };
       },
     },
   },
@@ -1167,7 +1240,9 @@ The generator architecture allows adding new code generators by implementing the
 
 ### Hook System
 
-Any operation can be extended with custom logic through hooks.
+Any operation can be extended with custom logic through the two-layer hook system:
+- **Domain Hooks**: Extend database operations with business logic within transactions
+- **REST Hooks**: Extend HTTP endpoints with request/response transformations and HTTP-specific logic
 
 ### Middleware Support
 
@@ -1197,11 +1272,12 @@ Support for custom database types through Drizzle's customType API.
 Potential areas for expansion:
 
 - GraphQL API generation
-- OpenAPI specification generation
 - Migration file generation
 - Built-in authentication patterns
 - Real-time subscriptions support
 - More database engine support
+- WebSocket support for real-time features
+- Batch operation endpoints
 
 ## Contributing
 

@@ -37,12 +37,13 @@ export class DomainAPIGenerator {
   private generateHooksTypes(): string {
     return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
+import { Context } from '@hono/hono';
 
 /**
  * Hook context that receives all variables from the Hono context.
- * The generic EnvVars type will contain all custom variables defined 
+ * The generic EnvVars type will contain all custom variables defined
  * in your application's Env type.
- * 
+ *
  * Example:
  * If your Env type has Variables: { requestId?: string; userId?: string; tenantId?: string }
  * Then in hooks you can access: context.requestId, context.userId, context.tenantId
@@ -65,21 +66,23 @@ export interface FilterOptions {
 }
 
 /**
- * CRUD hooks with input validation.
- * 
+ * Domain layer hooks with input validation.
+ *
+ * These hooks run at the domain layer within database transactions.
+ *
  * Input Validation Flow:
  * 1. Input is validated with Zod schema BEFORE pre-hook is called
  * 2. Pre-hook receives validated input and can modify it
  * 3. Pre-hook output is validated with Zod schema BEFORE main operation
  * 4. This ensures pre-hooks cannot emit malformed data to operations
- * 
+ *
  * All validation uses Zod schemas generated from Drizzle table definitions.
  * Validation errors will throw ZodError with detailed error information.
- * 
+ *
  * The generic EnvVars type allows you to specify your Env Variables type for type-safe
  * access to context variables in hooks.
  */
-export interface CRUDHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
@@ -103,6 +106,38 @@ export interface CRUDHooks<T, CreateInput, UpdateInput, EnvVars extends Record<s
   afterDelete?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
   afterFindById?: (result: T | null, context?: HookContext<EnvVars>) => Promise<void>;
   afterFindMany?: (results: T[], context?: HookContext<EnvVars>) => Promise<void>;
+}
+
+/**
+ * REST layer hooks that run before/after domain operations.
+ *
+ * These hooks run at the REST layer, OUTSIDE of database transactions.
+ * They have access to the full Hono context (request, response, etc).
+ *
+ * Use these hooks for:
+ * - Request/response transformation at the HTTP layer
+ * - HTTP-specific validation or authorization
+ * - Logging HTTP requests/responses
+ * - Response formatting
+ * - HTTP header manipulation
+ *
+ * Note: These hooks do NOT receive database transactions.
+ * For database operations, use domain hooks instead.
+ */
+export interface RestHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
+  // Pre-operation hooks (before domain operation, no transaction)
+  preCreate?: (input: CreateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<CreateInput, EnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<UpdateInput, EnvVars>>;
+  preDelete?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
+  preFindById?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
+  preFindMany?: (c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<Record<string, any>, EnvVars>>;
+
+  // Post-operation hooks (after domain operation, no transaction)
+  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postDelete?: (id: string, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
+  postFindById?: (id: string, result: T | null, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T | null, EnvVars>>;
+  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<{ data: T[]; total: number }, EnvVars>>;
 }
 
 export interface PaginationOptions {
@@ -141,12 +176,12 @@ import { HTTPException } from '@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
-import { CRUDHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
+import { DomainHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
 export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<string, any>> {
-  private hooks: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
+  private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
 
-  constructor(hooks?: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
+  constructor(hooks?: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
     this.hooks = hooks || {};
   }
 
