@@ -37,7 +37,6 @@ export class DomainAPIGenerator {
   private generateHooksTypes(): string {
     return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
-import { Context } from '@hono/hono';
 
 /**
  * Hook context that receives all variables from the Hono context.
@@ -106,38 +105,6 @@ export interface DomainHooks<T, CreateInput, UpdateInput, EnvVars extends Record
   afterDelete?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
   afterFindById?: (result: T | null, context?: HookContext<EnvVars>) => Promise<void>;
   afterFindMany?: (results: T[], context?: HookContext<EnvVars>) => Promise<void>;
-}
-
-/**
- * REST layer hooks that run before/after domain operations.
- *
- * These hooks run at the REST layer, OUTSIDE of database transactions.
- * They have access to the full Hono context (request, response, etc).
- *
- * Use these hooks for:
- * - Request/response transformation at the HTTP layer
- * - HTTP-specific validation or authorization
- * - Logging HTTP requests/responses
- * - Response formatting
- * - HTTP header manipulation
- *
- * Note: These hooks do NOT receive database transactions.
- * For database operations, use domain hooks instead.
- */
-export interface RestHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
-  // Pre-operation hooks (before domain operation, no transaction)
-  preCreate?: (input: CreateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<CreateInput, EnvVars>>;
-  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<UpdateInput, EnvVars>>;
-  preDelete?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindById?: (id: string, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindMany?: (c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PreHookResult<Record<string, any>, EnvVars>>;
-
-  // Post-operation hooks (after domain operation, no transaction)
-  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postDelete?: (id: string, result: T, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postFindById?: (id: string, result: T | null, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<T | null, EnvVars>>;
-  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: EnvVars }>, context?: HookContext<EnvVars>) => Promise<PostHookResult<{ data: T[]; total: number }, EnvVars>>;
 }
 
 export interface PaginationOptions {
