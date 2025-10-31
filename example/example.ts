@@ -13,7 +13,6 @@ import { crypto } from '@std/crypto';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import type { Env } from './example-context.ts';
-import { printRegisteredEndpoints } from './generated/rest/index.ts';
 
 const app = new Hono<Env>();
 
@@ -223,8 +222,6 @@ async function startServer() {
     </html>
   `);
     });
-
-    printRegisteredEndpoints(app);
 
     app.onError((err: Error, c: Context<Env>) => {
       // Handle HTTPException
