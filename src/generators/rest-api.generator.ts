@@ -743,6 +743,60 @@ ${
 
     code += `}
 
+/**
+ * Extracted route information
+ */
+export interface ExtractedRoute {
+  method: string;  // HTTP method (GET, POST, PUT, PATCH, DELETE, etc.)
+  path: string;    // Full route path including basePath
+}
+
+/**
+ * Extract all registered HTTP routes from a Hono app instance
+ *
+ * This utility inspects Hono's internal route registry to return a clean list
+ * of all registered HTTP endpoints. Middleware routes (method: 'ALL' with wildcards)
+ * are automatically filtered out.
+ *
+ * @param app - The Hono app instance to inspect
+ * @returns Array of route objects with method and path
+ *
+ * @example
+ * \`\`\`typescript
+ * import { extractRoutes } from './generated/rest/index.ts';
+ *
+ * const app = new Hono();
+ * // ... register routes via initializeGenerated()
+ *
+ * const routes = extractRoutes(app);
+ * console.log(routes);
+ * // [
+ * //   { method: 'GET', path: '/api/users' },
+ * //   { method: 'POST', path: '/api/users' },
+ * //   { method: 'GET', path: '/api/users/:id' },
+ * //   ...
+ * // ]
+ * \`\`\`
+ */
+export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
+  return app.routes
+    .filter(route => {
+      // Filter out middleware routes (method: 'ALL' with wildcards like /* or /api/*)
+      const isMiddleware = route.method === 'ALL' && route.path.includes('*');
+      return !isMiddleware;
+    })
+    .map(route => ({
+      method: route.method,
+      // Construct full path from basePath + path
+      path: route.basePath === '/' ? route.path : \`\${route.basePath}\${route.path}\`
+    }))
+    .sort((a, b) => {
+      // Sort by path first, then by method
+      const pathCompare = a.path.localeCompare(b.path);
+      return pathCompare !== 0 ? pathCompare : a.method.localeCompare(b.method);
+    });
+}
+
 // Export all routes for individual use
 `;
 
