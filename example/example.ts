@@ -109,6 +109,14 @@ async function startServer() {
           },
         },
       },
+      // Enable experimental features
+      features: {
+        nestedCreate: {
+          User: true,  // Enable nested creation for User (posts, comments, profile, indices)
+          Post: true,  // Enable nested creation for Post (comments)
+          Role: true,  // Will show warning (no embeddable relations)
+        },
+      },
     });
 
     // Add custom domain logic example

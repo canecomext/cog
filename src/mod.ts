@@ -166,6 +166,9 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   restHooks?: {
     [modelName: string]: any;
   };
+  features?: {
+    nestedCreate?: Record<string, boolean>; // modelName -> enabled (default: false)
+  };
 }
 
 /**
@@ -192,14 +195,17 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   }
   }
 
-  // Initialize REST routes with hooks if provided
-  if (config.restHooks) {
+  // Initialize REST routes with hooks and/or features if provided
+  if (config.restHooks || config.features?.nestedCreate) {
     ${
     models
       .map(
         (m) => `
-    if (config.restHooks.${m.name.toLowerCase()}) {
-      initialize${m.name}RestRoutes(config.restHooks.${m.name.toLowerCase()});
+    if (config.restHooks?.${m.name.toLowerCase()} || config.features?.nestedCreate?.${m.name}) {
+      initialize${m.name}RestRoutes(
+        config.restHooks?.${m.name.toLowerCase()},
+        { nestedCreate: config.features?.nestedCreate?.${m.name} || false }
+      );
     }`,
       )
       .join('')
@@ -207,7 +213,7 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   }
 
   // Register REST routes after hooks initialization
-  registerRestRoutes(config.app, config.api?.basePath, config.docs);
+  registerRestRoutes(config.app, config.api?.basePath, config.docs, config.features);
 
   return {
     db,

@@ -40,19 +40,30 @@ export class RestAPIGenerator {
   }
 
   /**
+   * Check if model has embeddable relations (oneToOne or oneToMany)
+   */
+  private hasEmbeddableRelations(model: ModelDefinition): boolean {
+    if (!model.relationships) return false;
+    return model.relationships.some(rel =>
+      rel.type === 'oneToOne' || rel.type === 'oneToMany'
+    );
+  }
+
+  /**
    * Generate REST API for a model
    */
   private generateModelRestAPI(model: ModelDefinition): string {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
     const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
+    const hasNestedRelations = this.hasEmbeddableRelations(model);
 
     return `import { Hono } from '@hono/hono';
 import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import { RestHooks } from './hooks.types.ts';
-import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelName}, New${modelName}${hasNestedRelations ? `, New${modelName}WithRelations` : ''} } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
 
 /**
@@ -62,10 +73,12 @@ import type { DefaultEnv } from './types.ts';
 class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>> {
   public routes: Hono<{ Variables: RestEnvVars }>;
   private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>;
+  private useNestedCreate: boolean;
 
-  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>) {
+  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>, features?: { nestedCreate?: boolean }) {
     this.routes = new Hono<{ Variables: RestEnvVars }>();
     this.hooks = hooks || {};
+    this.useNestedCreate = features?.nestedCreate || false;
     this.registerRoutes();
   }
 
@@ -159,10 +172,11 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
     /**
      * POST /${modelNamePlural}
-     * Create a new ${modelName}
+     * Create a new ${modelName}${hasNestedRelations && `
+     * Note: features.nestedCreate ${hasNestedRelations ? 'can be' : 'is not applicable (no embeddable relations)'} enabled for nested creation` || ''}
      */
     this.routes.post('/', async (c) => {
-      let body = await c.req.json();
+      let body = await c.req.json()${hasNestedRelations ? ` as New${modelName} | New${modelName}WithRelations` : ''};
       let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
@@ -172,12 +186,27 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
         context = { ...context, ...preResult.context };
       }
 
-      let result = await withTransaction(async (tx) => {
-        return await ${modelNameLower}Domain.create(
+      ${hasNestedRelations ? `// features.nestedCreate enabled: ${hasNestedRelations}
+      ` : ''}let result = await withTransaction(async (tx) => {
+        ${hasNestedRelations ? `if (this.useNestedCreate) {
+          // Use createWithRelations for nested creation
+          return await ${modelNameLower}Domain.createWithRelations(
+            body as New${modelName}WithRelations,
+            tx,
+            context // Pass all context variables to domain hooks
+          );
+        } else {
+          // Use standard create
+          return await ${modelNameLower}Domain.create(
+            body as New${modelName},
+            tx,
+            context // Pass all context variables to domain hooks
+          );
+        }` : `${!hasNestedRelations ? `// features.nestedCreate enabled but ${modelName} has no embeddable relations (oneToOne/oneToMany)\n        ` : ''}return await ${modelNameLower}Domain.create(
           body,
           tx,
           context // Pass all context variables to domain hooks
-        );
+        );`}
       });
 
       // Post-hook (REST layer)
@@ -300,11 +329,12 @@ ${this.generateRelationshipEndpointsWithHooks(model)}
 // Export singleton instance (will be re-initialized with hooks if provided)
 export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
 
-// Export function to initialize with hooks
+// Export function to initialize with hooks and features
 export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>>(
-  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>
+  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>,
+  features?: { nestedCreate?: boolean }
 ) {
-  const instance = new ${modelName}RestRoutes(hooks);
+  const instance = new ${modelName}RestRoutes(hooks, features);
   ${modelNameLower}Routes = instance.routes as any;
   return instance.routes;
 }
@@ -688,12 +718,18 @@ import { Scalar } from '@scalar/hono-api-reference';`;
  * @param app - The Hono app instance
  * @param basePath - Optional base path prefix for API routes (defaults to '/api')
  * @param docs - Optional documentation configuration
+ * @param features - Optional features configuration
  */
-export function registerRestRoutes(app: Hono<any>, basePath?: string, docs?: { enabled?: boolean; basePath?: string }) {
+export function registerRestRoutes(
+  app: Hono<any>,
+  basePath?: string,
+  docs?: { enabled?: boolean; basePath?: string },
+  features?: { nestedCreate?: Record<string, boolean> }
+) {
   const apiPrefix = basePath || '/api';
   const docsEnabled = docs?.enabled !== false; // Default to true if docs were generated
   const docsPrefix = docs?.basePath || '/docs';
-  
+
   // Register model routes
 `;
 
