@@ -179,7 +179,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postCreate) {
       const postResult = await this.hooks.postCreate(processedInput, created, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-create hook (outside transaction, after post-hook)
@@ -226,7 +226,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-find hook (outside transaction, after post-hook)
@@ -246,7 +246,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     tx?: DbTransaction,
     filter?: FilterOptions,
     pagination?: PaginationOptions,
-    context?: HookContext<EnvVars>,
+    context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
@@ -306,7 +306,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
           const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
-          context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+          context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
           return postResult.data;
         })()
       : results;
@@ -359,7 +359,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postUpdate) {
       const postResult = await this.hooks.postUpdate(id, processedInput, updated, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-update hook (outside transaction, after post-hook)
@@ -395,7 +395,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
     if (this.hooks.postDelete) {
       const postResult = await this.hooks.postDelete(id, deleted, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-delete hook (outside transaction, after post-hook)
