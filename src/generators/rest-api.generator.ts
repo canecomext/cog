@@ -785,11 +785,24 @@ export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
       const isMiddleware = route.method === 'ALL' && route.path.includes('*');
       return !isMiddleware;
     })
-    .map(route => ({
-      method: route.method,
-      // Construct full path from basePath + path
-      path: route.basePath === '/' ? route.path : \`\${route.basePath}\${route.path}\`
-    }))
+    .map(route => {
+      // Hono sometimes includes the full path in 'path' property
+      // Check if path already contains basePath to avoid duplication
+      let fullPath = route.path;
+
+      if (route.basePath && route.basePath !== '/') {
+        // If path already starts with basePath, use it as-is
+        if (!route.path.startsWith(route.basePath)) {
+          // Otherwise, concatenate basePath + path
+          fullPath = \`\${route.basePath}\${route.path}\`;
+        }
+      }
+
+      return {
+        method: route.method,
+        path: fullPath
+      };
+    })
     .sort((a, b) => {
       // Sort by path first, then by method
       const pathCompare = a.path.localeCompare(b.path);

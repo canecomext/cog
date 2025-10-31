@@ -3,8 +3,9 @@ import { HTTPException } from '@hono/hono/http-exception';
 import {
   type DbTransaction,
   DomainHookContext,
-  RestHookContext,
+  extractRoutes,
   initializeGenerated,
+  RestHookContext,
   userDomain,
   withTransaction,
 } from './generated/index.ts';
@@ -322,6 +323,10 @@ async function startServer() {
       port: 3000,
       onListen(addr) {
         console.log(`\nServer started at ${addr.hostname}:${addr.port}`);
+
+        // Extract all registered routes
+        const routes = extractRoutes(app);
+        console.table(routes);
       },
     }, app.fetch);
   } catch (error) {
