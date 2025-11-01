@@ -115,13 +115,39 @@ export interface DatabaseConfig {
   idle_timeout?: number;
 }
 
+// Logger configuration with defaults
+export interface Logger {
+  trace?: (message: string, ...args: any[]) => void;
+  debug?: (message: string, ...args: any[]) => void;
+  info?: (message: string, ...args: any[]) => void;
+  warn?: (message: string, ...args: any[]) => void;
+  error?: (message: string, ...args: any[]) => void;
+}
+
 let db: ReturnType<typeof drizzle> | null = null;
 let sql: postgres.Sql<{}> | null = null;
+let logger: Logger = {
+  trace: console.log,
+  debug: console.log,
+  info: console.log,
+  warn: console.warn,
+  error: console.error,
+};
 
 /**
  * Initialize database connection
  */
-export async function connect(config: DatabaseConfig) {
+export async function connect(config: DatabaseConfig, logging?: Logger) {
+  // Configure logger with provided functions or defaults
+  if (logging) {
+    logger = {
+      trace: logging.trace || console.log,
+      debug: logging.debug || console.log,
+      info: logging.info || console.log,
+      warn: logging.warn || console.warn,
+      error: logging.error || console.error,
+    };
+  }
   if (db) {
     return { db, sql };
   }
@@ -152,9 +178,9 @@ export async function connect(config: DatabaseConfig) {
   // Test connection
   try {
     await sql\`SELECT 1\`;
-    console.log('Database connected successfully');
+    logger.info?.('Database connected successfully');
   } catch (error) {
-    console.error('Failed to connect to database:', error);
+    logger.error?.('Failed to connect to database:', error);
     throw error;
   }
 
@@ -255,7 +281,7 @@ export async function withTransaction<T>(
       const jitter = backoff * 0.1 * (Math.random() - 0.5); // ±10% jitter
       const delay = Math.min(backoff + jitter, maxDelay);
 
-      console.warn(
+      logger.warn?.(
         '[withTransaction] Retrying transaction (attempt ' + (attempt + 1) + '/' + maxRetries + ') ' +
         'after ' + Math.round(delay) + 'ms due to serialization error (code: ' + errorCode + ')'
       );

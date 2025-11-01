@@ -160,6 +160,13 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
     enabled?: boolean; // Enable/disable documentation endpoints (default: true if generated)
     basePath?: string; // Optional base path prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
   };
+  logging?: {
+    trace?: (message: string, ...args: any[]) => void;
+    debug?: (message: string, ...args: any[]) => void;
+    info?: (message: string, ...args: any[]) => void;
+    warn?: (message: string, ...args: any[]) => void;
+    error?: (message: string, ...args: any[]) => void;
+  };
   domainHooks?: {
     [modelName: string]: any;
   };
@@ -175,7 +182,7 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
  */
 export async function initializeGenerated<Env extends { Variables: Record<string, any> } = any>(config: InitializationConfig<Env>) {
   // Initialize database
-  const { db, sql } = await connect(config.database);
+  const { db, sql } = await connect(config.database, config.logging);
 
   // Initialize domain layers with hooks if provided
   if (config.domainHooks) {
