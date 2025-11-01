@@ -22,17 +22,18 @@ export class DatabaseInitGenerator {
    */
   generateDatabaseInitialization(): string {
     const createPostgis = this.postgis
-      ? "\n    // Create PostGIS extension\n    await sql`CREATE EXTENSION IF NOT EXISTS postgis`;\n    console.log('PostGIS extension created');"
+      ? "\n    // Create PostGIS extension\n    await sql`CREATE EXTENSION IF NOT EXISTS postgis`;\n    logger.info?.('PostGIS extension created');"
       : '';
 
     // Remove extra indentation and fix template
-    return `import { connect, DatabaseConfig, disconnect, getSQL } from './database.ts';
+    return `import { connect, DatabaseConfig, disconnect, getSQL, getLogger } from './database.ts';
 
 // Handle interruption signals
 Deno.addSignalListener("SIGINT", async () => {
-  console.log('\\nReceived interrupt signal');
+  const logger = getLogger();
+  logger.info?.('\\nReceived interrupt signal');
   await disconnect();
-  console.log('Database connection closed');
+  logger.info?.('Database connection closed');
   Deno.exit(0);
 });
 
@@ -40,8 +41,9 @@ export async function initializeDatabase(config: DatabaseConfig) {
   try {
     // Initialize database with the existing configuration
     await connect(config);
-    
+
     const sql = getSQL();
+    const logger = getLogger();
 ${createPostgis}
 
     // Drop existing tables (in reverse dependency order)
@@ -59,13 +61,15 @@ ${this.generateForeignKeyConstraintsSQL()}
     // Create indexes
 ${this.generateIndexCreationSQL()}
 
-    console.log('Database initialization completed successfully');
+    logger.info?.('Database initialization completed successfully');
   } catch (error) {
-    console.error('Error during database initialization:', error);
+    const logger = getLogger();
+    logger.error?.('Error during database initialization:', error);
     throw error;
   } finally {
+    const logger = getLogger();
     await disconnect();
-    console.log('Database connection closed');
+    logger.info?.('Database connection closed');
   }
 }
 `;
@@ -304,6 +308,13 @@ export function getSQL(): postgres.Sql<{}> {
 }
 
 /**
+ * Get configured logger instance
+ */
+export function getLogger(): Logger {
+  return logger;
+}
+
+/**
  * Close database connection
  */
 export async function disconnect() {
@@ -346,7 +357,7 @@ export async function healthCheck(): Promise<boolean> {
             processedJunctions.add(rel.through);
             const junctionTableName = rel.through.toLowerCase();
             drops.push(
-              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${junctionTableName}');`
+              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${junctionTableName}');`
             );
           }
         }
@@ -358,7 +369,7 @@ export async function healthCheck(): Promise<boolean> {
     for (const model of sortedModels) {
       const tableName = this.toSnakeCase(model.name);
       drops.push(
-        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${tableName}');`
+        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${tableName}');`
       );
     }
     
@@ -459,7 +470,7 @@ export async function healthCheck(): Promise<boolean> {
           tableSQL += `
         PRIMARY KEY (${sourceFKColumn}, ${targetFKColumn})
       );\`;
-    console.log('Created junction table: ${tableName}');`;
+    logger.info?.('Created junction table: ${tableName}');`;
 
           junctionTables.push(tableSQL);
 
@@ -467,7 +478,7 @@ export async function healthCheck(): Promise<boolean> {
           const indexSQL = `    // Create indexes for ${tableName}
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${sourceFKColumn} ON "${tableName}"(${sourceFKColumn});\`;
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${targetFKColumn} ON "${tableName}"(${targetFKColumn});\`;
-    console.log('Created indexes for junction table: ${tableName}');`;
+    logger.info?.('Created indexes for junction table: ${tableName}');`;
 
           junctionTables.push(indexSQL);
         }
@@ -491,7 +502,7 @@ export async function healthCheck(): Promise<boolean> {
       CREATE TABLE IF NOT EXISTS "${tableName}" (
         ${columns}${constraints ? ',\n        ' + constraints : ''}
       );\`;
-    console.log('Created table: ${tableName}');`;
+    logger.info?.('Created table: ${tableName}');`;
     }).join('\n\n');
   }
 
@@ -578,7 +589,7 @@ export async function healthCheck(): Promise<boolean> {
             `ADD CONSTRAINT "${constraintName}" ` +
             `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
             `ON DELETE ${onDelete} ON UPDATE ${onUpdate};\`;\n` +
-            `    console.log('Added FK constraint: ${constraintName}');`
+            `    logger.info?.('Added FK constraint: ${constraintName}');`
           );
         }
       }
@@ -612,7 +623,7 @@ export async function healthCheck(): Promise<boolean> {
             `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
               this.toSnakeCase(model.name)
             }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
-            `    console.log('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`
+            `    logger.info?.('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`
           );
 
           // Add FK constraint for target table
@@ -622,7 +633,7 @@ export async function healthCheck(): Promise<boolean> {
             `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
               this.toSnakeCase(targetModel.name)
             }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
-            `    console.log('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`
+            `    logger.info?.('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`
           );
         }
       }
@@ -646,7 +657,7 @@ export async function healthCheck(): Promise<boolean> {
         if (processedIndexes.has(name)) return '';
         processedIndexes.add(name);
         return `    await sql\`${sql}\`;
-    console.log('Created index: ${name}');`;
+    logger.info?.('Created index: ${name}');`;
       }).filter(Boolean).join('\n');
     }).filter(Boolean).join('\n\n');
   }
