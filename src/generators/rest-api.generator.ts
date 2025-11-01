@@ -674,12 +674,6 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
       code += `import { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
-    if (this.docsEnabled) {
-      code += `
-import { generatedOpenAPISpec } from './openapi.ts';
-import { Scalar } from '@scalar/hono-api-reference';`;
-    }
-
     code += `
 
 /**
@@ -687,12 +681,9 @@ import { Scalar } from '@scalar/hono-api-reference';`;
  * Note: Global middlewares should be registered before calling this function
  * @param app - The Hono app instance
  * @param basePath - Optional base path prefix for API routes (defaults to '/api')
- * @param docs - Optional documentation configuration
  */
-export function registerRestRoutes(app: Hono<any>, basePath?: string, docs?: { enabled?: boolean; basePath?: string }) {
+export function registerRestRoutes(app: Hono<any>, basePath?: string) {
   const apiPrefix = basePath || '/api';
-  const docsEnabled = docs?.enabled !== false; // Default to true if docs were generated
-  const docsPrefix = docs?.basePath || '/docs';
   
   // Register model routes
 `;
@@ -715,33 +706,10 @@ ${
         return `        '${plural}'`;
       }).join(',\n')
     }
-      ]${this.docsEnabled ? `,
-      documentation: {
-        openapi: \`\${docsPrefix}/openapi.json\`,
-        reference: \`\${docsPrefix}/reference\`
-      }` : ''}
+      ]
     });
   });
-`;
-
-    if (this.docsEnabled) {
-      code += `
-  // OpenAPI documentation endpoints (only registered if docsEnabled is true)
-  if (docsEnabled) {
-    app.get(\`\${docsPrefix}/openapi.json\`, (c) => {
-      return c.json(generatedOpenAPISpec);
-    });
-
-    // Scalar API reference documentation
-    app.get(\`\${docsPrefix}/reference\`, Scalar({
-      url: \`\${docsPrefix}/openapi.json\`,
-      theme: 'purple',
-    }) as any);
-  }
-`;
-    }
-
-    code += `}
+}
 
 /**
  * Extracted route information

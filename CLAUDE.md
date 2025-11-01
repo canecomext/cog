@@ -345,29 +345,31 @@ export const userSelectSchema = createSelectSchema(userTable);  // Select ops
 
 This prevents hooks from emitting malformed data.
 
-### 6. OpenAPI Documentation (Auto-Generated)
+### 6. OpenAPI Documentation (Generated, Not Auto-Exposed)
 
 When `--no-documentation` flag is NOT used, COG generates:
 
 **Files:**
-- `generated/rest/openapi.ts` - TypeScript module with spec + `mergeOpenAPISpec()` utility
+- `generated/rest/openapi.ts` - TypeScript module exporting `generatedOpenAPISpec` constant
 - `generated/rest/openapi.json` - Static JSON specification
 
-**Auto-Generated Endpoints:**
-- `/docs/openapi.json` (default, runtime configurable) - OpenAPI 3.1.0 JSON spec
-- `/docs/reference` (default, runtime configurable) - Interactive Scalar UI docs
-
-**Runtime Configuration:**
+**Manual Exposure** (user's responsibility):
 ```typescript
-await initializeGenerated({
-  database: { connectionString: '...' },
-  app,
-  docs: {
-    enabled: true,           // Enable/disable (default: true if generated)
-    basePath: '/docs/v1',   // Custom path (default: '/docs')
-  },
-});
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { Scalar } from '@scalar/hono-api-reference';
+
+// Expose at your chosen URLs
+app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+}) as any);
 ```
+
+**Philosophy:** COG generates the OpenAPI spec but does NOT automatically expose documentation endpoints. This gives users full control over:
+- URL structure
+- Environment-specific exposure (dev only, etc.)
+- Merging with custom endpoint documentation
+- Choice of documentation UI (Scalar, Swagger UI, Redoc)
 
 ---
 

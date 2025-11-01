@@ -156,10 +156,6 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   api?: {
     basePath?: string; // Optional base path prefix for API routes (e.g., '/api/v1', default: '/api')
   };
-  docs?: {
-    enabled?: boolean; // Enable/disable documentation endpoints (default: true if generated)
-    basePath?: string; // Optional base path prefix for documentation routes (e.g., '/docs/v1', default: '/docs')
-  };
   logging?: {
     trace?: (message: string, ...args: any[]) => void;
     debug?: (message: string, ...args: any[]) => void;
@@ -214,7 +210,7 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   }
 
   // Register REST routes after hooks initialization
-  registerRestRoutes(config.app, config.api?.basePath, config.docs);
+  registerRestRoutes(config.app, config.api?.basePath);
 
   return {
     db,

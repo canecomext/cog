@@ -617,91 +617,88 @@ constraints: required, unique, length, precision, scale, and type checking.
 
 **Custom Pluralization** Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
 
-**OpenAPI Documentation** Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints with automatically
-generated documentation endpoints (`/docs/openapi.json` and `/docs/reference` by default, runtime configurable). Includes complete request/response
-schemas, can be extended with custom endpoints, and features beautiful Scalar API Reference UI.
+**OpenAPI Documentation** Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints. Generated spec (`generatedOpenAPISpec`) can be exposed at any URL you choose, merged with custom endpoints, and used with any documentation UI (Scalar, Swagger UI, Redoc). Includes complete request/response schemas and TypeScript types.
 
 ## OpenAPI Specification Generation
 
 COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
 
-> **Configuration:** Documentation generation can be disabled with `--no-documentation` at generation time.
-> The documentation base path is runtime-configurable via `InitializationConfig.docs.basePath`. See [Command-Line Usage](#command-line-usage) for details.
+> **Philosophy:** COG generates OpenAPI specifications but **does not automatically expose** documentation endpoints. This gives you full control over where and how to expose your API documentation.
+
+> **Configuration:** Documentation generation can be disabled with `--no-documentation` at generation time. See [Command-Line Usage](#command-line-usage) for details.
 
 ### Generated Files
 
 **`generated/rest/openapi.ts`**
 
 - TypeScript module with the complete OpenAPI specification
-- Exports `generatedOpenAPISpec` object
-- Provides `mergeOpenAPISpec()` function for extending with custom endpoints
+- Exports `generatedOpenAPISpec` constant for programmatic access
 - Includes TypeScript types from `openapi-types` package
+- Ready to use with any OpenAPI-compatible tools
 
 **`generated/rest/openapi.json`**
 
 - Static JSON file with the OpenAPI specification
 - Can be served directly or used with API documentation tools
 
-### Auto-Generated Documentation Endpoints
+### Manual Documentation Exposure
 
-COG automatically registers two documentation endpoints when you call `initializeGenerated()`:
+COG does not automatically register documentation endpoints. You have full control over:
 
-**`/docs/openapi.json`** (default path, runtime configurable)
+- **URL structure** - Choose your own documentation paths
+- **Security** - Expose docs only in specific environments
+- **Customization** - Merge with custom endpoint documentation before exposing
+- **UI choice** - Use Scalar, Swagger UI, Redoc, or any other tool
 
-- Serves the complete OpenAPI 3.1.0 specification in JSON format
-- Accessible immediately after initialization
-- No additional configuration required
-- Use for importing into API clients, generating SDKs, or programmatic access
-
-**`/docs/reference`** (default path, runtime configurable)
-
-- Interactive API documentation powered by Scalar
-- Beautiful, modern UI with search and "Try it" functionality
-- Default theme: purple (customizable in `generated/rest/index.ts`)
-- Mobile-responsive with dark mode support
-- Browse endpoints by model/tag
-
-**Runtime Path Configuration:**
+**Basic Example:**
 
 ```typescript
+import { Hono } from '@hono/hono';
+import { initializeGenerated } from './generated/index.ts';
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { Scalar } from '@scalar/hono-api-reference';
+
+const app = new Hono();
+
 await initializeGenerated({
   database: { connectionString: 'postgresql://...' },
   app,
-  docs: {
-    enabled: true,           // Enable/disable docs endpoints (default: true)
-    basePath: '/docs/v1', // Custom base path (default: '/docs')
-  },
 });
-// Docs available at: /docs/v1/openapi.json and /docs/v1/reference
+
+// Expose OpenAPI spec at your chosen URL
+app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
+
+// Expose interactive documentation with Scalar
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+  theme: 'purple',
+}) as any);
+
+Deno.serve({ port: 3000 }, app.fetch);
+
+// Documentation available at:
+// - http://localhost:3000/api/openapi.json
+// - http://localhost:3000/api/docs
+```
+
+**Environment-Specific Exposure:**
+
+```typescript
+const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
+
+if (isDevelopment) {
+  app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
+  app.get('/docs', Scalar({
+    url: '/docs/openapi.json',
+  }) as any);
+}
 ```
 
 **Disable Documentation at Generation Time:**
 
 ```bash
 deno run -A src/cli.ts --modelsPath ./models --no-documentation
-# No documentation endpoints or files generated
-```
-
-**Example:**
-
-```typescript
-import { Hono } from '@hono/hono';
-import { initializeGenerated } from './generated/index.ts';
-
-const app = new Hono();
-
-await initializeGenerated({
-  database: {
-    connectionString: 'postgresql://...',
-  },
-  app,
-});
-
-Deno.serve({ port: 3000 }, app.fetch);
-
-// Documentation is now automatically available at:
-// - http://localhost:3000/docs/openapi.json
-// - http://localhost:3000/docs/reference
+# No openapi.ts or openapi.json files generated
 ```
 
 ### What's Included
@@ -733,56 +730,116 @@ Deno.serve({ port: 3000 }, app.fetch);
 - Descriptions for endpoints and parameters
 - HTTP status codes and response types
 
-### Customizing Documentation Endpoints
+### Merging with Custom Endpoints
 
-The documentation endpoints are automatically generated in `generated/rest/index.ts`. You can customize them if needed:
-
-**Change Scalar Theme:**
-
-Edit `generated/rest/index.ts`:
+Combine generated CRUD endpoints with your custom authentication, analytics, or business logic endpoints:
 
 ```typescript
-// Find this section in registerRestRoutes()
-app.get(
-  `${docsPrefix}/reference`,
-  Scalar({
-    url: `${docsPrefix}/openapi.json`,
-    theme: 'solarized', // Change theme: 'alternate', 'default', 'moon', 'purple', 'solarized'
-  }) as any,
-);
-```
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import type { OpenAPIV3_1 } from 'openapi-types';
 
-**Add Custom Endpoints to OpenAPI Spec:**
-
-If you need to add custom (non-generated) endpoints to the documentation:
-
-```typescript
-import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
-
-const customSpec = {
-  paths: {
-    '/auth/login': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'User login',
-        // ... your custom endpoint spec
+// Define your custom endpoints
+const customPaths: OpenAPIV3_1.PathsObject = {
+  '/auth/login': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'User login',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                email: { type: 'string', format: 'email' },
+                password: { type: 'string' },
+              },
+              required: ['email', 'password'],
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Login successful',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  token: { type: 'string' },
+                  user: { $ref: '#/components/schemas/User' },
+                },
+              },
+            },
+          },
+        },
       },
     },
   },
 };
 
-const completeSpec = mergeOpenAPISpec(customSpec);
+// Merge specs
+const completeSpec: OpenAPIV3_1.Document = {
+  ...generatedOpenAPISpec,
+  info: {
+    ...generatedOpenAPISpec.info,
+    title: 'My Complete API',
+    description: 'Generated CRUD + Custom Endpoints',
+  },
+  paths: {
+    ...generatedOpenAPISpec.paths,
+    ...customPaths,
+  },
+  components: {
+    ...generatedOpenAPISpec.components,
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    },
+  },
+  security: [{ bearerAuth: [] }],
+};
 
-// Update the endpoint in generated/rest/index.ts or your main app
-app.get('/docs/openapi.json', (c) => c.json(completeSpec));
+// Expose the merged specification
+app.get('/api/openapi.json', (c) => c.json(completeSpec));
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+}) as any);
+```
+
+### Documentation UI Options
+
+COG-generated OpenAPI specs work with any documentation UI:
+
+**Scalar (Recommended):**
+
+```typescript
+import { Scalar } from '@scalar/hono-api-reference';
+
+app.get('/docs', Scalar({
+  url: '/api/openapi.json', // Point to your OpenAPI spec URL
+  theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
+}) as any);
+```
+
+**Swagger UI:**
+
+```typescript
+import { swaggerUI } from '@hono/swagger-ui';
+
+app.get('/docs/*', swaggerUI({ url: '/api/openapi.json' }));
 ```
 
 ### Advanced OpenAPI Customization
 
-For more complex scenarios, you can completely customize the OpenAPI specification:
+For more complex scenarios, you can modify the spec structure:
 
 ```typescript
-import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
 
 const customSpec = {
   info: {
