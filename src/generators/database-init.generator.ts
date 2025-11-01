@@ -226,11 +226,17 @@ export async function withTransaction<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await database.transaction(callback, {
-        isolationLevel: options?.isolationLevel,
-        accessMode: options?.accessMode,
-        deferrable: options?.deferrable,
-      });
+      // Only pass transaction options if they're defined
+      // Passing undefined values causes Drizzle to generate invalid SQL
+      const txOptions: any = {};
+      if (options?.isolationLevel) txOptions.isolationLevel = options.isolationLevel;
+      if (options?.accessMode) txOptions.accessMode = options.accessMode;
+      if (options?.deferrable !== undefined) txOptions.deferrable = options.deferrable;
+
+      return await database.transaction(
+        callback,
+        Object.keys(txOptions).length > 0 ? txOptions : undefined
+      );
     } catch (error: any) {
       lastError = error;
 
