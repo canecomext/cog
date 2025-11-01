@@ -173,6 +173,35 @@ export function withoutTransaction() {
 
 /**
  * Execute database operations within a transaction context
+ *
+ * Automatically retries transactions on serialization errors (error code 40001)
+ * which commonly occur in CockroachDB and PostgreSQL under high concurrency.
+ *
+ * @param callback - Function to execute within the transaction
+ * @param options - Transaction and retry configuration options
+ * @returns Result of the transaction callback
+ *
+ * @example
+ * \`\`\`typescript
+ * // Default behavior with automatic retries
+ * await withTransaction(async (tx) => {
+ *   await userDomain.create(userData, tx);
+ * });
+ *
+ * // Disable retries for specific transaction
+ * await withTransaction(async (tx) => {
+ *   // ... operations
+ * }, { enableRetry: false });
+ *
+ * // Custom retry configuration
+ * await withTransaction(async (tx) => {
+ *   // ... operations
+ * }, {
+ *   maxRetries: 10,
+ *   initialDelayMs: 100,
+ *   maxDelayMs: 10000
+ * });
+ * \`\`\`
  */
 export async function withTransaction<T>(
   callback: (tx: DbTransaction) => Promise<T>,
@@ -180,10 +209,56 @@ export async function withTransaction<T>(
     isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
     accessMode?: 'read write' | 'read only';
     deferrable?: boolean;
+    // Retry configuration for handling serialization errors (error code 40001)
+    maxRetries?: number;      // Maximum retry attempts (default: 5)
+    initialDelayMs?: number;  // Initial retry delay in milliseconds (default: 50)
+    maxDelayMs?: number;      // Maximum retry delay in milliseconds (default: 5000)
+    enableRetry?: boolean;    // Enable automatic retries (default: true)
   }
 ): Promise<T> {
   const database = withoutTransaction();
-  return await database.transaction(callback, options);
+  const maxRetries = options?.maxRetries ?? 5;
+  const initialDelay = options?.initialDelayMs ?? 50;
+  const maxDelay = options?.maxDelayMs ?? 5000;
+  const enableRetry = options?.enableRetry ?? true;
+
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await database.transaction(callback, {
+        isolationLevel: options?.isolationLevel,
+        accessMode: options?.accessMode,
+        deferrable: options?.deferrable,
+      });
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if this is a serialization error (error code 40001)
+      // This occurs in both CockroachDB (WriteTooOldError) and PostgreSQL (serialization_failure)
+      const errorCode = error?.cause?.code || error?.code;
+      const isSerializationError = errorCode === '40001';
+
+      // Only retry on serialization errors if retries are enabled
+      if (!enableRetry || !isSerializationError || attempt >= maxRetries) {
+        throw error;
+      }
+
+      // Calculate exponential backoff with jitter
+      const backoff = initialDelay * Math.pow(2, attempt);
+      const jitter = backoff * 0.1 * (Math.random() - 0.5); // ±10% jitter
+      const delay = Math.min(backoff + jitter, maxDelay);
+
+      console.warn(
+        '[withTransaction] Retrying transaction (attempt ' + (attempt + 1) + '/' + maxRetries + ') ' +
+        'after ' + Math.round(delay) + 'ms due to serialization error (code: ' + errorCode + ')'
+      );
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
 }
 
 /**
