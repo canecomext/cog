@@ -760,27 +760,29 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           }
         }
 
+        // Generate junction fields type if they exist
+        let junctionFieldsType = '';
+        let junctionFieldsExtraction = '';
+        if (hasExtraFields && junctionConfig?.fields) {
+          const fieldTypes = junctionConfig.fields.map(f => {
+            const tsType = this.getTypeScriptType(f.type);
+            const optional = !f.required || f.defaultValue ? '?' : '';
+            return `${f.name}${optional}: ${tsType}`;
+          });
+          junctionFieldsType = ` & { ${fieldTypes.join('; ')} }`;
+          
+          // Generate code to extract only the custom junction fields
+          const fieldExtractions = junctionConfig.fields.map(f => 
+            `      ${f.name}: r.${junctionTable}.${f.name}`
+          ).join(',\n');
+          junctionFieldsExtraction = `,\n${fieldExtractions}`;
+        }
+
         methods.push(`
   /**
-   * Get ${relName} for ${model.name}
+   * Get ${relName} for ${model.name}${hasExtraFields ? ' with junction data' : ''}
    */
-  async get${RelName}(id: string, tx?: DbTransaction): Promise<${targetName}[]> {
-    const db = tx || withoutTransaction();
-    
-    const result = await db
-      .select({ ${targetNameLower}: ${targetNameLower}Table })
-      .from(${junctionTable}Table)
-      .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
-      .where(eq(${junctionTable}Table.${sourceFK}, id));
-    
-    return result.map(r => r.${targetNameLower});
-  }${
-  hasExtraFields ? `
-
-  /**
-   * Get ${relName} with junction data for ${model.name}
-   */
-  async get${RelName}WithJunctionData(id: string, tx?: DbTransaction): Promise<Array<{ ${targetNameLower}: ${targetName}; "@junction": any }>> {
+  async get${RelName}(id: string, tx?: DbTransaction): Promise<Array<${targetName}${junctionFieldsType}>> {
     const db = tx || withoutTransaction();
     
     const result = await db
@@ -790,12 +792,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       .where(eq(${junctionTable}Table.${sourceFK}, id));
     
     return result.map(r => ({
-      ${targetNameLower}: r.${targetNameLower},
-      "@junction": {
-        ${junctionConfig!.fields!.map(f => `${f.name}: r.${junctionTable}.${f.name}`).join(',\n        ')}
-      }
+      ...r.${targetNameLower}${junctionFieldsExtraction}
     }));
-  }` : ''}
+  }
 
   /**
    * Add ${this.singularize(relName)} to ${model.name}
