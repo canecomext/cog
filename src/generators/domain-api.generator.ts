@@ -775,7 +775,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           
           // Generate code to extract only the custom junction fields
           const fieldExtractions = junctionConfig.fields.map(f => 
-            `      ${f.name}: r.${junctionTable}.${f.name}`
+            `      ${f.name}: r.${junctionTable}.${f.name} ?? undefined`
           ).join(',\n');
           junctionFieldsExtraction = `,\n${fieldExtractions}`;
         }
