@@ -24,6 +24,9 @@ export class RestAPIGenerator {
     // Generate shared types
     files.set('rest/types.ts', this.generateSharedTypes());
 
+    // Generate REST hooks types
+    files.set('rest/hooks.types.ts', this.generateRestHooksTypes());
+
     // Generate individual REST endpoints
     for (const model of this.models) {
       const restAPI = this.generateModelRestAPI(model);
@@ -48,144 +51,320 @@ export class RestAPIGenerator {
 import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
+import { RestHooks } from './hooks.types.ts';
+import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
 
-// Routes use DefaultEnv but can be type-cast when registering
-export const ${modelNameLower}Routes = new Hono<DefaultEnv>();
-
 /**
- * GET /${modelNamePlural}
- * List all ${modelNamePlural} with pagination
+ * ${modelName} REST Routes
+ * Handles HTTP endpoints with optional pre/post hooks at the REST layer
  */
-${modelNameLower}Routes.get('/', async (c) => {
-  const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
-  
-  // Parse include parameter
-  const includeArray = include ? include.split(',') : undefined;
-  
-  // No transaction needed for read operations
-  const result = await ${modelNameLower}Domain.findMany(
-    undefined, // No transaction
-    includeArray ? { include: includeArray } : undefined, // Filter with include
-    {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      orderBy,
-      orderDirection: orderDirection as 'asc' | 'desc'
-    },
-    c.var // Pass all context variables to hooks
-  );
+class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>> {
+  public routes: Hono<{ Variables: RestEnvVars }>;
+  private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>;
 
-  return c.json({
-    data: result.data,
-    pagination: {
-      total: result.total,
-      limit: parseInt(limit),
-      offset: parseInt(offset)
-    }
-  });
-});
-
-/**
- * GET /${modelNamePlural}/:id
- * Get a single ${modelName} by ID
- */
-${modelNameLower}Routes.get('/:id', async (c) => {
-  const id = c.req.param('id');
-  const include = c.req.query('include')?.split(',');
-
-  // No transaction needed for read operations
-  const result = await ${modelNameLower}Domain.findById(
-    id,
-    undefined, // No transaction
-    { include },
-    c.var // Pass all context variables to hooks
-  );
-
-  if (!result) {
-    throw new HTTPException(404, { message: '${modelName} not found' });
+  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>) {
+    this.routes = new Hono<{ Variables: RestEnvVars }>();
+    this.hooks = hooks || {};
+    this.registerRoutes();
   }
 
-  return c.json({ data: result });
-});
+  private registerRoutes() {
+    /**
+     * GET /${modelNamePlural}
+     * List all ${modelNamePlural} with pagination
+     */
+    this.routes.get('/', async (c) => {
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preFindMany) {
+        const preResult = await this.hooks.preFindMany(c as any, context);
+        context = { ...context, ...preResult.context };
+      }
+
+      const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
+
+      // Parse include parameter
+      const includeArray = include ? include.split(',') : undefined;
+
+      // No transaction needed for read operations
+      let result = await ${modelNameLower}Domain.findMany(
+        undefined, // No transaction
+        includeArray ? { include: includeArray } : undefined, // Filter with include
+        {
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          orderBy,
+          orderDirection: orderDirection as 'asc' | 'desc'
+        },
+        context // Pass all context variables to domain hooks
+      );
+
+      // Post-hook (REST layer)
+      if (this.hooks.postFindMany) {
+        const postResult = await this.hooks.postFindMany(result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({
+        data: result.data,
+        pagination: {
+          total: result.total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      });
+    });
+
+    /**
+     * GET /${modelNamePlural}/:id
+     * Get a single ${modelName} by ID
+     */
+    this.routes.get('/:id', async (c) => {
+      let id = c.req.param('id');
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preFindById) {
+        const preResult = await this.hooks.preFindById(id, c as any, context);
+        id = preResult.data.id;
+        context = { ...context, ...preResult.context };
+      }
+
+      const include = c.req.query('include')?.split(',');
+
+      // No transaction needed for read operations
+      let result = await ${modelNameLower}Domain.findById(
+        id,
+        undefined, // No transaction
+        { include },
+        context // Pass all context variables to domain hooks
+      );
+
+      if (!result) {
+        throw new HTTPException(404, { message: '${modelName} not found' });
+      }
+
+      // Post-hook (REST layer)
+      if (this.hooks.postFindById) {
+        const postResult = await this.hooks.postFindById(id, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * POST /${modelNamePlural}
+     * Create a new ${modelName}
+     */
+    this.routes.post('/', async (c) => {
+      let body = await c.req.json();
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preCreate) {
+        const preResult = await this.hooks.preCreate(body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.create(
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postCreate) {
+        const postResult = await this.hooks.postCreate(body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result }, 201);
+    });
+
+    /**
+     * PUT /${modelNamePlural}/:id
+     * Update a ${modelName}
+     */
+    this.routes.put('/:id', async (c) => {
+      let id = c.req.param('id');
+      let body = await c.req.json();
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preUpdate) {
+        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.update(
+          id,
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postUpdate) {
+        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * PATCH /${modelNamePlural}/:id
+     * Partially update a ${modelName}
+     */
+    this.routes.patch('/:id', async (c) => {
+      let id = c.req.param('id');
+      let body = await c.req.json();
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preUpdate) {
+        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
+        body = preResult.data;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.update(
+          id,
+          body,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postUpdate) {
+        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id
+     * Delete a ${modelName}
+     */
+    this.routes.delete('/:id', async (c) => {
+      let id = c.req.param('id');
+      let context = c.var as RestEnvVars;
+
+      // Pre-hook (REST layer)
+      if (this.hooks.preDelete) {
+        const preResult = await this.hooks.preDelete(id, c as any, context);
+        id = preResult.data.id;
+        context = { ...context, ...preResult.context };
+      }
+
+      let result = await withTransaction(async (tx) => {
+        return await ${modelNameLower}Domain.delete(
+          id,
+          tx,
+          context // Pass all context variables to domain hooks
+        );
+      });
+
+      // Post-hook (REST layer)
+      if (this.hooks.postDelete) {
+        const postResult = await this.hooks.postDelete(id, result, c as any, context);
+        result = postResult.data;
+        context = { ...context, ...postResult.context };
+      }
+
+      return c.json({ data: result });
+    });
+
+${this.generateRelationshipEndpointsWithHooks(model)}
+  }
+}
+
+// Export singleton instance (will be re-initialized with hooks if provided)
+export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
+
+// Export function to initialize with hooks
+export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>>(
+  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>
+) {
+  const instance = new ${modelName}RestRoutes(hooks);
+  ${modelNameLower}Routes = instance.routes as any;
+  return instance.routes;
+}
+`;
+  }
+
+  /**
+   * Generate REST hooks types file
+   */
+  private generateRestHooksTypes(): string {
+    return `import { Context } from '@hono/hono';
 
 /**
- * POST /${modelNamePlural}
- * Create a new ${modelName}
+ * REST hook context that receives all variables from the Hono context.
+ * The generic RestEnvVars type will contain all custom variables defined
+ * in your application's Env type.
  */
-${modelNameLower}Routes.post('/', async (c) => {
-  const body = await c.req.json();
-  
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.create(
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
+export type RestHookContext<RestEnvVars extends Record<string, any> = Record<string, any>> = RestEnvVars;
 
-  return c.json({ data: result }, 201);
-});
+export interface RestPreHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
+  data: T;
+  context?: RestHookContext<RestEnvVars>;
+}
+
+export interface RestPostHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
+  data: T;
+  context?: RestHookContext<RestEnvVars>;
+}
 
 /**
- * PUT /${modelNamePlural}/:id
- * Update a ${modelName}
+ * REST layer hooks that run before/after domain operations.
+ *
+ * These hooks run at the REST layer, OUTSIDE of database transactions.
+ * They have access to the full Hono context (request, response, etc).
+ *
+ * Use these hooks for:
+ * - Request/response transformation at the HTTP layer
+ * - HTTP-specific validation or authorization
+ * - Logging HTTP requests/responses
+ * - Response formatting
+ * - HTTP header manipulation
+ *
+ * Note: These hooks do NOT receive database transactions.
+ * For database operations, use domain hooks instead.
  */
-${modelNameLower}Routes.put('/:id', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
+export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Record<string, any> = Record<string, any>> {
+  // Pre-operation hooks (before domain operation, no transaction)
+  preCreate?: (input: CreateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<CreateInput, RestEnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<UpdateInput, RestEnvVars>>;
+  preDelete?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
+  preFindById?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
+  preFindMany?: (c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<Record<string, any>, RestEnvVars>>;
 
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.update(
-      id,
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
-
-  return c.json({ data: result });
-});
-
-/**
- * PATCH /${modelNamePlural}/:id
- * Partially update a ${modelName}
- */
-${modelNameLower}Routes.patch('/:id', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
-
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.update(
-      id,
-      body,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
-
-  return c.json({ data: result });
-});
-
-/**
- * DELETE /${modelNamePlural}/:id
- * Delete a ${modelName}
- */
-${modelNameLower}Routes.delete('/:id', async (c) => {
-  const id = c.req.param('id');
-
-  const result = await withTransaction(async (tx) => {
-    return await ${modelNameLower}Domain.delete(
-      id,
-      tx,
-      c.var // Pass all context variables to hooks
-    );
-  });
-
-  return c.json({ data: result });
-});
-
-${this.generateRelationshipEndpoints(model)}
+  // Post-operation hooks (after domain operation, no transaction)
+  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postDelete?: (id: string, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
+  postFindById?: (id: string, result: T | null, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T | null, RestEnvVars>>;
+  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<{ data: T[]; total: number }, RestEnvVars>>;
+}
 `;
   }
 
@@ -195,10 +374,10 @@ ${this.generateRelationshipEndpoints(model)}
   private generateSharedTypes(): string {
     return `/**
  * Shared types for REST API
- * 
+ *
  * Note: The Env type should be defined in your application code.
  * This allows you to customize the Variables available in your Hono context.
- * 
+ *
  * Example:
  * export type Env = {
  *   Variables: {
@@ -220,7 +399,139 @@ export type DefaultEnv = {
   }
 
   /**
-   * Generate relationship endpoints
+   * Generate relationship endpoints with hooks support
+   */
+  private generateRelationshipEndpointsWithHooks(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    const endpoints: string[] = [];
+    const modelNameLower = model.name.toLowerCase();
+    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
+
+    for (const rel of model.relationships) {
+      if (rel.type === 'oneToMany') {
+        // Relationship names are typically already plural (e.g., "posts", "comments")
+        const relName = rel.name;
+        endpoints.push(`
+    /**
+     * GET /${modelNamePlural}/:id/${relName}
+     * Get ${relName} for a ${model.name}
+     */
+    this.routes.get('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+
+      const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
+
+      return c.json({ data: result });
+    });`);
+      } else if (rel.type === 'manyToMany' && rel.through) {
+        const relName = rel.name;
+        const RelName = this.capitalize(relName);
+        const targetNameLower = rel.target.toLowerCase();
+        const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
+        const singularRel = this.singularize(relName);
+        const SingularRel = this.capitalize(singularRel);
+
+        endpoints.push(`
+    /**
+     * GET /${modelNamePlural}/:id/${relName}
+     * Get ${relName} for a ${model.name}
+     */
+    this.routes.get('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+
+      const result = await ${modelNameLower}Domain.get${RelName}(id);
+
+      return c.json({ data: result });
+    });
+
+    /**
+     * POST /${modelNamePlural}/:id/${relName}
+     * Add ${relName} to a ${model.name}
+     */
+    this.routes.post('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} added successfully' } }, 201);
+    });
+
+    /**
+     * PUT /${modelNamePlural}/:id/${relName}
+     * Replace all ${relName} for a ${model.name}
+     */
+    this.routes.put('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} updated successfully' } });
+    });
+
+    /**
+     * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+     * Add a specific ${singularRel} to a ${model.name}
+     */
+    this.routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
+      const id = c.req.param('id');
+      const ${singularRel}Id = c.req.param('${singularRel}Id');
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
+      });
+
+      return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id/${relName}/:${singularRel}Id
+     * Remove a specific ${singularRel} from a ${model.name}
+     */
+    this.routes.delete('/:id/${relName}/:${singularRel}Id', async (c) => {
+      const id = c.req.param('id');
+      const ${singularRel}Id = c.req.param('${singularRel}Id');
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
+      });
+
+      return c.json({ data: { message: '${SingularRel} removed successfully' } });
+    });
+
+    /**
+     * DELETE /${modelNamePlural}/:id/${relName}
+     * Remove multiple ${relName} from a ${model.name}
+     */
+    this.routes.delete('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
+      });
+
+      return c.json({ data: { message: '${RelName} removed successfully' } });
+    });`);
+      }
+    }
+
+    return endpoints.join('\n');
+  }
+
+  /**
+   * Generate relationship endpoints (legacy, kept for reference)
    */
   private generateRelationshipEndpoints(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
@@ -363,12 +674,6 @@ ${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
       code += `import { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
-    if (this.docsEnabled) {
-      code += `
-import { generatedOpenAPISpec } from './openapi.ts';
-import { Scalar } from 'npm:@scalar/hono-api-reference';`;
-    }
-
     code += `
 
 /**
@@ -376,12 +681,9 @@ import { Scalar } from 'npm:@scalar/hono-api-reference';`;
  * Note: Global middlewares should be registered before calling this function
  * @param app - The Hono app instance
  * @param basePath - Optional base path prefix for API routes (defaults to '/api')
- * @param docs - Optional documentation configuration
  */
-export function registerRestRoutes(app: Hono<any>, basePath?: string, docs?: { enabled?: boolean; basePath?: string }) {
+export function registerRestRoutes(app: Hono<any>, basePath?: string) {
   const apiPrefix = basePath || '/api';
-  const docsEnabled = docs?.enabled !== false; // Default to true if docs were generated
-  const docsPrefix = docs?.basePath || '/docs';
   
   // Register model routes
 `;
@@ -404,45 +706,89 @@ ${
         return `        '${plural}'`;
       }).join(',\n')
     }
-      ]${this.docsEnabled ? `,
-      documentation: {
-        openapi: \`\${docsPrefix}/openapi.json\`,
-        reference: \`\${docsPrefix}/reference\`
-      }` : ''}
+      ]
     });
   });
-`;
+}
 
-    if (this.docsEnabled) {
-      code += `
-  // OpenAPI documentation endpoints (only registered if docsEnabled is true)
-  if (docsEnabled) {
-    app.get(\`\${docsPrefix}/openapi.json\`, (c) => {
-      return c.json(generatedOpenAPISpec);
+/**
+ * Extracted route information
+ */
+export interface ExtractedRoute {
+  method: string;  // HTTP method (GET, POST, PUT, PATCH, DELETE, etc.)
+  path: string;    // Full route path including basePath
+}
+
+/**
+ * Extract all registered HTTP routes from a Hono app instance
+ *
+ * This utility inspects Hono's internal route registry to return a clean list
+ * of all registered HTTP endpoints. Middleware routes (method: 'ALL' with wildcards)
+ * are automatically filtered out.
+ *
+ * @param app - The Hono app instance to inspect
+ * @returns Array of route objects with method and path
+ *
+ * @example
+ * \`\`\`typescript
+ * import { extractRoutes } from './generated/rest/index.ts';
+ *
+ * const app = new Hono();
+ * // ... register routes via initializeGenerated()
+ *
+ * const routes = extractRoutes(app);
+ * console.log(routes);
+ * // [
+ * //   { method: 'GET', path: '/api/users' },
+ * //   { method: 'POST', path: '/api/users' },
+ * //   { method: 'GET', path: '/api/users/:id' },
+ * //   ...
+ * // ]
+ * \`\`\`
+ */
+export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
+  return app.routes
+    .filter(route => {
+      // Filter out middleware routes (method: 'ALL' with wildcards like /* or /api/*)
+      const isMiddleware = route.method === 'ALL' && route.path.includes('*');
+      return !isMiddleware;
+    })
+    .map(route => {
+      // Hono sometimes includes the full path in 'path' property
+      // Check if path already contains basePath to avoid duplication
+      let fullPath = route.path;
+
+      if (route.basePath && route.basePath !== '/') {
+        // If path already starts with basePath, use it as-is
+        if (!route.path.startsWith(route.basePath)) {
+          // Otherwise, concatenate basePath + path
+          fullPath = \`\${route.basePath}\${route.path}\`;
+        }
+      }
+
+      return {
+        method: route.method,
+        path: fullPath
+      };
+    })
+    .sort((a, b) => {
+      // Sort by path first, then by method
+      const pathCompare = a.path.localeCompare(b.path);
+      return pathCompare !== 0 ? pathCompare : a.method.localeCompare(b.method);
     });
-
-    // Scalar API reference documentation
-    app.get(\`\${docsPrefix}/reference\`, Scalar({
-      url: \`\${docsPrefix}/openapi.json\`,
-      theme: 'purple',
-    }) as any);
-  }
-`;
-    }
-
-    code += `}
-
-${this.generateEndpointListingUtilities()}
+}
 
 // Export all routes for individual use
 `;
 
     for (const model of this.models) {
-      code += `export { ${model.name.toLowerCase()}Routes } from './${model.name.toLowerCase()}.rest.ts';\n`;
+      code +=
+        `export { ${model.name.toLowerCase()}Routes, initialize${model.name}RestRoutes } from './${model.name.toLowerCase()}.rest.ts';\n`;
     }
 
     code += `\n// Re-export shared types\n`;
     code += `export type { DefaultEnv } from './types.ts';\n`;
+    code += `export type { RestHooks, RestHookContext } from './hooks.types.ts';\n`;
 
     return code;
   }
@@ -504,253 +850,5 @@ ${this.generateEndpointListingUtilities()}
    */
   private findModelByName(name: string): ModelDefinition | undefined {
     return this.models.find((m) => m.name === name);
-  }
-
-  /**
-   * Generate endpoint listing utility functions
-   */
-  private generateEndpointListingUtilities(): string {
-    return `
-/**
- * Route information interface
- */
-export interface RouteInfo {
-  method: string;
-  path: string;
-  handler?: string;
-}
-
-/**
- * Extract all registered routes from a Hono app instance
- * This function analyzes Hono's internal router structure to list all endpoints
- * 
- * @param app - The Hono app instance to analyze
- * @returns Array of route information with HTTP methods and paths
- */
-export function listRegisteredEndpoints(app: Hono<any>): RouteInfo[] {
-  const routes: RouteInfo[] = [];
-  
-  try {
-    // Access Hono's internal router
-    // Note: This accesses private/internal properties and may break with Hono updates
-    const router = (app as any).router;
-    
-    if (!router) {
-      console.warn('Unable to access Hono router internals');
-      return routes;
-    }
-
-    // Different strategies based on Hono's internal structure
-    // Strategy 1: Try to access routes directly
-    if (router.routes) {
-      // Hono v3.x structure
-      for (const [method, methodRoutes] of Object.entries(router.routes as Record<string, any[]>)) {
-        if (Array.isArray(methodRoutes)) {
-          for (const route of methodRoutes) {
-            routes.push({
-              method: method.toUpperCase(),
-              path: route.path || route.regexp?.source || 'unknown',
-              handler: route.handler?.name || 'anonymous'
-            });
-          }
-        }
-      }
-    }
-    
-    // Strategy 2: Try the _router property (some Hono versions)
-    if (!routes.length && (app as any)._router) {
-      const _router = (app as any)._router;
-      if (_router.stack) {
-        // Express-like structure
-        for (const layer of _router.stack) {
-          if (layer.route) {
-            const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
-            for (const method of methods) {
-              routes.push({
-                method: method.toUpperCase(),
-                path: layer.route.path,
-                handler: layer.handle?.name || 'anonymous'
-              });
-            }
-          }
-        }
-      }
-    }
-    
-    // Strategy 3: Analyze the routes property on the app itself
-    if (!routes.length && (app as any).routes) {
-      const appRoutes = (app as any).routes;
-      if (Array.isArray(appRoutes)) {
-        for (const route of appRoutes) {
-          if (route.method && route.path) {
-            routes.push({
-              method: route.method.toUpperCase(),
-              path: route.path,
-              handler: route.handler?.name || 'anonymous'
-            });
-          }
-        }
-      } else if (typeof appRoutes === 'object') {
-        // Routes organized by method
-        for (const [method, paths] of Object.entries(appRoutes)) {
-          if (Array.isArray(paths)) {
-            for (const pathInfo of paths) {
-              const path = typeof pathInfo === 'string' ? pathInfo : pathInfo.path;
-              routes.push({
-                method: method.toUpperCase(),
-                path: path || 'unknown',
-                handler: 'anonymous'
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Strategy 4: Use Hono's built-in route inspection (if available)
-    if (!routes.length && typeof (app as any).showRoutes === 'function') {
-      // Some Hono versions have a showRoutes method
-      const routeInfo = (app as any).showRoutes();
-      if (typeof routeInfo === 'string') {
-        // Parse string output
-        const lines = routeInfo.split('\\n');
-        for (const line of lines) {
-          const match = line.match(/^\\s*(\\w+)\\s+(.+)/);
-          if (match) {
-            routes.push({
-              method: match[1].toUpperCase(),
-              path: match[2].trim()
-            });
-          }
-        }
-      }
-    }
-
-    // If we still have no routes, try to extract from known endpoints
-    if (!routes.length) {
-      // Fallback: return predefined routes based on generated structure
-      ${this.generateFallbackRoutes()}
-    }
-
-    // Sort routes for consistent output
-    routes.sort((a, b) => {
-      if (a.path === b.path) {
-        return a.method.localeCompare(b.method);
-      }
-      return a.path.localeCompare(b.path);
-    });
-
-  } catch (error) {
-    console.error('Error extracting routes from Hono app:', error);
-  }
-  
-  return routes;
-}
-
-/**
- * Format routes as a string table for console output
- * 
- * @param routes - Array of route information
- * @returns Formatted string table
- */
-export function formatRoutesTable(routes: RouteInfo[]): string {
-  if (!routes.length) {
-    return 'No routes found';
-  }
-
-  // Calculate column widths
-  const methodWidth = Math.max(8, ...routes.map(r => r.method.length));
-  const pathWidth = Math.max(20, ...routes.map(r => r.path.length));
-  
-  // Create header
-  const header = \`┌─\${'─'.repeat(methodWidth)}─┬─\${'─'.repeat(pathWidth)}─┐\`;
-  const headerRow = \`│ \${'METHOD'.padEnd(methodWidth)} │ \${'PATH'.padEnd(pathWidth)} │\`;
-  const separator = \`├─\${'─'.repeat(methodWidth)}─┼─\${'─'.repeat(pathWidth)}─┤\`;
-  const footer = \`└─\${'─'.repeat(methodWidth)}─┴─\${'─'.repeat(pathWidth)}─┘\`;
-  
-  // Create rows
-  const rows = routes.map(route => 
-    \`│ \${route.method.padEnd(methodWidth)} │ \${route.path.padEnd(pathWidth)} │\`
-  );
-  
-  // Combine all parts
-  return [
-    header,
-    headerRow,
-    separator,
-    ...rows,
-    footer
-  ].join('\\n');
-}
-
-/**
- * Print all registered endpoints to console
- * Convenience function that combines listing and formatting
- * 
- * @param app - The Hono app instance to analyze
- */
-export function printRegisteredEndpoints(app: Hono<any>): void {
-  const routes = listRegisteredEndpoints(app);
-  const table = formatRoutesTable(routes);
-  
-  console.log('\\n=== Registered REST Endpoints ===\\n');
-  console.log(table);
-  console.log(\`\\nTotal endpoints: \${routes.length}\`);
-  
-  // Group by method
-  const byMethod = routes.reduce((acc, route) => {
-    acc[route.method] = (acc[route.method] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  console.log('\\nEndpoints by method:');
-  for (const [method, count] of Object.entries(byMethod)) {
-    console.log(\`  \${method}: \${count}\`);
-  }
-}`;
-  }
-
-  /**
-   * Generate fallback routes for endpoint listing
-   */
-  private generateFallbackRoutes(): string {
-    const routes: string[] = [];
-
-    // Add health and API endpoints
-    routes.push(`routes.push({ method: 'GET', path: '/health' });`);
-    routes.push(`routes.push({ method: 'GET', path: '/api' });`);
-
-    // Add CRUD endpoints for each model
-    for (const model of this.models) {
-      const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
-      const basePath = `/api/${plural}`;
-
-      // Basic CRUD endpoints
-      routes.push(`routes.push({ method: 'GET', path: '${basePath}' });`);
-      routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id' });`);
-      routes.push(`routes.push({ method: 'POST', path: '${basePath}' });`);
-      routes.push(`routes.push({ method: 'PUT', path: '${basePath}/:id' });`);
-      routes.push(`routes.push({ method: 'PATCH', path: '${basePath}/:id' });`);
-      routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id' });`);
-
-      // Relationship endpoints
-      if (model.relationships) {
-        for (const rel of model.relationships) {
-          if (rel.type === 'oneToMany') {
-            routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id/${rel.name}' });`);
-          } else if (rel.type === 'manyToMany' && rel.through) {
-            const singularRel = this.singularize(rel.name);
-            routes.push(`routes.push({ method: 'GET', path: '${basePath}/:id/${rel.name}' });`);
-            routes.push(`routes.push({ method: 'POST', path: '${basePath}/:id/${rel.name}' });`);
-            routes.push(`routes.push({ method: 'PUT', path: '${basePath}/:id/${rel.name}' });`);
-            routes.push(`routes.push({ method: 'POST', path: '${basePath}/:id/${rel.name}/:${singularRel}Id' });`);
-            routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id/${rel.name}/:${singularRel}Id' });`);
-            routes.push(`routes.push({ method: 'DELETE', path: '${basePath}/:id/${rel.name}' });`);
-          }
-        }
-      }
-    }
-
-    return routes.join('\n      ');
   }
 }
