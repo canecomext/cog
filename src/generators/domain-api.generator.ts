@@ -780,7 +780,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Get ${relName} with junction data for ${model.name}
    */
-  async get${RelName}WithJunctionData(id: string, tx?: DbTransaction): Promise<Array<${targetName} & { _junction: any }>> {
+  async get${RelName}WithJunctionData(id: string, tx?: DbTransaction): Promise<Array<{ ${targetNameLower}: ${targetName}; "@junction": any }>> {
     const db = tx || withoutTransaction();
     
     const result = await db
@@ -789,9 +789,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
       .where(eq(${junctionTable}Table.${sourceFK}, id));
     
-    return result.map(r => ({ 
-      ...r.${targetNameLower}, 
-      _junction: {
+    return result.map(r => ({
+      ${targetNameLower}: r.${targetNameLower},
+      "@junction": {
         ${junctionConfig!.fields!.map(f => `${f.name}: r.${junctionTable}.${f.name}`).join(',\n        ')}
       }
     }));
