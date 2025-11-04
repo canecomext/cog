@@ -94,6 +94,7 @@ export async function generateFromModels(
   const dbInitGenerator = new DatabaseInitGenerator(models, {
     dbType: config.database.type,
     postgis: config.database.postgis,
+    junctionConfigs,
   });
 
   files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());

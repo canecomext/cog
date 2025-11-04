@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
 
 /**
  * Generates database initialization code
@@ -7,14 +7,16 @@ export class DatabaseInitGenerator {
   private models: ModelDefinition[];
   private dbType: 'postgresql' | 'cockroachdb';
   private postgis: boolean;
+  private junctionConfigs: Map<string, JunctionTableConfig>;
 
   constructor(
     models: ModelDefinition[],
-    options: { dbType?: string; postgis?: boolean } = {},
+    options: { dbType?: string; postgis?: boolean; junctionConfigs?: Map<string, JunctionTableConfig> } = {},
   ) {
     this.models = models;
     this.dbType = options.dbType === 'cockroachdb' ? 'cockroachdb' : 'postgresql';
     this.postgis = options.postgis !== false;
+    this.junctionConfigs = options.junctionConfigs || new Map();
   }
 
   /**
@@ -460,6 +462,19 @@ export async function healthCheck(): Promise<boolean> {
         ${sourceFKColumn} ${sourceFKType} NOT NULL,
         ${targetFKColumn} ${targetFKType} NOT NULL,`;
 
+          // Add extra fields from junction config
+          const junctionConfig = this.junctionConfigs.get(rel.through);
+          if (junctionConfig?.fields && junctionConfig.fields.length > 0) {
+            for (const field of junctionConfig.fields) {
+              const columnName = this.toSnakeCase(field.name);
+              const columnType = this.getColumnType(field);
+              const notNull = field.required && !field.defaultValue ? ' NOT NULL' : '';
+              const defaultVal = field.defaultValue !== undefined ? ` DEFAULT ${this.formatDefaultValue(field)}` : '';
+              tableSQL += `
+        ${columnName} ${columnType}${defaultVal}${notNull},`;
+            }
+          }
+
           // Add timestamps if enabled
           const hasTimestamps = model.timestamps || targetModel.timestamps;
           if (hasTimestamps) {
@@ -855,6 +870,25 @@ export async function healthCheck(): Promise<boolean> {
    */
   private getDefaultIndexMethod(): string {
     return this.dbType === 'cockroachdb' ? 'BTREE' : 'BTREE';
+  }
+
+  /**
+   * Format default value for SQL
+   */
+  private formatDefaultValue(field: any): string {
+    if (field.type === 'uuid' && field.defaultValue === 'gen_random_uuid()') {
+      return 'gen_random_uuid()';
+    } else if (typeof field.defaultValue === 'string' && !field.defaultValue.includes('(')) {
+      return `'${field.defaultValue}'`;
+    } else if (typeof field.defaultValue === 'boolean') {
+      return field.defaultValue.toString().toUpperCase();
+    } else if (typeof field.defaultValue === 'number') {
+      return field.defaultValue.toString();
+    } else if (field.defaultValue === null) {
+      return 'NULL';
+    } else {
+      return field.defaultValue;
+    }
   }
 
   /**
