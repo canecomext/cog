@@ -1,13 +1,15 @@
-import { DataType, FieldDefinition, ModelDefinition } from '../types/model.types.ts';
+import { DataType, FieldDefinition, ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
 
 /**
  * Generates OpenAPI 3.1.0 specification from model definitions
  */
 export class OpenAPIGenerator {
   private models: ModelDefinition[];
+  private junctionConfigs: Map<string, JunctionTableConfig>;
 
-  constructor(models: ModelDefinition[]) {
+  constructor(models: ModelDefinition[], junctionConfigs?: Map<string, JunctionTableConfig>) {
     this.models = models;
+    this.junctionConfigs = junctionConfigs || new Map();
   }
 
   /**
@@ -727,11 +729,58 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate paths for many-to-many relationship collection operations
    */
   private generateManyToManyRelationshipPaths(model: ModelDefinition, rel: any): any {
+    // Check if junction table has custom fields
+    const junctionConfig = rel.through ? this.junctionConfigs.get(rel.through) : undefined;
+    const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
+    
+    // Build schema for junction item with extra fields
+    const buildJunctionItemSchema = () => {
+      if (!hasExtraFields || !junctionConfig) {
+        return {
+          type: 'string',
+          format: 'uuid',
+          description: 'ID of the related resource'
+        };
+      }
+      
+      const properties: any = {
+        id: {
+          type: 'string',
+          format: 'uuid',
+          description: 'ID of the related resource'
+        }
+      };
+      
+      const required = ['id'];
+      
+      for (const field of junctionConfig.fields) {
+        const fieldType = this.getOpenAPIType(field.type);
+        properties[field.name] = {
+          type: fieldType.type,
+          ...(fieldType.format ? { format: fieldType.format } : {}),
+          ...(field.description ? { description: field.description } : {})
+        };
+        
+        if (field.required && !field.defaultValue) {
+          required.push(field.name);
+        }
+      }
+      
+      return {
+        type: 'object',
+        properties,
+        required: required.length > 1 ? required : ['id'],
+        description: 'Related resource with optional junction table data'
+      };
+    };
+    
+    const junctionItemSchema = buildJunctionItemSchema();
+    
     return {
       get: {
         tags: [model.name],
         summary: `Get ${rel.name} for ${model.name}`,
-        description: `Retrieve all ${rel.name} associated with a ${model.name}`,
+        description: `Retrieve all ${rel.name} associated with a ${model.name}${hasExtraFields ? ' (includes junction table data)' : ''}`,
         operationId: `get${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         responses: {
@@ -753,7 +802,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       post: {
         tags: [model.name],
         summary: `Add ${rel.name} to ${model.name}`,
-        description: `Add multiple ${rel.name} to a ${model.name}`,
+        description: `Add multiple ${rel.name} to a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
         operationId: `add${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
@@ -763,11 +812,15 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
               schema: {
                 type: 'object',
                 properties: {
-                  ids: {
+                  [rel.name]: {
                     type: 'array',
-                    items: { type: 'string', format: 'uuid' },
+                    items: junctionItemSchema,
+                    description: hasExtraFields 
+                      ? `Array of ${rel.name} with optional junction table fields` 
+                      : `Array of ${rel.name} IDs`
                   },
                 },
+                required: [rel.name],
               },
             },
           },
@@ -793,7 +846,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       put: {
         tags: [model.name],
         summary: `Replace ${rel.name} for ${model.name}`,
-        description: `Replace all ${rel.name} for a ${model.name}`,
+        description: `Replace all ${rel.name} for a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
         operationId: `set${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
@@ -803,11 +856,15 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
               schema: {
                 type: 'object',
                 properties: {
-                  ids: {
+                  [rel.name]: {
                     type: 'array',
-                    items: { type: 'string', format: 'uuid' },
+                    items: junctionItemSchema,
+                    description: hasExtraFields 
+                      ? `Array of ${rel.name} with optional junction table fields` 
+                      : `Array of ${rel.name} IDs`
                   },
                 },
+                required: [rel.name],
               },
             },
           },
@@ -878,12 +935,48 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    */
   private generateManyToManyDetailPaths(model: ModelDefinition, rel: any): any {
     const singularRel = this.singularize(rel.name);
+    
+    // Check if junction table has custom fields
+    const junctionConfig = rel.through ? this.junctionConfigs.get(rel.through) : undefined;
+    const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
+    
+    // Build request body schema for junction extra fields
+    const buildRequestBodySchema = () => {
+      if (!hasExtraFields || !junctionConfig) {
+        return null;
+      }
+      
+      const properties: any = {};
+      const required: string[] = [];
+      
+      for (const field of junctionConfig.fields) {
+        const fieldType = this.getOpenAPIType(field.type);
+        properties[field.name] = {
+          type: fieldType.type,
+          ...(fieldType.format ? { format: fieldType.format } : {}),
+          ...(field.description ? { description: field.description } : {})
+        };
+        
+        if (field.required && !field.defaultValue) {
+          required.push(field.name);
+        }
+      }
+      
+      return {
+        type: 'object',
+        properties,
+        ...(required.length > 0 ? { required } : {}),
+        description: 'Optional junction table data'
+      };
+    };
+    
+    const requestBodySchema = buildRequestBodySchema();
 
     return {
       post: {
         tags: [model.name],
         summary: `Add a ${singularRel} to ${model.name}`,
-        description: `Add a specific ${singularRel} to a ${model.name}`,
+        description: `Add a specific ${singularRel} to a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
         operationId: `add${model.name}${this.capitalize(singularRel)}`,
         parameters: [
           { $ref: '#/components/parameters/IdParameter' },
@@ -894,6 +987,16 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
             schema: { type: 'string', format: 'uuid' },
           },
         ],
+        ...(requestBodySchema ? {
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: requestBodySchema,
+              },
+            },
+          },
+        } : {}),
         responses: {
           '201': {
             description: 'Added successfully',
@@ -993,5 +1096,25 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    */
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * Get OpenAPI type information for a field type
+   */
+  private getOpenAPIType(fieldType: string): { type: string; format?: string } {
+    const typeMap: Record<string, { type: string; format?: string }> = {
+      'text': { type: 'string' },
+      'string': { type: 'string' },
+      'integer': { type: 'integer', format: 'int32' },
+      'bigint': { type: 'integer', format: 'int64' },
+      'decimal': { type: 'number', format: 'double' },
+      'boolean': { type: 'boolean' },
+      'date': { type: 'string', format: 'date-time' },
+      'uuid': { type: 'string', format: 'uuid' },
+      'json': { type: 'object' },
+      'jsonb': { type: 'object' },
+      'enum': { type: 'string' },
+    };
+    return typeMap[fieldType] || { type: 'string' };
   }
 }

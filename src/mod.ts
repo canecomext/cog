@@ -110,13 +110,14 @@ export async function generateFromModels(
   // Generate REST APIs
   const restGenerator = new RestAPIGenerator(models, {
     docsEnabled: config.documentation?.enabled,
+    junctionConfigs,
   });
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
   // Generate OpenAPI specification (only if docs are enabled)
   if (config.documentation?.enabled !== false) {
-    const openAPIGenerator = new OpenAPIGenerator(models);
+    const openAPIGenerator = new OpenAPIGenerator(models, junctionConfigs);
     const openAPIFiles = openAPIGenerator.generateOpenAPI();
     openAPIFiles.forEach((content, path) => files.set(path, content));
   }

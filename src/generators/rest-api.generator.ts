@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
 
 /**
  * Generates REST API endpoints for Hono
@@ -6,13 +6,15 @@ import { ModelDefinition } from '../types/model.types.ts';
 export class RestAPIGenerator {
   private models: ModelDefinition[];
   private docsEnabled: boolean;
+  private junctionConfigs: Map<string, JunctionTableConfig>;
 
   constructor(
     models: ModelDefinition[],
-    options: { docsEnabled?: boolean } = {},
+    options: { docsEnabled?: boolean; junctionConfigs?: Map<string, JunctionTableConfig> } = {},
   ) {
     this.models = models;
     this.docsEnabled = options.docsEnabled !== false;
+    this.junctionConfigs = options.junctionConfigs || new Map();
   }
 
   /**
@@ -433,6 +435,10 @@ export type DefaultEnv = {
         const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
         const singularRel = this.singularize(relName);
         const SingularRel = this.capitalize(singularRel);
+        
+        // Check if junction table has custom fields
+        const junctionConfig = this.junctionConfigs.get(rel.through);
+        const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
 
         endpoints.push(`
     /**
@@ -449,15 +455,26 @@ export type DefaultEnv = {
 
     /**
      * POST /${modelNamePlural}/:id/${relName}
-     * Add ${relName} to a ${model.name}
+     * Add ${relName} to a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
      */
     this.routes.post('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+      ${hasExtraFields 
+        ? `const ${relName} = body.${relName} || [];
+      
+      // Transform to domain format: array of { id, extraFields }
+      const ${targetNameLower}Data = ${relName}.map((item: any) => {
+        const { id: itemId, ...extraFields } = item;
+        return {
+          id: itemId,
+          extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined
+        };
+      });`
+        : `const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];`}
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
+        await ${modelNameLower}Domain.add${RelName}(id, ${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Ids`}, tx);
       });
 
       return c.json({ data: { message: '${RelName} added successfully' } }, 201);
@@ -465,15 +482,26 @@ export type DefaultEnv = {
 
     /**
      * PUT /${modelNamePlural}/:id/${relName}
-     * Replace all ${relName} for a ${model.name}
+     * Replace all ${relName} for a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
      */
     this.routes.put('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+      ${hasExtraFields 
+        ? `const ${relName} = body.${relName} || [];
+      
+      // Transform to domain format: array of { id, extraFields }
+      const ${targetNameLower}Data = ${relName}.map((item: any) => {
+        const { id: itemId, ...extraFields } = item;
+        return {
+          id: itemId,
+          extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined
+        };
+      });`
+        : `const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];`}
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
+        await ${modelNameLower}Domain.set${RelName}(id, ${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Ids`}, tx);
       });
 
       return c.json({ data: { message: '${RelName} updated successfully' } });
@@ -481,14 +509,16 @@ export type DefaultEnv = {
 
     /**
      * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
-     * Add a specific ${singularRel} to a ${model.name}
+     * Add a specific ${singularRel} to a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
      */
     this.routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
       const id = c.req.param('id');
       const ${singularRel}Id = c.req.param('${singularRel}Id');
+      ${hasExtraFields ? `const body = await c.req.json().catch(() => ({}));
+      const extraFields = body && typeof body === 'object' ? body : undefined;` : ''}
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
+        await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx${hasExtraFields ? ', extraFields' : ''});
       });
 
       return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
