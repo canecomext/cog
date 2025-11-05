@@ -188,11 +188,20 @@ export async function initializeGenerated<Env extends { Variables: Record<string
     ${
     models
       .map(
-        (m) => `
+        (m) => {
+          const manyToManyRels = m.relationships?.filter((r: any) => r.type === 'manyToMany') || [];
+          const junctionHooksParams = manyToManyRels.length > 0
+            ? `,\n        ${manyToManyRels.map((r: any) => `config.domainHooks.${m.name.toLowerCase()}?.junctionHooks?.${r.name}`).join(',\n        ')}`
+            : '';
+          
+          return `
     if (config.domainHooks.${m.name.toLowerCase()}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain,
-        new domain.${m.name}Domain(config.domainHooks.${m.name.toLowerCase()}));
-    }`,
+        new domain.${m.name}Domain(
+        config.domainHooks.${m.name.toLowerCase()}${junctionHooksParams}
+      ));
+    }`;
+        }
       )
       .join('')
   }
