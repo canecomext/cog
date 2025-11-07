@@ -8,7 +8,7 @@ See `example.ts` lines 76-139 for the implementation.
 
 ## Structure
 
-Junction hooks are nested within `domainHooks`:
+Junction hooks are defined by **junction table name** within `domainHooks.junctionHooks`:
 
 ```typescript
 await initializeGenerated({
@@ -16,19 +16,30 @@ await initializeGenerated({
     user: {
       // Regular CRUD hooks...
       preCreate: async (input, tx, context) => { ... },
-      
-      // Junction table hooks
-      junctionHooks: {
-        roles: {  // The relationship name from the model definition
-          preAddJunction: async (userId, roleId, junctionData, tx, context) => { ... },
-          postAddJunction: async (userId, roleId, junctionData, tx, context) => { ... },
-          afterAddJunction: async (userId, roleId, junctionData, context) => { ... },
-        },
+    },
+    
+    // Junction table hooks - defined by table name
+    junctionHooks: {
+      user_roles: {  // The junction TABLE name (not relationship name)
+        // Hook functions receive an object with camelCase property names
+        preAddJunction: async (ids: { userId: string, roleId: string }, junctionData, tx, context) => { ... },
+        postAddJunction: async (ids: { userId: string, roleId: string }, junctionData, tx, context) => { ... },
+        afterAddJunction: async (ids: { userId: string, roleId: string }, junctionData, context) => { ... },
       },
     },
   },
 });
 ```
+
+## Bidirectional Behavior
+
+**Key Feature**: Junction hooks defined by table name apply **bidirectionally**!
+
+The hooks defined for `user_roles` will execute:
+- When adding a role to a user: `POST /api/users/:userId/roles`
+- When adding a user to a role: `POST /api/roles/:roleId/users`
+
+Both operations use the same `user_roles` junction table, so both trigger the same hooks. This makes the behavior consistent regardless of which direction you approach the relationship.
 
 ## Hook Types
 

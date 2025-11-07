@@ -121,24 +121,28 @@ export interface PaginationOptions {
  * These hooks run at the domain layer within database transactions.
  * For batch operations (addMultiple, removeMultiple), the singular hooks are called for each item.
  * 
+ * The hook functions receive an object with field names matching the junction table's foreign keys.
+ * For example, for a user_roles table with user_id and role_id fields:
+ * preAddJunction({ user_id: '123', role_id: '456' }, junctionData, tx, context)
+ * 
  * The generic DomainEnvVars type allows you to specify your Env Variables type for type-safe
  * access to context variables in hooks.
  */
 export interface JunctionTableHooks<JunctionData = any, DomainEnvVars extends Record<string, any> = Record<string, any>> {
   // Pre-operation hooks (within transaction)
-  preAddJunction?: (sourceId: string, targetId: string, junctionData: JunctionData | undefined, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ sourceId: string; targetId: string; junctionData?: JunctionData }, DomainEnvVars>>;
-  preRemoveJunction?: (sourceId: string, targetId: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ sourceId: string; targetId: string }, DomainEnvVars>>;
-  preUpdateJunction?: (sourceId: string, targetId: string, junctionData: Partial<JunctionData>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ sourceId: string; targetId: string; junctionData: Partial<JunctionData> }, DomainEnvVars>>;
+  preAddJunction?: (ids: Record<string, string>, junctionData: JunctionData | undefined, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string>; junctionData?: JunctionData }, DomainEnvVars>>;
+  preRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
+  preUpdateJunction?: (ids: Record<string, string>, junctionData: Partial<JunctionData>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string>; junctionData: Partial<JunctionData> }, DomainEnvVars>>;
   
   // Post-operation hooks (within transaction)
-  postAddJunction?: (sourceId: string, targetId: string, junctionData: JunctionData | undefined, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
-  postRemoveJunction?: (sourceId: string, targetId: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
-  postUpdateJunction?: (sourceId: string, targetId: string, junctionData: Partial<JunctionData>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postAddJunction?: (ids: Record<string, string>, junctionData: JunctionData | undefined, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postUpdateJunction?: (ids: Record<string, string>, junctionData: Partial<JunctionData>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
   
   // After-operation hooks (outside transaction, async)
-  afterAddJunction?: (sourceId: string, targetId: string, junctionData: JunctionData | undefined, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
-  afterRemoveJunction?: (sourceId: string, targetId: string, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
-  afterUpdateJunction?: (sourceId: string, targetId: string, junctionData: Partial<JunctionData>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterAddJunction?: (ids: Record<string, string>, junctionData: JunctionData | undefined, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterRemoveJunction?: (ids: Record<string, string>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterUpdateJunction?: (ids: Record<string, string>, junctionData: Partial<JunctionData>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
 }
 `;
   }
@@ -835,35 +839,33 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           this.singularize(targetNameLower)
         }Id: string, tx: DbTransaction${extraFieldsOptionalParam ? `, extraFields?: ${extraFieldsType}` : ''}, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-add hook
-    let processedId = id;
-    let processedTargetId = ${this.singularize(targetNameLower)}Id;
+    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${this.singularize(targetNameLower)}Id };
     let processedExtraFields = ${hasExtraFields ? 'extraFields' : 'undefined'};
     if (this.${relName}JunctionHooks.preAddJunction) {
-      const preResult = await this.${relName}JunctionHooks.preAddJunction(id, ${this.singularize(targetNameLower)}Id, processedExtraFields, tx, context);
-      processedId = preResult.data.sourceId;
-      processedTargetId = preResult.data.targetId;
+      const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, processedExtraFields, tx, context);
+      ids = preResult.data.ids as typeof ids;
       processedExtraFields = preResult.data.junctionData as any;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // Perform add operation
     await tx.insert(${junctionTable}Table).values({
-      ${sourceFK}: processedId,
-      ${targetFK}: processedTargetId${
+      ${sourceFK}: ids.${this.toCamelCase(sourceFK)},
+      ${targetFK}: ids.${this.toCamelCase(targetFK)}${
       hasExtraFields ? `,
       ...processedExtraFields` : ''}
     });
 
     // Post-add hook
     if (this.${relName}JunctionHooks.postAddJunction) {
-      const postResult = await this.${relName}JunctionHooks.postAddJunction(processedId, processedTargetId, processedExtraFields, tx, context);
+      const postResult = await this.${relName}JunctionHooks.postAddJunction(ids, processedExtraFields, tx, context);
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-add hook (outside transaction, async)
     if (this.${relName}JunctionHooks.afterAddJunction) {
       setTimeout(() => {
-        this.${relName}JunctionHooks.afterAddJunction!(processedId, processedTargetId, processedExtraFields, context).catch(console.error);
+        this.${relName}JunctionHooks.afterAddJunction!(ids, processedExtraFields, context).catch(console.error);
       }, 0);
     }
   }
@@ -894,13 +896,11 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           this.singularize(targetNameLower)
         }Id: string, extraFields: Partial<${extraFieldsType}>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-update hook
-    let processedId = id;
-    let processedTargetId = ${this.singularize(targetNameLower)}Id;
+    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${this.singularize(targetNameLower)}Id };
     let processedExtraFields = extraFields;
     if (this.${relName}JunctionHooks.preUpdateJunction) {
-      const preResult = await this.${relName}JunctionHooks.preUpdateJunction(id, ${this.singularize(targetNameLower)}Id, extraFields, tx, context);
-      processedId = preResult.data.sourceId;
-      processedTargetId = preResult.data.targetId;
+      const preResult = await this.${relName}JunctionHooks.preUpdateJunction(ids, extraFields, tx, context);
+      ids = preResult.data.ids as typeof ids;
       processedExtraFields = preResult.data.junctionData;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
@@ -910,21 +910,21 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       .set(processedExtraFields)
       .where(
         and(
-          eq(${junctionTable}Table.${sourceFK}, processedId),
-          eq(${junctionTable}Table.${targetFK}, processedTargetId)
+          eq(${junctionTable}Table.${sourceFK}, ids.${this.toCamelCase(sourceFK)}),
+          eq(${junctionTable}Table.${targetFK}, ids.${this.toCamelCase(targetFK)})
         )
       );
 
     // Post-update hook
     if (this.${relName}JunctionHooks.postUpdateJunction) {
-      const postResult = await this.${relName}JunctionHooks.postUpdateJunction(processedId, processedTargetId, processedExtraFields, tx, context);
+      const postResult = await this.${relName}JunctionHooks.postUpdateJunction(ids, processedExtraFields, tx, context);
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-update hook (outside transaction, async)
     if (this.${relName}JunctionHooks.afterUpdateJunction) {
       setTimeout(() => {
-        this.${relName}JunctionHooks.afterUpdateJunction!(processedId, processedTargetId, processedExtraFields, context).catch(console.error);
+        this.${relName}JunctionHooks.afterUpdateJunction!(ids, processedExtraFields, context).catch(console.error);
       }, 0);
     }
   }` : ''}
@@ -936,12 +936,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           this.singularize(targetNameLower)
         }Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-remove hook
-    let processedId = id;
-    let processedTargetId = ${this.singularize(targetNameLower)}Id;
+    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${this.singularize(targetNameLower)}Id };
     if (this.${relName}JunctionHooks.preRemoveJunction) {
-      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(id, ${this.singularize(targetNameLower)}Id, tx, context);
-      processedId = preResult.data.sourceId;
-      processedTargetId = preResult.data.targetId;
+      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, tx, context);
+      ids = preResult.data.ids as typeof ids;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
@@ -949,21 +947,21 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     await tx.delete(${junctionTable}Table)
       .where(
         and(
-          eq(${junctionTable}Table.${sourceFK}, processedId),
-          eq(${junctionTable}Table.${targetFK}, processedTargetId)
+          eq(${junctionTable}Table.${sourceFK}, ids.${this.toCamelCase(sourceFK)}),
+          eq(${junctionTable}Table.${targetFK}, ids.${this.toCamelCase(targetFK)})
         )
       );
 
     // Post-remove hook
     if (this.${relName}JunctionHooks.postRemoveJunction) {
-      const postResult = await this.${relName}JunctionHooks.postRemoveJunction(processedId, processedTargetId, tx, context);
+      const postResult = await this.${relName}JunctionHooks.postRemoveJunction(ids, tx, context);
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-remove hook (outside transaction, async)
     if (this.${relName}JunctionHooks.afterRemoveJunction) {
       setTimeout(() => {
-        this.${relName}JunctionHooks.afterRemoveJunction!(processedId, processedTargetId, context).catch(console.error);
+        this.${relName}JunctionHooks.afterRemoveJunction!(ids, context).catch(console.error);
       }, 0);
     }
   }
@@ -1050,6 +1048,13 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   private toSnakeCase(str: string): string {
     return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
       .replace(/^_/, '');
+  }
+
+  /**
+   * Convert snake_case to camelCase
+   */
+  private toCamelCase(str: string): string {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
   }
 
   /**

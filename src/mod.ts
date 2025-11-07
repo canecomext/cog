@@ -168,6 +168,9 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   };
   domainHooks?: {
     [modelName: string]: any;
+    junctionHooks?: {
+      [junctionTableName: string]: any;
+    };
   };
   restHooks?: {
     [modelName: string]: any;
@@ -191,11 +194,15 @@ export async function initializeGenerated<Env extends { Variables: Record<string
         (m) => {
           const manyToManyRels = m.relationships?.filter((r: any) => r.type === 'manyToMany') || [];
           const junctionHooksParams = manyToManyRels.length > 0
-            ? `,\n        ${manyToManyRels.map((r: any) => `config.domainHooks.${m.name.toLowerCase()}?.junctionHooks?.${r.name}`).join(',\n        ')}`
+            ? `,\n        ${manyToManyRels.map((r: any) => `config.domainHooks.junctionHooks?.${r.through?.toLowerCase() || ''}`).join(',\n        ')}`
+            : '';
+          
+          const junctionHooksCondition = manyToManyRels.length > 0
+            ? ` || (${manyToManyRels.map((r: any) => `config.domainHooks.junctionHooks?.${r.through?.toLowerCase() || ''}`).join(' || ')})`
             : '';
           
           return `
-    if (config.domainHooks.${m.name.toLowerCase()}) {
+    if (config.domainHooks.${m.name.toLowerCase()}${junctionHooksCondition}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain,
         new domain.${m.name}Domain(
         config.domainHooks.${m.name.toLowerCase()}${junctionHooksParams}

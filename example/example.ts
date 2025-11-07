@@ -72,71 +72,71 @@ async function startServer() {
               `User created: ${result.id} at ${new Date().toISOString()}`,
             );
           },
+        },
+        // Junction table hooks - defined by junction table name
+        // These hooks apply bidirectionally (both user->role and role->user)
+        junctionHooks: {
+        user_roles: {
+          // Pre-add hook: Validate role assignment rules
+          async preAddJunction(ids: { userId: string; roleId: string }, junctionData: any, tx: DbTransaction, context?: DomainHookContext) {
+            console.log(`\n[Junction Hook] Attempting to link user ${ids.userId} with role ${ids.roleId}`);
+            
+            // Example: Check if user already has maximum allowed roles
+            const existingRolesResult = await tx.execute<{ count: string }>(sql`
+              SELECT COUNT(*) as count 
+              FROM user_roles 
+              WHERE user_id = ${ids.userId}
+            `);
+            
+            const roleCount = Number(existingRolesResult[0]?.count || 0);
+            const MAX_ROLES_PER_USER = 5;
+            
+            if (roleCount >= MAX_ROLES_PER_USER) {
+              throw new HTTPException(400, {
+                message: `User cannot have more than ${MAX_ROLES_PER_USER} roles`,
+              });
+            }
+            
+            // Example: Prevent duplicate role assignments (though DB constraints handle this)
+            const duplicateCheckResult = await tx.execute(sql`
+              SELECT 1 
+              FROM user_roles 
+              WHERE user_id = ${ids.userId} AND role_id = ${ids.roleId}
+            `);
+            
+            if (duplicateCheckResult.length > 0) {
+              throw new HTTPException(409, {
+                message: 'This user-role relationship already exists',
+              });
+            }
+            
+            console.log(`[Junction Hook] Validation passed for user ${ids.userId} and role ${ids.roleId}`);
+            
+            // Return the validated data
+            return {
+              data: { ids, junctionData },
+              context,
+            };
+          },
           
-          // Junction table hooks for the user-roles many-to-many relationship
-          junctionHooks: {
-            roles: {
-            // Pre-add hook: Validate role assignment rules
-            async preAddJunction(userId: string, roleId: string, junctionData: any, tx: DbTransaction, context?: DomainHookContext) {
-              console.log(`\n[Junction Hook] Attempting to add role ${roleId} to user ${userId}`);
-              
-              // Example: Check if user already has maximum allowed roles
-              const existingRolesResult = await tx.execute<{ count: string }>(sql`
-                SELECT COUNT(*) as count 
-                FROM user_roles 
-                WHERE user_id = ${userId}
-              `);
-              
-              const roleCount = Number(existingRolesResult[0]?.count || 0);
-              const MAX_ROLES_PER_USER = 5;
-              
-              if (roleCount >= MAX_ROLES_PER_USER) {
-                throw new HTTPException(400, {
-                  message: `User cannot have more than ${MAX_ROLES_PER_USER} roles`,
-                });
-              }
-              
-              // Example: Prevent duplicate role assignments (though DB constraints handle this)
-              const duplicateCheckResult = await tx.execute(sql`
-                SELECT 1 
-                FROM user_roles 
-                WHERE user_id = ${userId} AND role_id = ${roleId}
-              `);
-              
-              if (duplicateCheckResult.length > 0) {
-                throw new HTTPException(409, {
-                  message: 'User already has this role',
-                });
-              }
-              
-              console.log(`[Junction Hook] Validation passed for user ${userId} and role ${roleId}`);
-              
-              // Return the validated data
-              return {
-                data: { sourceId: userId, targetId: roleId, junctionData },
-                context,
-              };
-            },
+          // Post-add hook: Log the successful relationship creation
+          async postAddJunction(ids: { userId: string; roleId: string }, junctionData: any, tx: DbTransaction, context?: DomainHookContext) {
+            console.log(`[Junction Hook] Successfully linked user ${ids.userId} with role ${ids.roleId}`);
+            return { data: undefined, context };
+          },
+          
+          // After-add hook: Perform async side effects (outside transaction)
+          async afterAddJunction(ids: { userId: string; roleId: string }, junctionData: any, context?: DomainHookContext) {
+            // Example: Send notification, update cache, trigger webhook, etc.
+            console.log(`[Junction Hook - Async] Sending notification: User ${ids.userId} was assigned role ${ids.roleId}`);
             
-            // Post-add hook: Log the successful role assignment
-            async postAddJunction(userId: string, roleId: string, junctionData: any, tx: DbTransaction, context?: DomainHookContext) {
-              console.log(`[Junction Hook] Successfully added role ${roleId} to user ${userId}`);
-              return { data: undefined, context };
-            },
+            // Simulate async work (e.g., sending email, updating cache)
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            // After-add hook: Perform async side effects (outside transaction)
-            async afterAddJunction(userId: string, roleId: string, junctionData: any, context?: DomainHookContext) {
-              // Example: Send notification, update cache, trigger webhook, etc.
-              console.log(`[Junction Hook - Async] Sending notification: Role ${roleId} was assigned to user ${userId}`);
-              
-              // Simulate async work (e.g., sending email, updating cache)
-              await new Promise(resolve => setTimeout(resolve, 100));
-              
-              console.log(`[Junction Hook - Async] Notification sent successfully\n`);
-            },
+            console.log(`[Junction Hook - Async] Notification sent successfully\n`);
           },
         },
-        },
+      },
       },
       // Register REST hooks (run at HTTP layer, no transaction)
       restHooks: {
