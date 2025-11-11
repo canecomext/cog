@@ -480,37 +480,27 @@ export class ModelParser {
         if (!Array.isArray(constraintDef) || constraintDef.length === 0) {
           this.errors.push({
             model: modelName,
-            message: `Check constraint 'onlyOneNotNull' has invalid definition`,
+            message: `Check constraint 'onlyOneNotNull' has invalid definition - must be an array of field names`,
             severity: 'error'
           });
           return false;
         }
 
-        // First element should be a string with comma-separated field names
-        const fieldList = constraintDef[0];
-        if (typeof fieldList !== 'string' || fieldList.trim() === '') {
-          this.errors.push({
-            model: modelName,
-            message: `Check constraint 'onlyOneNotNull' must specify field names as a string`,
-            severity: 'error'
-          });
-          return false;
-        }
-
-        // Parse and validate field names
-        const fieldNames = fieldList.split(',').map(f => f.trim()).filter(f => f.length > 0);
-        if (fieldNames.length === 0) {
-          this.errors.push({
-            model: modelName,
-            message: `Check constraint 'onlyOneNotNull' must specify at least one field`,
-            severity: 'error'
-          });
-          return false;
+        // Validate that all elements are strings (field names)
+        for (const fieldName of constraintDef) {
+          if (typeof fieldName !== 'string' || fieldName.trim() === '') {
+            this.errors.push({
+              model: modelName,
+              message: `Check constraint 'onlyOneNotNull' must contain valid field name strings`,
+              severity: 'error'
+            });
+            return false;
+          }
         }
 
         // Validate that all referenced fields exist in the model
         const modelFieldNames = new Set(fields.map(f => f.name));
-        for (const fieldName of fieldNames) {
+        for (const fieldName of constraintDef) {
           if (!modelFieldNames.has(fieldName)) {
             this.errors.push({
               model: modelName,

@@ -89,9 +89,11 @@ export interface IndexDefinition {
 }
 
 // Check constraint definition
-// Format: { "constraintName": [["field1, field2", expectedValue]] }
-// For num_nonnulls: { "onlyOneNull": [["avatarUrl, socialLinks"]] } -> num_nonnulls(avatarUrl, socialLinks) = 1
-export type CheckConstraints = Record<string, Array<[string] | [string, number]>>;
+// Format: { "onlyOneNotNull": [["field1", "field2"]] }
+// For num_nonnulls: { "onlyOneNotNull": [["avatarUrl", "socialLinks"]] } -> num_nonnulls(avatarUrl, socialLinks) = 1
+export type CheckConstraints = {
+  onlyOneNotNull?: string[][]; // Array of arrays, each inner array contains field names
+};
 
 // Model definition
 export interface ModelDefinition {

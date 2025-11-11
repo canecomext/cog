@@ -295,10 +295,8 @@ export class DrizzleSchemaGenerator {
     if (model.check && model.check.onlyOneNotNull) {
       const constraintDefs = model.check.onlyOneNotNull;
       
-      constraintDefs.forEach((constraintDef, index) => {
-        const fieldList = constraintDef[0];
-        const fieldNames = fieldList.split(',').map(f => f.trim());
-        
+      constraintDefs.forEach((fieldNames, index) => {
+        // fieldNames is now an array of field name strings
         // Generate numbered constraint name (1-indexed)
         const checkName = `check_${model.name.toLowerCase()}_onlyOneNotNull${index + 1}`;
         // Convert field names to snake_case for SQL

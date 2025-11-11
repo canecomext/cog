@@ -48,7 +48,7 @@
   ],
   "check": {
     "onlyOneNotNull": [
-      ["avatarUrl, socialLinks"]
+      ["avatarUrl", "socialLinks"]
     ]
   },
   "timestamps": true
