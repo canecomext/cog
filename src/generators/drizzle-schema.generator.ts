@@ -126,8 +126,8 @@ export class DrizzleSchemaGenerator {
     // Base imports from pg-core and drizzle-orm
     let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
 
-    // Always add index imports since we're using table-level definitions
-    imports += `import { index, uniqueIndex } from 'npm:drizzle-orm/pg-core';\n`;
+    // Always add index and check imports since we're using table-level definitions
+    imports += `import { index, uniqueIndex, check } from 'npm:drizzle-orm/pg-core';\n`;
 
     imports += `import { sql } from 'npm:drizzle-orm';\n`;
     
@@ -252,8 +252,8 @@ export class DrizzleSchemaGenerator {
     // Close the fields object and start the table-level definitions
     code += '}, (table) => [\n';
 
-    // Generate indexes within the table definition
-    const tableIndexes = [];
+    // Generate indexes and checks within the table definition
+    const tableConstraints = [];
 
     // Field-level indexes
     for (const field of model.fields) {
@@ -264,9 +264,9 @@ export class DrizzleSchemaGenerator {
         const indexName = `idx_${model.name.toLowerCase()}_${field.name}`;
 
         if (isPostGISField) {
-          tableIndexes.push(`  index('${indexName}').using('gist', table.${field.name})`);
+          tableConstraints.push(`  index('${indexName}').using('gist', table.${field.name})`);
         } else {
-          tableIndexes.push(`  index('${indexName}').on(table.${field.name})`);
+          tableConstraints.push(`  index('${indexName}').on(table.${field.name})`);
         }
       }
     }
@@ -284,14 +284,33 @@ export class DrizzleSchemaGenerator {
           ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
 
         if (isPostGISField) {
-          tableIndexes.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
         } else {
-          tableIndexes.push(`  ${indexType}('${indexName}').on(${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').on(${fields})`);
         }
       }
     }
 
-    code += tableIndexes.join(',\n') + '\n]);';
+    // Check constraints - only handle onlyOneNotNull for now
+    if (model.check && model.check.onlyOneNotNull) {
+      const constraintDefs = model.check.onlyOneNotNull;
+      
+      constraintDefs.forEach((constraintDef, index) => {
+        const fieldList = constraintDef[0];
+        const fieldNames = fieldList.split(',').map(f => f.trim());
+        
+        // Generate numbered constraint name (1-indexed)
+        const checkName = `check_${model.name.toLowerCase()}_onlyOneNotNull${index + 1}`;
+        // Convert field names to snake_case for SQL
+        const columnNames = fieldNames.map(f => this.toSnakeCase(f)).join(', ');
+        // Always check against 1 for onlyOneNotNull
+        const checkSql = `num_nonnulls(${columnNames}) = 1`;
+        
+        tableConstraints.push(`  check('${checkName}', sql\`${checkSql}\`)`);
+      });
+    }
+
+    code += tableConstraints.join(',\n') + '\n]);';
 
     return code;
   }

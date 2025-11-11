@@ -144,6 +144,12 @@ export class ModelParser {
       if (!enums) return null;
     }
 
+    // Validate check constraints if present
+    if (data.check) {
+      const checkValid = this.validateCheckConstraints(data.check, data.name, fields);
+      if (!checkValid) return null;
+    }
+
     // Build the model
     const model: ModelDefinition = {
       name: data.name,
@@ -154,6 +160,7 @@ export class ModelParser {
       schema: data.schema,
       relationships: data.relationships || [],
       indexes: data.indexes || [],
+      check: data.check,
       timestamps: data.timestamps,
       softDelete: data.softDelete,
       description: data.description,
@@ -437,6 +444,86 @@ export class ModelParser {
       'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
     ];
     return postgisTypes.includes(type);
+  }
+
+  /**
+   * Validate check constraints
+   */
+  private validateCheckConstraints(
+    checkConstraints: any,
+    modelName: string,
+    fields: FieldDefinition[]
+  ): boolean {
+    if (typeof checkConstraints !== 'object' || checkConstraints === null) {
+      this.errors.push({
+        model: modelName,
+        message: `Check constraints must be an object`,
+        severity: 'error'
+      });
+      return false;
+    }
+
+    // Only validate onlyOneNotNull for now, ignore other keys
+    if (checkConstraints.onlyOneNotNull) {
+      const constraintDefs = checkConstraints.onlyOneNotNull;
+      
+      if (!Array.isArray(constraintDefs)) {
+        this.errors.push({
+          model: modelName,
+          message: `Check constraint 'onlyOneNotNull' must be an array`,
+          severity: 'error'
+        });
+        return false;
+      }
+
+      for (const constraintDef of constraintDefs) {
+        if (!Array.isArray(constraintDef) || constraintDef.length === 0) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'onlyOneNotNull' has invalid definition`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // First element should be a string with comma-separated field names
+        const fieldList = constraintDef[0];
+        if (typeof fieldList !== 'string' || fieldList.trim() === '') {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'onlyOneNotNull' must specify field names as a string`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Parse and validate field names
+        const fieldNames = fieldList.split(',').map(f => f.trim()).filter(f => f.length > 0);
+        if (fieldNames.length === 0) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'onlyOneNotNull' must specify at least one field`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate that all referenced fields exist in the model
+        const modelFieldNames = new Set(fields.map(f => f.name));
+        for (const fieldName of fieldNames) {
+          if (!modelFieldNames.has(fieldName)) {
+            this.errors.push({
+              model: modelName,
+              message: `Check constraint 'onlyOneNotNull' references non-existent field: ${fieldName}`,
+              severity: 'error'
+            });
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
   }
 
   /**

@@ -88,6 +88,11 @@ export interface IndexDefinition {
   where?: string; // Partial index condition
 }
 
+// Check constraint definition
+// Format: { "constraintName": [["field1, field2", expectedValue]] }
+// For num_nonnulls: { "onlyOneNull": [["avatarUrl, socialLinks"]] } -> num_nonnulls(avatarUrl, socialLinks) = 1
+export type CheckConstraints = Record<string, Array<[string] | [string, number]>>;
+
 // Model definition
 export interface ModelDefinition {
   name: string; // Model name (e.g., "User")
@@ -98,6 +103,7 @@ export interface ModelDefinition {
   enums?: EnumDefinition[]; // Enum definitions for this model
   relationships?: RelationshipDefinition[];
   indexes?: IndexDefinition[];
+  check?: CheckConstraints; // Check constraints for this model
   timestamps?: boolean | {
     createdAt?: string | boolean;
     updatedAt?: string | boolean;
