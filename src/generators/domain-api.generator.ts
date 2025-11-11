@@ -1,4 +1,4 @@
-import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
+import { ModelDefinition, JunctionTableConfig, FieldDefinition } from '../types/model.types.ts';
 
 /**
  * Generates domain API layer with CRUD operations and hooks
@@ -784,14 +784,16 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           // Build type definition
           let typeFields: string[] = [];
           for (const field of junctionConfig.fields) {
-            const tsType = this.getTypeScriptType(field.type);
+            const tsType = this.getTypeScriptType(field.type, field);
             const optional = !field.required || field.defaultValue ? '?' : '';
             typeFields.push(`${field.name}${optional}: ${tsType}`);
           }
           
           if (typeFields.length > 0) {
             extraFieldsType = `{ ${typeFields.join('; ')} }`;
-            extraFieldsParam = `, extraFields?: ${extraFieldsType}`;
+            // If there are required fields without defaults, extraFields is required
+            const hasRequiredFields = requiredFields.length > 0;
+            extraFieldsParam = hasRequiredFields ? `, extraFields: ${extraFieldsType}` : `, extraFields?: ${extraFieldsType}`;
             extraFieldsOptionalParam = `, extraFields?: ${extraFieldsType}`;
           }
         }
@@ -801,7 +803,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         let junctionFieldsExtraction = '';
         if (hasExtraFields && junctionConfig?.fields) {
           const fieldTypes = junctionConfig.fields.map(f => {
-            const tsType = this.getTypeScriptType(f.type);
+            const tsType = this.getTypeScriptType(f.type, f);
             const optional = !f.required || f.defaultValue ? '?' : '';
             return `${f.name}${optional}: ${tsType}`;
           });
@@ -837,7 +839,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   async add${this.singularize(RelName)}(id: string, ${
           this.singularize(targetNameLower)
-        }Id: string, tx: DbTransaction${extraFieldsOptionalParam ? `, extraFields?: ${extraFieldsType}` : ''}, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+        }Id: string, tx: DbTransaction${extraFieldsParam}, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-add hook
     let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${this.singularize(targetNameLower)}Id };
     let processedExtraFields = ${hasExtraFields ? 'extraFields' : 'undefined'};
@@ -874,7 +876,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Add multiple ${relName} to ${model.name}
    */
   async add${RelName}(id: string, ${targetNameLower}Data: ${hasExtraFields 
-    ? `Array<{ id: string${extraFieldsOptionalParam ? `; extraFields?: ${extraFieldsType}` : ''} }>`
+    ? `Array<{ id: string${extraFieldsParam} }>`
     : 'string[]'}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     if (${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Data`}.length === 0) return;
     
@@ -982,7 +984,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Set ${relName} for ${model.name} (replace all)
    */
   async set${RelName}(id: string, ${targetNameLower}Data: ${hasExtraFields 
-    ? `Array<{ id: string${extraFieldsOptionalParam ? `; extraFields?: ${extraFieldsType}` : ''} }>`
+    ? `Array<{ id: string${extraFieldsParam} }>`
     : 'string[]'}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Delete all existing relationships
     await tx.delete(${junctionTable}Table)
@@ -1075,9 +1077,25 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Get TypeScript type for a field type
+   * Get TypeScript type for a field
    */
-  private getTypeScriptType(fieldType: string): string {
+  private getTypeScriptType(fieldType: string, field?: FieldDefinition): string {
+    // If it's an enum field with values, generate union type
+    if (fieldType === 'enum' && field) {
+      if (field.enumValues && field.enumValues.length > 0) {
+        return field.enumValues.map(v => `"${v}"`).join(' | ');
+      }
+      // If enumName is specified, look up the enum definition
+      if (field.enumName) {
+        const junctionConfig = Array.from(this.junctionConfigs.values())
+          .find(config => config.enums?.some(e => e.name === field.enumName));
+        const enumDef = junctionConfig?.enums?.find(e => e.name === field.enumName);
+        if (enumDef && enumDef.values.length > 0) {
+          return enumDef.values.map(v => `"${v}"`).join(' | ');
+        }
+      }
+    }
+    
     const typeMap: Record<string, string> = {
       'text': 'string',
       'string': 'string',
