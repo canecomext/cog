@@ -220,7 +220,8 @@ export class DrizzleSchemaGenerator {
 
     // Start table definition (no type annotation needed)
     const tableFunction = model.schema ? `${model.schema}Schema.table` : 'pgTable';
-    code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.name.toLowerCase()}', {\n`;
+    const tableName = model.tableName || model.name.toLowerCase();
+    code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${tableName}', {\n`;
 
     // Add fields
     const fieldDefinitions: string[] = [];
@@ -703,7 +704,8 @@ export class DrizzleSchemaGenerator {
     }
 
     // Generate table definition
-    code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
+    const actualTableName = junctionConfig?.tableName || tableName.toLowerCase();
+    code += `export const ${tableName.toLowerCase()}Table = pgTable('${actualTableName}', {
 `;
 
     // Generate source foreign key column

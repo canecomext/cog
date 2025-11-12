@@ -174,6 +174,7 @@ import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
+${this.generateJunctionTableImports(model)}
 import { DomainHooks, JunctionTableHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
 export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Record<string, any>> {
@@ -450,6 +451,34 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
 // Export singleton instance (uses default Record<string, any> for EnvVars)
 export const ${modelNameLower}Domain = new ${modelName}Domain();
 `;
+  }
+
+  /**
+   * Generate junction table imports for many-to-many relationships
+   */
+  private generateJunctionTableImports(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    const imports: string[] = [];
+    const addedImports = new Set<string>();
+
+    for (const rel of model.relationships) {
+      // Add junction table insert type imports for manyToMany relationships
+      if (rel.type === 'manyToMany' && rel.through && !addedImports.has(rel.through)) {
+        const junctionTableName = rel.through.toLowerCase();
+        // Type name matches schema export: User_spaces (capitalize first part only)
+        const parts = rel.through.split('_');
+        const junctionTypeName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_');
+        imports.push(
+          `import { type New${junctionTypeName} } from '../schema/${junctionTableName}.schema.ts';`,
+        );
+        addedImports.add(rel.through);
+      }
+    }
+
+    return imports.length > 0 ? imports.join('\n') : '';
   }
 
   /**
@@ -856,7 +885,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       ${targetFK}: ids.${this.toCamelCase(targetFK)}${
       hasExtraFields ? `,
       ...processedExtraFields` : ''}
-    });
+    } as New${(() => { const parts = rel.through.split('_'); return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_'); })()});
 
     // Post-add hook
     if (this.${relName}JunctionHooks.postAddJunction) {
@@ -909,7 +938,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     // Perform update operation
     await tx.update(${junctionTable}Table)
-      .set(processedExtraFields)
+      .set(processedExtraFields as Partial<New${(() => { const parts = rel.through.split('_'); return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_'); })()}>)
       .where(
         and(
           eq(${junctionTable}Table.${sourceFK}, ids.${this.toCamelCase(sourceFK)}),
