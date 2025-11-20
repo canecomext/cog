@@ -1,0 +1,40 @@
+{
+  "name": "Project",
+  "tableName": "project",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 200,
+      "required": true
+    },
+    {
+      "name": "boundary",
+      "type": "polygon",
+      "srid": 4326,
+      "required": true
+    }
+  ],
+  "relationships": [
+    {
+      "type": "oneToMany",
+      "name": "assignmentList",
+      "target": "Assignment",
+      "foreignKey": "projectId"
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["boundary"],
+      "type": "gist"
+    }
+  ],
+  "timestamps": true
+}

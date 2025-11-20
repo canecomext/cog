@@ -1,4 +1,4 @@
-import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
+import { ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates database initialization code
@@ -7,16 +7,14 @@ export class DatabaseInitGenerator {
   private models: ModelDefinition[];
   private dbType: 'postgresql' | 'cockroachdb';
   private postgis: boolean;
-  private junctionConfigs: Map<string, JunctionTableConfig>;
 
   constructor(
     models: ModelDefinition[],
-    options: { dbType?: string; postgis?: boolean; junctionConfigs?: Map<string, JunctionTableConfig> } = {},
+    options: { dbType?: string; postgis?: boolean } = {},
   ) {
     this.models = models;
     this.dbType = options.dbType === 'cockroachdb' ? 'cockroachdb' : 'postgresql';
     this.postgis = options.postgis !== false;
-    this.junctionConfigs = options.junctionConfigs || new Map();
   }
 
   /**
@@ -460,29 +458,16 @@ export async function healthCheck(): Promise<boolean> {
           let tableSQL = `    await sql\`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
         ${sourceFKColumn} ${sourceFKType} NOT NULL,
-        ${targetFKColumn} ${targetFKType} NOT NULL,`;
-
-          // Add extra fields from junction config
-          const junctionConfig = this.junctionConfigs.get(rel.through);
-          if (junctionConfig?.fields && junctionConfig.fields.length > 0) {
-            for (const field of junctionConfig.fields) {
-              const columnName = this.toSnakeCase(field.name);
-              const columnType = this.getColumnType(field);
-              const notNull = field.required && !field.defaultValue ? ' NOT NULL' : '';
-              const defaultVal = field.defaultValue !== undefined ? ` DEFAULT ${this.formatDefaultValue(field)}` : '';
-              tableSQL += `
-        ${columnName} ${columnType}${defaultVal}${notNull},`;
-            }
-          }
+        ${targetFKColumn} ${targetFKType} NOT NULL`;
 
           // Add timestamps if enabled
           const hasTimestamps = model.timestamps || targetModel.timestamps;
           if (hasTimestamps) {
-            tableSQL += `
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,`;
+            tableSQL += `,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL`;
           }
 
-          tableSQL += `
+          tableSQL += `,
         PRIMARY KEY (${sourceFKColumn}, ${targetFKColumn})
       );\`;
     logger.info?.('Created junction table: ${tableName}');`;
@@ -552,9 +537,6 @@ export async function healthCheck(): Promise<boolean> {
       const timestampType = 'TIMESTAMP';
       columns.push(`created_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
       columns.push(`updated_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
-    }
-    if (model.softDelete) {
-      columns.push(`deleted_at TIMESTAMP`);
     }
 
     return columns.join(',\n        ');

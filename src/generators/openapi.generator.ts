@@ -1,15 +1,13 @@
-import { DataType, FieldDefinition, ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
+import { DataType, FieldDefinition, ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates OpenAPI 3.1.0 specification from model definitions
  */
 export class OpenAPIGenerator {
   private models: ModelDefinition[];
-  private junctionConfigs: Map<string, JunctionTableConfig>;
 
-  constructor(models: ModelDefinition[], junctionConfigs?: Map<string, JunctionTableConfig>) {
+  constructor(models: ModelDefinition[]) {
     this.models = models;
-    this.junctionConfigs = junctionConfigs || new Map();
   }
 
   /**
@@ -142,7 +140,6 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     // Generate schemas for each model
     for (const model of this.models) {
       const modelNameLower = model.name.toLowerCase();
-      const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
       // Add tag for this model
       spec.tags.push({
@@ -155,20 +152,22 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       spec.components.schemas[`${model.name}Input`] = this.generateModelSchema(model, true);
       spec.components.schemas[`${model.name}Update`] = this.generateModelSchema(model, true, true);
 
-      // Generate CRUD paths
-      spec.paths[`/${modelNamePlural}`] = this.generateListAndCreatePaths(model);
-      spec.paths[`/${modelNamePlural}/{id}`] = this.generateDetailPaths(model);
+      // Generate CRUD paths (using singular model names)
+      spec.paths[`/${modelNameLower}`] = this.generateListAndCreatePaths(model);
+      spec.paths[`/${modelNameLower}/{id}`] = this.generateDetailPaths(model);
 
       // Generate relationship paths
       if (model.relationships) {
         for (const rel of model.relationships) {
           if (rel.type === 'oneToMany') {
-            spec.paths[`/${modelNamePlural}/{id}/${rel.name}`] = this.generateOneToManyRelationshipPath(model, rel);
+            const targetName = rel.target;
+            spec.paths[`/${modelNameLower}/{id}/${targetName.toLowerCase()}List`] = this.generateOneToManyRelationshipPath(model, rel);
           } else if (rel.type === 'manyToMany') {
-            spec.paths[`/${modelNamePlural}/{id}/${rel.name}`] = this.generateManyToManyRelationshipPaths(model, rel);
-            
-            const singularRel = this.singularize(rel.name);
-            spec.paths[`/${modelNamePlural}/{id}/${rel.name}/{${singularRel}Id}`] = 
+            const targetName = rel.target;
+            const targetNameLower = targetName.toLowerCase();
+            spec.paths[`/${modelNameLower}/{id}/${targetNameLower}List`] = this.generateManyToManyRelationshipPaths(model, rel);
+
+            spec.paths[`/${modelNameLower}/{id}/${targetNameLower}List/{${targetNameLower}Id}`] =
               this.generateManyToManyDetailPaths(model, rel);
           }
         }
@@ -328,15 +327,6 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
         description: 'Last update timestamp',
       };
       schema.required.push('createdAt', 'updatedAt');
-    }
-
-    // Add soft delete field if enabled (not in input schemas)
-    if (!isInput && model.softDelete) {
-      schema.properties.deletedAt = {
-        type: ['string', 'null'],
-        format: 'date-time',
-        description: 'Deletion timestamp (null if not deleted)',
-      };
     }
 
     // Remove required array if empty or if update schema
@@ -507,13 +497,13 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate paths for list and create operations
    */
   private generateListAndCreatePaths(model: ModelDefinition): any {
-    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
+    const modelNameLower = model.name.toLowerCase();
 
     return {
       get: {
         tags: [model.name],
-        summary: `List ${modelNamePlural}`,
-        description: `Retrieve a paginated list of ${modelNamePlural}`,
+        summary: `List ${model.name} records`,
+        description: `Retrieve a paginated list of ${model.name} records`,
         operationId: `list${model.name}`,
         parameters: [
           { $ref: '#/components/parameters/LimitParameter' },
@@ -638,38 +628,10 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           '500': { $ref: '#/components/responses/ServerError' },
         },
       },
-      patch: {
-        tags: [model.name],
-        summary: `Partially update ${model.name}`,
-        description: `Partially update an existing ${model.name}`,
-        operationId: `patch${model.name}`,
-        parameters: [{ $ref: '#/components/parameters/IdParameter' }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: { $ref: `#/components/schemas/${model.name}Update` },
-            },
-          },
-        },
-        responses: {
-          '200': {
-            description: 'Updated successfully',
-            content: {
-              'application/json': {
-                schema: { $ref: `#/components/schemas/${model.name}` },
-              },
-            },
-          },
-          '400': { $ref: '#/components/responses/ValidationError' },
-          '404': { $ref: '#/components/responses/NotFound' },
-          '500': { $ref: '#/components/responses/ServerError' },
-        },
-      },
       delete: {
         tags: [model.name],
         summary: `Delete ${model.name}`,
-        description: `Delete a ${model.name}${model.softDelete ? ' (soft delete)' : ''}`,
+        description: `Delete a ${model.name}`,
         operationId: `delete${model.name}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         responses: {
@@ -697,14 +659,14 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate path for one-to-many relationship
    */
   private generateOneToManyRelationshipPath(model: ModelDefinition, rel: any): any {
-    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
+    const targetName = rel.target;
 
     return {
       get: {
         tags: [model.name],
-        summary: `Get ${rel.name} for ${model.name}`,
-        description: `Retrieve all ${rel.name} associated with a ${model.name}`,
-        operationId: `get${model.name}${this.capitalize(rel.name)}`,
+        summary: `Get ${targetName} list for ${model.name}`,
+        description: `Retrieve all ${targetName} records associated with a ${model.name}`,
+        operationId: `get${model.name}${targetName}List`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         responses: {
           '200': {
@@ -729,58 +691,17 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate paths for many-to-many relationship collection operations
    */
   private generateManyToManyRelationshipPaths(model: ModelDefinition, rel: any): any {
-    // Check if junction table has custom fields
-    const junctionConfig = rel.through ? this.junctionConfigs.get(rel.through) : undefined;
-    const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
-    
-    // Build schema for junction item with extra fields
-    const buildJunctionItemSchema = () => {
-      if (!hasExtraFields || !junctionConfig) {
-        return {
-          type: 'string',
-          format: 'uuid',
-          description: 'ID of the related resource'
-        };
-      }
-      
-      const properties: any = {
-        id: {
-          type: 'string',
-          format: 'uuid',
-          description: 'ID of the related resource'
-        }
-      };
-      
-      const required = ['id'];
-      
-      for (const field of junctionConfig.fields) {
-        const fieldType = this.getOpenAPIType(field.type);
-        properties[field.name] = {
-          type: fieldType.type,
-          ...(fieldType.format ? { format: fieldType.format } : {}),
-          ...(field.description ? { description: field.description } : {})
-        };
-        
-        if (field.required && !field.defaultValue) {
-          required.push(field.name);
-        }
-      }
-      
-      return {
-        type: 'object',
-        properties,
-        required: required.length > 1 ? required : ['id'],
-        description: 'Related resource with optional junction table data'
-      };
+    const junctionItemSchema = {
+      type: 'string',
+      format: 'uuid',
+      description: 'ID of the related resource'
     };
-    
-    const junctionItemSchema = buildJunctionItemSchema();
-    
+
     return {
       get: {
         tags: [model.name],
         summary: `Get ${rel.name} for ${model.name}`,
-        description: `Retrieve all ${rel.name} associated with a ${model.name}${hasExtraFields ? ' (includes junction table data)' : ''}`,
+        description: `Retrieve all ${rel.name} associated with a ${model.name}`,
         operationId: `get${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         responses: {
@@ -802,7 +723,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       post: {
         tags: [model.name],
         summary: `Add ${rel.name} to ${model.name}`,
-        description: `Add multiple ${rel.name} to a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
+        description: `Add multiple ${rel.name} to a ${model.name}`,
         operationId: `add${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
@@ -815,9 +736,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
                   [rel.name]: {
                     type: 'array',
                     items: junctionItemSchema,
-                    description: hasExtraFields 
-                      ? `Array of ${rel.name} with optional junction table fields` 
-                      : `Array of ${rel.name} IDs`
+                    description: `Array of ${rel.name} IDs`
                   },
                 },
                 required: [rel.name],
@@ -846,7 +765,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       put: {
         tags: [model.name],
         summary: `Replace ${rel.name} for ${model.name}`,
-        description: `Replace all ${rel.name} for a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
+        description: `Replace all ${rel.name} for a ${model.name}`,
         operationId: `set${model.name}${this.capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
@@ -859,9 +778,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
                   [rel.name]: {
                     type: 'array',
                     items: junctionItemSchema,
-                    description: hasExtraFields 
-                      ? `Array of ${rel.name} with optional junction table fields` 
-                      : `Array of ${rel.name} IDs`
+                    description: `Array of ${rel.name} IDs`
                   },
                 },
                 required: [rel.name],
@@ -934,69 +851,24 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate paths for many-to-many individual item operations
    */
   private generateManyToManyDetailPaths(model: ModelDefinition, rel: any): any {
-    const singularRel = this.singularize(rel.name);
-    
-    // Check if junction table has custom fields
-    const junctionConfig = rel.through ? this.junctionConfigs.get(rel.through) : undefined;
-    const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
-    
-    // Build request body schema for junction extra fields
-    const buildRequestBodySchema = () => {
-      if (!hasExtraFields || !junctionConfig) {
-        return null;
-      }
-      
-      const properties: any = {};
-      const required: string[] = [];
-      
-      for (const field of junctionConfig.fields) {
-        const fieldType = this.getOpenAPIType(field.type);
-        properties[field.name] = {
-          type: fieldType.type,
-          ...(fieldType.format ? { format: fieldType.format } : {}),
-          ...(field.description ? { description: field.description } : {})
-        };
-        
-        if (field.required && !field.defaultValue) {
-          required.push(field.name);
-        }
-      }
-      
-      return {
-        type: 'object',
-        properties,
-        ...(required.length > 0 ? { required } : {}),
-        description: 'Optional junction table data'
-      };
-    };
-    
-    const requestBodySchema = buildRequestBodySchema();
+    const targetName = rel.target;
+    const targetNameLower = targetName.toLowerCase();
 
     return {
       post: {
         tags: [model.name],
-        summary: `Add a ${singularRel} to ${model.name}`,
-        description: `Add a specific ${singularRel} to a ${model.name}${hasExtraFields ? ' with optional junction table data' : ''}`,
-        operationId: `add${model.name}${this.capitalize(singularRel)}`,
+        summary: `Add a ${targetName} to ${model.name}`,
+        description: `Add a specific ${targetName} to a ${model.name}`,
+        operationId: `add${model.name}${targetName}`,
         parameters: [
           { $ref: '#/components/parameters/IdParameter' },
           {
-            name: `${singularRel}Id`,
+            name: `${targetNameLower}Id`,
             in: 'path',
             required: true,
             schema: { type: 'string', format: 'uuid' },
           },
         ],
-        ...(requestBodySchema ? {
-          requestBody: {
-            required: false,
-            content: {
-              'application/json': {
-                schema: requestBodySchema,
-              },
-            },
-          },
-        } : {}),
         responses: {
           '201': {
             description: 'Added successfully',
@@ -1017,13 +889,13 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       },
       delete: {
         tags: [model.name],
-        summary: `Remove a ${singularRel} from ${model.name}`,
-        description: `Remove a specific ${singularRel} from a ${model.name}`,
-        operationId: `remove${model.name}${this.capitalize(singularRel)}`,
+        summary: `Remove a ${targetName} from ${model.name}`,
+        description: `Remove a specific ${targetName} from a ${model.name}`,
+        operationId: `remove${model.name}${targetName}`,
         parameters: [
           { $ref: '#/components/parameters/IdParameter' },
           {
-            name: `${singularRel}Id`,
+            name: `${targetNameLower}Id`,
             in: 'path',
             required: true,
             schema: { type: 'string', format: 'uuid' },
@@ -1050,46 +922,6 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     };
   }
 
-  /**
-   * Simple pluralization
-   */
-  private pluralize(word: string): string {
-    if (
-      word.endsWith('ies') || word.endsWith('ses') || word.endsWith('xes') ||
-      word.endsWith('ches') || word.endsWith('shes')
-    ) {
-      return word;
-    }
-    if (word.endsWith('s') && !word.endsWith('ss')) {
-      return word;
-    }
-    if (word.endsWith('y') && !['ay', 'ey', 'iy', 'oy', 'uy'].some((ending) => word.endsWith(ending))) {
-      return word.slice(0, -1) + 'ies';
-    }
-    if (
-      word.endsWith('ss') || word.endsWith('x') ||
-      word.endsWith('ch') || word.endsWith('sh')
-    ) {
-      return word + 'es';
-    }
-    return word + 's';
-  }
-
-  /**
-   * Simple singularization
-   */
-  private singularize(word: string): string {
-    if (word.endsWith('ies')) {
-      return word.slice(0, -3) + 'y';
-    }
-    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches') || word.endsWith('shes')) {
-      return word.slice(0, -2);
-    }
-    if (word.endsWith('s') && !word.endsWith('ss')) {
-      return word.slice(0, -1);
-    }
-    return word;
-  }
 
   /**
    * Capitalize first letter

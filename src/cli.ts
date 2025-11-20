@@ -23,7 +23,6 @@ async function main() {
       schema: args.schema
     },
     features: {
-      softDeletes: args.softDeletes !== false,
       timestamps: args.timestamps !== false
     },
     documentation: {
@@ -81,7 +80,6 @@ Options:
   --dbType <type>        Database type: postgresql or cockroachdb (default: postgresql)
   --schema <name>        Database schema name
   --no-postgis           Disable PostGIS support
-  --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
   --no-documentation     Disable OpenAPI documentation generation
   --verbose              Output the relative paths of generated files

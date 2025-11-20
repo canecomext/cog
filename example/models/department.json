@@ -1,6 +1,6 @@
 {
-  "name": "Category",
-  "tableName": "categories",
+  "name": "Department",
+  "tableName": "department",
   "fields": [
     {
       "name": "id",
@@ -13,27 +13,28 @@
       "name": "name",
       "type": "string",
       "maxLength": 100,
-      "unique": true,
-      "required": true
+      "required": true,
+      "unique": true
     },
     {
-      "name": "slug",
-      "type": "string",
-      "maxLength": 100,
-      "unique": true,
+      "name": "location",
+      "type": "point",
+      "srid": 4326,
       "required": true
-    },
-    {
-      "name": "description",
-      "type": "text"
     }
   ],
   "relationships": [
     {
       "type": "oneToMany",
-      "name": "posts",
-      "target": "Post",
-      "foreignKey": "categoryId"
+      "name": "employeeList",
+      "target": "Employee",
+      "foreignKey": "departmentId"
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["location"],
+      "type": "gist"
     }
   ],
   "timestamps": true

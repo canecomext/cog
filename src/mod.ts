@@ -33,7 +33,6 @@ export async function generateFromModels(
       schema: options.database?.schema,
     },
     features: {
-      softDeletes: options.features?.softDeletes !== false,
       timestamps: options.features?.timestamps !== false,
       hooks: true,
     },
@@ -49,9 +48,9 @@ export async function generateFromModels(
 
   const verbose = config.verbose === true;
 
-  // Step 1: Parse models and junction configs
+  // Step 1: Parse models
   const parser = new ModelParser();
-  const { models, junctionConfigs, errors } = await parser.parseModelsFromDirectory(modelsPath);
+  const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
   if (errors.length > 0) {
     const hasErrors = errors.some((e) => e.severity === 'error');
@@ -64,10 +63,6 @@ export async function generateFromModels(
 
   // Apply global feature flag overrides to all models
   for (const model of models) {
-    // Override softDeletes if explicitly disabled
-    if (config.features.softDeletes === false) {
-      model.softDelete = false;
-    }
     // Override timestamps if explicitly disabled
     if (config.features.timestamps === false) {
       model.timestamps = false;
@@ -85,7 +80,6 @@ export async function generateFromModels(
   const schemaGenerator = new DrizzleSchemaGenerator(models, {
     isCockroachDB: config.database.type === 'cockroachdb',
     postgis: config.database.postgis,
-    junctionConfigs,
   });
   const schemas = schemaGenerator.generateSchemas();
   schemas.forEach((content, path) => files.set(path, content));
@@ -94,7 +88,6 @@ export async function generateFromModels(
   const dbInitGenerator = new DatabaseInitGenerator(models, {
     dbType: config.database.type,
     postgis: config.database.postgis,
-    junctionConfigs,
   });
 
   files.set('db/database.ts', dbInitGenerator.generateDatabaseInit());
@@ -104,21 +97,20 @@ export async function generateFromModels(
   );
 
   // Generate domain APIs
-  const domainGenerator = new DomainAPIGenerator(models, junctionConfigs);
+  const domainGenerator = new DomainAPIGenerator(models);
   const domainFiles = domainGenerator.generateDomainAPIs();
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
   const restGenerator = new RestAPIGenerator(models, {
     docsEnabled: config.documentation?.enabled,
-    junctionConfigs,
   });
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
   // Generate OpenAPI specification (only if docs are enabled)
   if (config.documentation?.enabled !== false) {
-    const openAPIGenerator = new OpenAPIGenerator(models, junctionConfigs);
+    const openAPIGenerator = new OpenAPIGenerator(models);
     const openAPIFiles = openAPIGenerator.generateOpenAPI();
     openAPIFiles.forEach((content, path) => files.set(path, content));
   }
@@ -168,9 +160,6 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
   };
   domainHooks?: {
     [modelName: string]: any;
-    junctionHooks?: {
-      [junctionTableName: string]: any;
-    };
   };
   restHooks?: {
     [modelName: string]: any;
@@ -191,24 +180,13 @@ export async function initializeGenerated<Env extends { Variables: Record<string
     ${
     models
       .map(
-        (m) => {
-          const manyToManyRels = m.relationships?.filter((r: any) => r.type === 'manyToMany') || [];
-          const junctionHooksParams = manyToManyRels.length > 0
-            ? `,\n        ${manyToManyRels.map((r: any) => `config.domainHooks.junctionHooks?.${r.through?.toLowerCase() || ''}`).join(',\n        ')}`
-            : '';
-          
-          const junctionHooksCondition = manyToManyRels.length > 0
-            ? ` || (${manyToManyRels.map((r: any) => `config.domainHooks.junctionHooks?.${r.through?.toLowerCase() || ''}`).join(' || ')})`
-            : '';
-          
-          return `
-    if (config.domainHooks.${m.name.toLowerCase()}${junctionHooksCondition}) {
+        (m) => `
+    if (config.domainHooks.${m.name.toLowerCase()}) {
       Object.assign(domain.${m.name.toLowerCase()}Domain,
         new domain.${m.name}Domain(
-        config.domainHooks.${m.name.toLowerCase()}${junctionHooksParams}
+        config.domainHooks.${m.name.toLowerCase()}
       ));
-    }`;
-        }
+    }`,
       )
       .join('')
   }

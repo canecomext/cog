@@ -1,4 +1,4 @@
-import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
+import { ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates REST API endpoints for Hono
@@ -6,15 +6,13 @@ import { ModelDefinition, JunctionTableConfig } from '../types/model.types.ts';
 export class RestAPIGenerator {
   private models: ModelDefinition[];
   private docsEnabled: boolean;
-  private junctionConfigs: Map<string, JunctionTableConfig>;
 
   constructor(
     models: ModelDefinition[],
-    options: { docsEnabled?: boolean; junctionConfigs?: Map<string, JunctionTableConfig> } = {},
+    options: { docsEnabled?: boolean } = {},
   ) {
     this.models = models;
     this.docsEnabled = options.docsEnabled !== false;
-    this.junctionConfigs = options.junctionConfigs || new Map();
   }
 
   /**
@@ -47,7 +45,6 @@ export class RestAPIGenerator {
   private generateModelRestAPI(model: ModelDefinition): string {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
-    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     return `import { Hono } from 'jsr:@hono/hono';
 import { HTTPException } from 'jsr:@hono/hono/http-exception';
@@ -73,8 +70,8 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
   private registerRoutes() {
     /**
-     * GET /${modelNamePlural}
-     * List all ${modelNamePlural} with pagination
+     * GET /${modelNameLower}
+     * List all ${modelNameLower} with pagination
      */
     this.routes.get('/', async (c) => {
       let context = c.var as RestEnvVars;
@@ -121,7 +118,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
     });
 
     /**
-     * GET /${modelNamePlural}/:id
+     * GET /${modelNameLower}/:id
      * Get a single ${modelName} by ID
      */
     this.routes.get('/:id', async (c) => {
@@ -160,7 +157,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
     });
 
     /**
-     * POST /${modelNamePlural}
+     * POST /${modelNameLower}
      * Create a new ${modelName}
      */
     this.routes.post('/', async (c) => {
@@ -193,7 +190,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
     });
 
     /**
-     * PUT /${modelNamePlural}/:id
+     * PUT /${modelNameLower}/:id
      * Update a ${modelName}
      */
     this.routes.put('/:id', async (c) => {
@@ -228,42 +225,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
     });
 
     /**
-     * PATCH /${modelNamePlural}/:id
-     * Partially update a ${modelName}
-     */
-    this.routes.patch('/:id', async (c) => {
-      let id = c.req.param('id');
-      let body = await c.req.json();
-      let context = c.var as RestEnvVars;
-
-      // Pre-hook (REST layer)
-      if (this.hooks.preUpdate) {
-        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
-        body = preResult.data;
-        context = { ...context, ...preResult.context };
-      }
-
-      let result = await withTransaction(async (tx) => {
-        return await ${modelNameLower}Domain.update(
-          id,
-          body,
-          tx,
-          context // Pass all context variables to domain hooks
-        );
-      });
-
-      // Post-hook (REST layer)
-      if (this.hooks.postUpdate) {
-        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
-      return c.json({ data: result });
-    });
-
-    /**
-     * DELETE /${modelNamePlural}/:id
+     * DELETE /${modelNameLower}/:id
      * Delete a ${modelName}
      */
     this.routes.delete('/:id', async (c) => {
@@ -410,21 +372,21 @@ export type DefaultEnv = {
 
     const endpoints: string[] = [];
     const modelNameLower = model.name.toLowerCase();
-    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
 
     for (const rel of model.relationships) {
       if (rel.type === 'oneToMany') {
-        // Relationship names are typically already plural (e.g., "posts", "comments")
-        const relName = rel.name;
+        // Use "List" suffix for collection endpoints
+        const targetName = rel.target;
+        const targetNameLower = targetName.toLowerCase();
         endpoints.push(`
     /**
-     * GET /${modelNamePlural}/:id/${relName}
-     * Get ${relName} for a ${model.name}
+     * GET /${modelNameLower}/:id/${targetNameLower}List
+     * Get ${targetName} list for a ${model.name}
      */
-    this.routes.get('/:id/${relName}', async (c) => {
+    this.routes.get('/:id/${targetNameLower}List', async (c) => {
       const id = c.req.param('id');
 
-      const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
+      const result = await ${modelNameLower}Domain.get${targetName}List(id);
 
       return c.json({ data: result });
     });`);
@@ -432,20 +394,19 @@ export type DefaultEnv = {
         const relName = rel.name;
         const RelName = this.capitalize(relName);
         const targetNameLower = rel.target.toLowerCase();
-        const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
-        const singularRel = this.singularize(relName);
-        const SingularRel = this.capitalize(singularRel);
-        
-        // Check if junction table has custom fields
-        const junctionConfig = this.junctionConfigs.get(rel.through);
-        const hasExtraFields = junctionConfig?.fields && junctionConfig.fields.length > 0;
+        // No singularization - use target model name as-is
+        const targetName = rel.target;
+
+        // Derive singular form by removing "List" suffix if present
+        const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
+        const SingularRelName = this.capitalize(singularRelName);
 
         endpoints.push(`
     /**
-     * GET /${modelNamePlural}/:id/${relName}
-     * Get ${relName} for a ${model.name}
+     * GET /${modelNameLower}/:id/${targetNameLower}List
+     * Get ${targetName} list for a ${model.name}
      */
-    this.routes.get('/:id/${relName}', async (c) => {
+    this.routes.get('/:id/${targetNameLower}List', async (c) => {
       const id = c.req.param('id');
 
       const result = await ${modelNameLower}Domain.get${RelName}(id);
@@ -454,96 +415,72 @@ export type DefaultEnv = {
     });
 
     /**
-     * POST /${modelNamePlural}/:id/${relName}
-     * Add ${relName} to a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
+     * POST /${modelNameLower}/:id/${targetNameLower}List
+     * Add ${targetName} list to a ${model.name}
      */
-    this.routes.post('/:id/${relName}', async (c) => {
+    this.routes.post('/:id/${targetNameLower}List', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      ${hasExtraFields 
-        ? `const ${relName} = body.${relName} || [];
-      
-      // Transform to domain format: array of { id, extraFields }
-      const ${targetNameLower}Data = ${relName}.map((item: any) => {
-        const { id: itemId, ...extraFields } = item;
-        return {
-          id: itemId,
-          extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined
-        };
-      });`
-        : `const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];`}
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${RelName}(id, ${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Ids`}, tx);
+        await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
       });
 
-      return c.json({ data: { message: '${RelName} added successfully' } }, 201);
+      return c.json({ data: { message: '${targetName} list added successfully' } }, 201);
     });
 
     /**
-     * PUT /${modelNamePlural}/:id/${relName}
-     * Replace all ${relName} for a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
+     * PUT /${modelNameLower}/:id/${targetNameLower}List
+     * Replace all ${targetName} for a ${model.name}
      */
-    this.routes.put('/:id/${relName}', async (c) => {
+    this.routes.put('/:id/${targetNameLower}List', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      ${hasExtraFields 
-        ? `const ${relName} = body.${relName} || [];
-      
-      // Transform to domain format: array of { id, extraFields }
-      const ${targetNameLower}Data = ${relName}.map((item: any) => {
-        const { id: itemId, ...extraFields } = item;
-        return {
-          id: itemId,
-          extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined
-        };
-      });`
-        : `const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];`}
+      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ${hasExtraFields ? `${targetNameLower}Data` : `${targetNameLower}Ids`}, tx);
+        await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
       });
 
-      return c.json({ data: { message: '${RelName} updated successfully' } });
+      return c.json({ data: { message: '${relName}List updated successfully' } });
     });
 
     /**
-     * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
-     * Add a specific ${singularRel} to a ${model.name}${hasExtraFields ? ' with optional junction data' : ''}
+     * POST /${modelNameLower}/:id/${relName}List/:${targetNameLower}Id
+     * Add a specific ${targetName} to a ${model.name}
      */
-    this.routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
+    this.routes.post('/:id/${relName}List/:${targetNameLower}Id', async (c) => {
       const id = c.req.param('id');
-      const ${singularRel}Id = c.req.param('${singularRel}Id');
-      ${hasExtraFields ? `const body = await c.req.json().catch(() => ({}));
-      const extraFields = body && typeof body === 'object' ? body : undefined;` : ''}
+      const ${targetNameLower}Id = c.req.param('${targetNameLower}Id');
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx${hasExtraFields ? ', extraFields' : ''});
+        await ${modelNameLower}Domain.add${SingularRelName}(id, ${targetNameLower}Id, tx);
       });
 
-      return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
+      return c.json({ data: { message: '${targetName} added successfully' } }, 201);
     });
 
     /**
-     * DELETE /${modelNamePlural}/:id/${relName}/:${singularRel}Id
-     * Remove a specific ${singularRel} from a ${model.name}
+     * DELETE /${modelNameLower}/:id/${relName}List/:${targetNameLower}Id
+     * Remove a specific ${targetName} from a ${model.name}
      */
-    this.routes.delete('/:id/${relName}/:${singularRel}Id', async (c) => {
+    this.routes.delete('/:id/${relName}List/:${targetNameLower}Id', async (c) => {
       const id = c.req.param('id');
-      const ${singularRel}Id = c.req.param('${singularRel}Id');
+      const ${targetNameLower}Id = c.req.param('${targetNameLower}Id');
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
+        await ${modelNameLower}Domain.remove${SingularRelName}(id, ${targetNameLower}Id, tx);
       });
 
-      return c.json({ data: { message: '${SingularRel} removed successfully' } });
+      return c.json({ data: { message: '${targetName} removed successfully' } });
     });
 
     /**
-     * DELETE /${modelNamePlural}/:id/${relName}
+     * DELETE /${modelNameLower}/:id/${relName}List
      * Remove multiple ${relName} from a ${model.name}
      */
-    this.routes.delete('/:id/${relName}', async (c) => {
+    this.routes.delete('/:id/${targetNameLower}List', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
       const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
@@ -552,7 +489,7 @@ export type DefaultEnv = {
         await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
       });
 
-      return c.json({ data: { message: '${RelName} removed successfully' } });
+      return c.json({ data: { message: '${targetName} list removed successfully' } });
     });`);
       }
     }
@@ -560,137 +497,6 @@ export type DefaultEnv = {
     return endpoints.join('\n');
   }
 
-  /**
-   * Generate relationship endpoints (legacy, kept for reference)
-   */
-  private generateRelationshipEndpoints(model: ModelDefinition): string {
-    if (!model.relationships || model.relationships.length === 0) {
-      return '';
-    }
-
-    const endpoints: string[] = [];
-    const modelNameLower = model.name.toLowerCase();
-    const modelNamePlural = model.plural?.toLowerCase() || this.pluralize(modelNameLower);
-
-    for (const rel of model.relationships) {
-      if (rel.type === 'oneToMany') {
-        // Relationship names are typically already plural (e.g., "posts", "comments")
-        const relName = rel.name;
-        endpoints.push(`
-/**
- * GET /${modelNamePlural}/:id/${relName}
- * Get ${relName} for a ${model.name}
- */
-${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
-  const id = c.req.param('id');
-  
-  const result = await ${modelNameLower}Domain.get${this.capitalize(relName)}(id);
-  
-  return c.json({ data: result });
-});`);
-      } else if (rel.type === 'manyToMany' && rel.through) {
-        const relName = rel.name;
-        const RelName = this.capitalize(relName);
-        const targetNameLower = rel.target.toLowerCase();
-        const targetPlural = this.findModelByName(rel.target)?.plural?.toLowerCase() || this.pluralize(targetNameLower);
-        const singularRel = this.singularize(relName);
-        const SingularRel = this.capitalize(singularRel);
-
-        endpoints.push(`
-/**
- * GET /${modelNamePlural}/:id/${relName}
- * Get ${relName} for a ${model.name}
- */
-${modelNameLower}Routes.get('/:id/${relName}', async (c) => {
-  const id = c.req.param('id');
-  
-  const result = await ${modelNameLower}Domain.get${RelName}(id);
-  
-  return c.json({ data: result });
-});
-
-/**
- * POST /${modelNamePlural}/:id/${relName}
- * Add ${relName} to a ${model.name}
- */
-${modelNameLower}Routes.post('/:id/${relName}', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
-  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
-  
-  await withTransaction(async (tx) => {
-    await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
-  });
-  
-  return c.json({ data: { message: '${RelName} added successfully' } }, 201);
-});
-
-/**
- * PUT /${modelNamePlural}/:id/${relName}
- * Replace all ${relName} for a ${model.name}
- */
-${modelNameLower}Routes.put('/:id/${relName}', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
-  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
-  
-  await withTransaction(async (tx) => {
-    await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
-  });
-  
-  return c.json({ data: { message: '${RelName} updated successfully' } });
-});
-
-/**
- * POST /${modelNamePlural}/:id/${relName}/:${singularRel}Id
- * Add a specific ${singularRel} to a ${model.name}
- */
-${modelNameLower}Routes.post('/:id/${relName}/:${singularRel}Id', async (c) => {
-  const id = c.req.param('id');
-  const ${singularRel}Id = c.req.param('${singularRel}Id');
-  
-  await withTransaction(async (tx) => {
-    await ${modelNameLower}Domain.add${SingularRel}(id, ${singularRel}Id, tx);
-  });
-  
-  return c.json({ data: { message: '${SingularRel} added successfully' } }, 201);
-});
-
-/**
- * DELETE /${modelNamePlural}/:id/${relName}/:${singularRel}Id
- * Remove a specific ${singularRel} from a ${model.name}
- */
-${modelNameLower}Routes.delete('/:id/${relName}/:${singularRel}Id', async (c) => {
-  const id = c.req.param('id');
-  const ${singularRel}Id = c.req.param('${singularRel}Id');
-  
-  await withTransaction(async (tx) => {
-    await ${modelNameLower}Domain.remove${SingularRel}(id, ${singularRel}Id, tx);
-  });
-  
-  return c.json({ data: { message: '${SingularRel} removed successfully' } });
-});
-
-/**
- * DELETE /${modelNamePlural}/:id/${relName}
- * Remove multiple ${relName} from a ${model.name}
- */
-${modelNameLower}Routes.delete('/:id/${relName}', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json();
-  const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
-  
-  await withTransaction(async (tx) => {
-    await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
-  });
-  
-  return c.json({ data: { message: '${RelName} removed successfully' } });
-});`);
-      }
-    }
-
-    return endpoints.join('\n');
-  }
 
   /**
    * Generate REST index file
@@ -719,8 +525,8 @@ export function registerRestRoutes(app: Hono<any>, basePath?: string) {
 `;
 
     for (const model of this.models) {
-      const plural = model.plural?.toLowerCase() || this.pluralize(model.name.toLowerCase());
-      code += `  app.route(\`\${apiPrefix}/${plural}\`, ${model.name.toLowerCase()}Routes);\n`;
+      const modelNameLower = model.name.toLowerCase();
+      code += `  app.route(\`\${apiPrefix}/${modelNameLower}\`, ${modelNameLower}Routes);\n`;
     }
 
     code += `
@@ -732,8 +538,8 @@ export function registerRestRoutes(app: Hono<any>, basePath?: string) {
       endpoints: [
 ${
       this.models.map((m) => {
-        const plural = m.plural?.toLowerCase() || this.pluralize(m.name.toLowerCase());
-        return `        '${plural}'`;
+        const modelNameLower = m.name.toLowerCase();
+        return `        '${modelNameLower}'`;
       }).join(',\n')
     }
       ]
@@ -823,33 +629,6 @@ export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
     return code;
   }
 
-  /**
-   * Simple pluralization
-   */
-  private pluralize(word: string): string {
-    // Check if already plural (simple heuristic)
-    if (
-      word.endsWith('ies') || word.endsWith('ses') || word.endsWith('xes') ||
-      word.endsWith('ches') || word.endsWith('shes')
-    ) {
-      return word;
-    }
-    // Check if word already ends with 's' but not 'ss' (likely already plural)
-    if (word.endsWith('s') && !word.endsWith('ss')) {
-      return word;
-    }
-    // Handle common patterns
-    if (word.endsWith('y') && !['ay', 'ey', 'iy', 'oy', 'uy'].some((ending) => word.endsWith(ending))) {
-      return word.slice(0, -1) + 'ies';
-    }
-    if (
-      word.endsWith('ss') || word.endsWith('x') ||
-      word.endsWith('ch') || word.endsWith('sh')
-    ) {
-      return word + 'es';
-    }
-    return word + 's';
-  }
 
   /**
    * Capitalize first letter
@@ -858,22 +637,6 @@ export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  /**
-   * Simple singularization
-   */
-  private singularize(word: string): string {
-    // Handle common patterns
-    if (word.endsWith('ies')) {
-      return word.slice(0, -3) + 'y';
-    }
-    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches') || word.endsWith('shes')) {
-      return word.slice(0, -2);
-    }
-    if (word.endsWith('s') && !word.endsWith('ss')) {
-      return word.slice(0, -1);
-    }
-    return word;
-  }
 
   /**
    * Find model by name

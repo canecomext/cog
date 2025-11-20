@@ -1,8 +1,7 @@
-import { 
-  FieldDefinition, 
-  ModelDefinition, 
-  RelationshipDefinition,
-  JunctionTableConfig 
+import {
+  FieldDefinition,
+  ModelDefinition,
+  RelationshipDefinition
 } from '../types/model.types.ts';
 
 /**
@@ -10,20 +9,17 @@ import {
  */
 export class DrizzleSchemaGenerator {
   private models: ModelDefinition[];
-  private junctionConfigs: Map<string, JunctionTableConfig>;
   private isCockroachDB: boolean;
   private postgis: boolean;
 
   constructor(
     models: ModelDefinition[],
-    options: { 
-      isCockroachDB?: boolean; 
+    options: {
+      isCockroachDB?: boolean;
       postgis?: boolean;
-      junctionConfigs?: Map<string, JunctionTableConfig>;
     } = {},
   ) {
     this.models = models;
-    this.junctionConfigs = options.junctionConfigs || new Map();
     this.isCockroachDB = options.isCockroachDB || false;
     this.postgis = options.postgis !== false;
   }
@@ -119,7 +115,7 @@ export class DrizzleSchemaGenerator {
     }
 
     // Ensure timestamp is imported when generated timestamp columns are present
-    if (model.timestamps || model.softDelete) {
+    if (model.timestamps) {
       drizzleImports.add('timestamp');
     }
 
@@ -236,11 +232,6 @@ export class DrizzleSchemaGenerator {
       fieldDefinitions.push(...timestampFields);
     }
 
-    // Add soft delete field if enabled
-    if (model.softDelete) {
-      fieldDefinitions.push(`  deletedAt: timestamp('deleted_at')`);
-    }
-
     code += fieldDefinitions.map((def) => {
       // For lines with comments, put the comma before the comment
       if (def.includes(' // ')) {
@@ -292,19 +283,18 @@ export class DrizzleSchemaGenerator {
       }
     }
 
-    // Check constraints - only handle onlyOneNotNull for now
-    if (model.check && model.check.onlyOneNotNull) {
-      const constraintDefs = model.check.onlyOneNotNull;
-      
-      constraintDefs.forEach((fieldNames, index) => {
-        // fieldNames is now an array of field name strings
+    // Check constraints - handle numNotNulls
+    if (model.check && model.check.numNotNulls) {
+      const constraintDefs = model.check.numNotNulls;
+
+      constraintDefs.forEach((constraint, index) => {
         // Generate numbered constraint name (1-indexed)
-        const checkName = `check_${model.name.toLowerCase()}_onlyOneNotNull${index + 1}`;
+        const checkName = `check_${model.name.toLowerCase()}_numNotNulls${index + 1}`;
         // Convert field names to snake_case for SQL
-        const columnNames = fieldNames.map(f => this.toSnakeCase(f)).join(', ');
-        // Always check against 1 for onlyOneNotNull
-        const checkSql = `num_nonnulls(${columnNames}) = 1`;
-        
+        const columnNames = constraint.fields.map(f => this.toSnakeCase(f)).join(', ');
+        // Use the specified count from constraint.num
+        const checkSql = `num_nonnulls(${columnNames}) = ${constraint.num}`;
+
         tableConstraints.push(`  check('${checkName}', sql\`${checkSql}\`)`);
       });
     }
@@ -528,10 +518,6 @@ export class DrizzleSchemaGenerator {
           `  updatedAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
         );
       }
-      if (timestamps.deletedAt) {
-        const fieldName = typeof timestamps.deletedAt === 'string' ? timestamps.deletedAt : 'deleted_at';
-        fields.push(`  deletedAt: timestamp('${fieldName}', { mode: 'date' })`);
-      }
     }
 
     return fields;
@@ -629,83 +615,43 @@ export class DrizzleSchemaGenerator {
       throw new Error(`Primary keys not found for junction table ${tableName}`);
     }
 
-    // Check for custom junction configuration
-    const junctionConfig = this.junctionConfigs.get(tableName);
-
     // Determine the foreign key column names
     const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
     const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
 
-    // Determine what imports we need based on the primary key types and custom fields
+    // Determine what imports we need based on the primary key types
     const imports = new Set<string>(['pgTable', 'timestamp', 'primaryKey', 'index']);
-    
+
     // Add the appropriate type import for each foreign key
     const sourceDrizzleType = this.getDrizzleImportForType(sourcePK);
     if (sourceDrizzleType) imports.add(sourceDrizzleType);
     else if (sourcePK.type === 'uuid') imports.add('uuid');
-    
+
     const targetDrizzleType = this.getDrizzleImportForType(targetPK);
     if (targetDrizzleType) imports.add(targetDrizzleType);
     else if (targetPK.type === 'uuid') imports.add('uuid');
 
-    // Add imports for custom fields if junction config exists
-    if (junctionConfig?.fields) {
-      for (const field of junctionConfig.fields) {
-        const importType = this.getDrizzleImportForType(field);
-        if (importType) {
-          imports.add(importType);
-        }
-      }
-    }
-
-    // Add pgEnum import if custom enums exist
-    if (junctionConfig?.enums && junctionConfig.enums.length > 0) {
-      imports.add('pgEnum');
-    }
-
-    // Check if we need customType for PostGIS
-    if (this.postgis && junctionConfig?.fields) {
-      const hasPostGIS = junctionConfig.fields.some(f => 
-        ['point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'].includes(f.type)
-      );
-      if (hasPostGIS) {
-        imports.add('customType');
-      }
-    }
-    
-    // Note: sql is imported separately from drizzle-orm, not pg-core
-    
     // Generate imports
     let code = `import { ${Array.from(imports).join(', ')} } from 'npm:drizzle-orm/pg-core';
 `;
     code += `import { sql } from 'npm:drizzle-orm';\n`;
+
+    // Import source table
     code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
 `;
-    code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
+
+    // Import target table only if different from source (avoid duplicate imports in self-referential relationships)
+    if (sourceModel.name.toLowerCase() !== targetModel.name.toLowerCase()) {
+      code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
 `;
-    
+    }
+
     // Add Zod imports for validation
     code += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
     code += `\n`;
 
-    // Generate enum definitions if custom enums exist
-    if (junctionConfig?.enums && junctionConfig.enums.length > 0) {
-      code += '// Enum definitions\n';
-      if (this.isCockroachDB) {
-        code += '// Note: CockroachDB supports enums from v22.2+\n';
-        code += '// For earlier versions, consider using varchar with CHECK constraints\n';
-      }
-      for (const enumDef of junctionConfig.enums) {
-        const enumName = `${enumDef.name.toLowerCase()}Enum`;
-        const values = enumDef.values.map(v => `'${v}'`).join(', ');
-        code += `export const ${enumName} = pgEnum('${this.toSnakeCase(enumDef.name)}', [${values}]);\n`;
-      }
-      code += '\n';
-    }
-
     // Generate table definition
-    const actualTableName = junctionConfig?.tableName || tableName.toLowerCase();
-    code += `export const ${tableName.toLowerCase()}Table = pgTable('${actualTableName}', {
+    code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
 `;
 
     // Generate source foreign key column
@@ -715,21 +661,6 @@ export class DrizzleSchemaGenerator {
 
     // Generate target foreign key column
     code += this.generateJunctionFKColumn(targetFKColumn, targetPK, targetModel.name.toLowerCase(), targetPK.name);
-
-    // Add custom fields if they exist
-    if (junctionConfig?.fields) {
-      for (const field of junctionConfig.fields) {
-        code += `,\n`;
-        // Create a temporary model object for field generation
-        const tempModel: ModelDefinition = {
-          name: tableName,
-          tableName: tableName.toLowerCase(),
-          fields: [],
-          enums: junctionConfig.enums
-        };
-        code += this.generateFieldDefinition(field, tempModel);
-      }
-    }
 
     // Add timestamps if enabled globally
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
@@ -746,30 +677,6 @@ export class DrizzleSchemaGenerator {
     code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),\n`;
     code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})`;
 
-    // Add custom indexes if they exist
-    if (junctionConfig?.indexes && junctionConfig.indexes.length > 0) {
-      for (const idx of junctionConfig.indexes) {
-        code += `,\n`;
-        const indexName = idx.name || `idx_${tableName.toLowerCase()}_${idx.fields.join('_')}`;
-        const indexType = idx.unique ? 'uniqueIndex' : 'index';
-        const fields = idx.fields.map((f) => `table.${f}`).join(', ');
-        
-        // Check if any field is PostGIS type
-        const isPostGISIndex = junctionConfig.fields?.some(f => 
-          idx.fields.includes(f.name) && 
-          ['point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'].includes(f.type)
-        );
-        
-        if (this.postgis && isPostGISIndex) {
-          // Convert GIST to GIN if PostGIS is disabled
-          const indexMethod = this.postgis ? 'gist' : 'gin';
-          code += `  ${indexType}('${indexName}').using('${indexMethod}', ${fields})`;
-        } else {
-          code += `  ${indexType}('${indexName}').on(${fields})`;
-        }
-      }
-    }
-
     code += `\n]);\n`;
     code += `\n`;
 
@@ -778,7 +685,7 @@ export class DrizzleSchemaGenerator {
     code += `export type ${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
     code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;\n`;
     code += `\n`;
-    
+
     // Add Zod schemas
     code += `// Zod schemas for validation\n`;
     code += `export const ${tableName.toLowerCase()}InsertSchema = createInsertSchema(${tableName.toLowerCase()}Table);\n`;

@@ -35,7 +35,7 @@ mkdir models
 ```json
 {
   "name": "User",
-  "tableName": "users",
+  "tableName": "user",
   "fields": [
     {
       "name": "id",
@@ -120,7 +120,6 @@ COG generates a complete backend stack with:
 - Automatic Zod validation for all CRUD operations
 - Auto-generated API documentation
 - Automatic timestamps (createdAt, updatedAt)
-- Soft deletes with automatic filtering
 - Database transactions with rollback
 - Extensible hook system for custom logic
 - Rich query capabilities with filtering and pagination
@@ -163,7 +162,6 @@ deno run -A src/cli.ts [options]
 | `--schema`           | Database schema name                          | (default)     |
 | `--no-postgis`       | Disable PostGIS support                       | enabled       |
 | `--no-timestamps`    | Disable automatic timestamps globally         | enabled       |
-| `--no-softDeletes`   | Disable soft delete feature globally          | enabled       |
 | `--no-documentation` | Disable OpenAPI documentation generation      | enabled       |
 | `--verbose`          | Show generated file paths                     | false         |
 | `--help`             | Show help message                             | -             |
@@ -171,19 +169,6 @@ deno run -A src/cli.ts [options]
 ### Global Feature Flags
 
 The `--no-*` flags provide global control over features across all models:
-
-#### `--no-softDeletes`
-
-Disables soft delete functionality for **all models**, regardless of model-level `"softDelete"` settings:
-
-- Removes `deletedAt` timestamp field from all tables
-- Disables soft delete filtering in queries
-- Delete operations become hard deletes
-
-```bash
-# Generate without soft deletes
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softDeletes
-```
 
 #### `--no-timestamps`
 
@@ -249,7 +234,7 @@ Models are defined in JSON with this structure:
 ```json
 {
   "name": "ModelName",
-  "tableName": "table_name",
+  "tableName": "model_name",
   "enums": [
     {
       "name": "EnumName",
@@ -282,7 +267,6 @@ Models are defined in JSON with this structure:
     }
   ],
   "timestamps": true,
-  "softDelete": true,
   "indexes": [
     {
       "fields": ["field1", "field2"],

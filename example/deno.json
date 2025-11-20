@@ -1,11 +1,11 @@
 {
   "imports": {
-    "@hono/hono": "jsr:@hono/hono@^4.6.0",
-    "@scalar/hono-api-reference": "npm:@scalar/hono-api-reference@^0.9.20",
+    "@hono/hono": "jsr:@hono/hono@^4.10.6",
+    "@scalar/hono-api-reference": "npm:@scalar/hono-api-reference@^0.9.25",
     "@std/crypto": "jsr:@std/crypto@^1.0.5",
     "@std/dotenv": "jsr:@std/dotenv@^0.225.5",
-    "@std/path": "jsr:@std/path@^1.1.2",
-    "drizzle-orm": "npm:drizzle-orm@^0.44.5",
+    "@std/path": "jsr:@std/path@^1.1.3",
+    "drizzle-orm": "npm:drizzle-orm@^0.44.7",
     "drizzle-zod": "npm:drizzle-zod@^0.8.3",
     "openapi-types": "npm:openapi-types@^12.1.3",
     "postgres": "npm:postgres@^3.4.7"
@@ -14,9 +14,9 @@
     "strict": true
   },
   "tasks": {
-    "generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
+    "cog:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
     "db:init": "deno run -A example-init.ts",
-    "run:example": "deno run -A ./example.ts"
+    "run": "deno run -A ./example.ts"
   },
   "fmt": {
     "useTabs": false,

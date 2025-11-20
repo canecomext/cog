@@ -106,8 +106,7 @@ Models are defined in JSON with this structure:
 ```json
 {
   "name": "User",                    // Model name (PascalCase)
-  "tableName": "users",              // Database table name (snake_case)
-  "plural": "indices",               // Optional: custom plural (for irregular plurals)
+  "tableName": "user",               // Database table name (snake_case, matches model name)
   "schema": "public",                // Optional: database schema
   "enums": [                         // Optional: enum definitions
     {
@@ -138,8 +137,7 @@ Models are defined in JSON with this structure:
       "unique": true
     }
   ],
-  "timestamps": true,                // Optional: auto createdAt/updatedAt
-  "softDelete": true                 // Optional: soft delete support
+  "timestamps": true                 // Optional: auto createdAt/updatedAt
 }
 ```
 
@@ -391,7 +389,6 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 | `--schema`           | Database schema name                     | (default)     |
 | `--no-postgis`       | Disable PostGIS (spatial → JSONB)        | enabled       |
 | `--no-timestamps`    | Disable timestamps globally              | enabled       |
-| `--no-softDeletes`   | Disable soft deletes globally            | enabled       |
 | `--no-documentation` | Disable OpenAPI generation               | enabled       |
 | `--verbose`          | Show generated file paths                | false         |
 | `--help`             | Show help message                        | -             |
@@ -437,7 +434,7 @@ deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated
 deno run -A example.ts
 
 # Test endpoints
-curl http://localhost:3000/api/users
+curl http://localhost:3000/api/user
 curl http://localhost:3000/docs/openapi.json
 open http://localhost:3000/docs/reference
 ```
@@ -455,13 +452,7 @@ Begin → Pre-hooks → Operation → Post-hooks → Commit → After-hooks
 
 If any step fails, transaction rolls back (except after-hooks).
 
-### 2. Soft Delete Implementation
-
-When enabled, adds `deletedAt: timestamp('deleted_at')` to schema.
-- Delete operations set `deletedAt = now()` instead of hard delete
-- Queries automatically filter `WHERE deletedAt IS NULL`
-
-### 3. Timestamp Implementation
+### 2. Timestamp Implementation
 
 When enabled, adds:
 - `createdAt: timestamp('created_at').defaultNow().notNull()`
@@ -469,7 +460,7 @@ When enabled, adds:
 
 Update operations automatically set `updatedAt = new Date()`.
 
-### 4. Enum Implementation
+### 3. Enum Implementation
 
 **Standard Enum (single value):**
 ```typescript
@@ -483,7 +474,7 @@ role: roleEnum('role').notNull()
 - Combine with OR: `1 | 2 | 4 = 7`
 - Query with AND: `(value & flag) > 0`
 
-### 5. PostGIS Integration
+### 4. PostGIS Integration
 
 **With PostGIS (`--postgis` default):**
 - Spatial types use PostGIS custom types
@@ -496,7 +487,7 @@ role: roleEnum('role').notNull()
 - GIST indexes become GIN indexes
 - No extension required
 
-### 6. CockroachDB Compatibility
+### 5. CockroachDB Compatibility
 
 **Key Differences:**
 - PostgreSQL enums supported in CockroachDB v22.2+ only
@@ -601,13 +592,18 @@ Deno.serve({ port: 3000 }, app.fetch);
 **Generated REST Endpoints (example for User model):**
 
 ```
-GET    /api/users                   # List users (paginated)
-POST   /api/users                   # Create user
-GET    /api/users/:id               # Get user by ID
-PUT    /api/users/:id               # Update user
-DELETE /api/users/:id               # Delete user
-GET    /api/users/:id/posts         # Get user's posts (relationship)
-GET    /api/users/:id/roles         # Get user's roles (many-to-many)
+GET    /api/user                    # List users (paginated)
+POST   /api/user                    # Create user
+GET    /api/user/:id                # Get user by ID
+PUT    /api/user/:id                # Update user
+DELETE /api/user/:id                # Delete user
+GET    /api/user/:id/postList       # Get user's Post list (one-to-many)
+GET    /api/user/:id/roleList       # Get user's Role list (many-to-many)
+POST   /api/user/:id/roleList       # Add roles to user
+PUT    /api/user/:id/roleList       # Replace all user roles
+DELETE /api/user/:id/roleList       # Remove roles from user
+POST   /api/user/:id/roleList/:roleId    # Add a specific role
+DELETE /api/user/:id/roleList/:roleId    # Remove a specific role
 ```
 
 **Query Parameters:**
@@ -665,18 +661,7 @@ Model can reference itself:
 }
 ```
 
-### 4. Custom Pluralization
-
-For irregular plurals:
-```json
-{
-  "name": "Index",
-  "plural": "indices",  // ← Instead of "indexes"
-  "tableName": "indices"
-}
-```
-
-### 5. Foreign Key References
+### 4. Foreign Key References
 
 When using `references` in fields, ensure target model exists:
 ```json
@@ -692,7 +677,7 @@ When using `references` in fields, ensure target model exists:
 }
 ```
 
-### 6. Enum vs Bitwise Enum
+### 5. Enum vs Bitwise Enum
 
 **IMPORTANT**: There's NO automatic bitwise enum generation. You must:
 1. Define standard enum in `enums` array
@@ -712,7 +697,7 @@ Example:
 }
 ```
 
-### 7. PostGIS SRID
+### 6. PostGIS SRID
 
 For spatial fields, optionally specify SRID:
 ```json
@@ -724,7 +709,7 @@ For spatial fields, optionally specify SRID:
 }
 ```
 
-### 8. Index Types
+### 7. Index Types
 
 GIST indexes only work with PostGIS:
 ```json
@@ -751,7 +736,6 @@ const { models, errors } = await parser.parseModelsFromDirectory(modelsPath);
 
 // 2. Apply global CLI flag overrides
 for (const model of models) {
-  if (config.features.softDeletes === false) model.softDelete = false;
   if (config.features.timestamps === false) model.timestamps = false;
   if (config.database.schema) model.schema = config.database.schema;
 }

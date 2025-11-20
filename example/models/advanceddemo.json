@@ -1,0 +1,128 @@
+{
+  "name": "AdvancedDemo",
+  "tableName": "advanced_demo",
+  "schema": "analytics",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    },
+    {
+      "name": "parentId",
+      "type": "uuid",
+      "references": {
+        "model": "AdvancedDemo",
+        "field": "id",
+        "onDelete": "SET NULL",
+        "onUpdate": "CASCADE"
+      }
+    },
+    {
+      "name": "relatedId",
+      "type": "uuid",
+      "references": {
+        "model": "AdvancedDemo",
+        "field": "id",
+        "onDelete": "NO ACTION",
+        "onUpdate": "SET NULL"
+      }
+    },
+    {
+      "name": "optionalField1",
+      "type": "string",
+      "maxLength": 100
+    },
+    {
+      "name": "optionalField2",
+      "type": "integer"
+    },
+    {
+      "name": "optionalField3",
+      "type": "boolean"
+    },
+    {
+      "name": "score",
+      "type": "integer"
+    },
+    {
+      "name": "isActive",
+      "type": "boolean",
+      "defaultValue": true,
+      "required": true
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb"
+    },
+    {
+      "name": "tags",
+      "type": "string",
+      "array": true
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToOne",
+      "name": "parent",
+      "target": "AdvancedDemo",
+      "foreignKey": "parentId"
+    },
+    {
+      "type": "oneToMany",
+      "name": "childList",
+      "target": "AdvancedDemo",
+      "foreignKey": "parentId"
+    }
+  ],
+  "check": {
+    "numNotNulls": [
+      {
+        "fields": ["optionalField1", "optionalField2", "optionalField3"],
+        "num": 2
+      }
+    ]
+  },
+  "indexes": [
+    {
+      "name": "idx_name_btree",
+      "fields": ["name"],
+      "type": "btree"
+    },
+    {
+      "name": "idx_score_hash",
+      "fields": ["score"],
+      "type": "hash"
+    },
+    {
+      "name": "idx_metadata_gin",
+      "fields": ["metadata"],
+      "type": "gin"
+    },
+    {
+      "name": "idx_tags_gin",
+      "fields": ["tags"],
+      "type": "gin"
+    },
+    {
+      "name": "idx_active_partial",
+      "fields": ["isActive"],
+      "type": "btree",
+      "where": "is_active = true"
+    },
+    {
+      "name": "idx_name_score_composite",
+      "fields": ["name", "score"],
+      "type": "btree"
+    }
+  ],
+  "timestamps": true
+}

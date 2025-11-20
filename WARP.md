@@ -29,7 +29,7 @@ Models are defined in JSON files with a simple, declarative structure:
 ```json
 {
   "name": "User",
-  "tableName": "users",
+  "tableName": "user",
   "fields": [
     {
       "name": "id",
@@ -50,8 +50,7 @@ Models are defined in JSON files with a simple, declarative structure:
       "target": "Post"
     }
   ],
-  "timestamps": true,
-  "softDelete": true
+  "timestamps": true
 }
 ```
 
@@ -607,15 +606,11 @@ The domain layer supports rich queries:
 
 **Timestamps** Automatic `createdAt` and `updatedAt` fields with proper timezone handling.
 
-**Soft Deletes** Records are marked as deleted rather than removed, with automatic filtering.
-
 **Indexes** Composite indexes, unique indexes, partial indexes, and spatial indexes (GIST, GIN).
 
 **Input Validation** Automatic Zod validation for all CRUD operations (always enabled, cannot be disabled). Schemas are
 generated from Drizzle table definitions and validate both initial input and pre-hook output. Includes field-level
 constraints: required, unique, length, precision, scale, and type checking.
-
-**Custom Pluralization** Handle irregular plurals (e.g., "Index" -> "indices" instead of "indexes").
 
 **OpenAPI Documentation** Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints. Generated spec (`generatedOpenAPISpec`) can be exposed at any URL you choose, merged with custom endpoints, and used with any documentation UI (Scalar, Swagger UI, Redoc). Includes complete request/response schemas and TypeScript types.
 
@@ -1029,7 +1024,6 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 
 #### Feature Options
 
-- `--no-softDeletes` - Disable soft delete feature globally for all models (default: enabled)
 - `--no-timestamps` - Disable automatic timestamps globally for all models (default: enabled)
 
 #### Documentation Options
@@ -1044,26 +1038,6 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 ### Global Feature Override Flags
 
 The `--no-*` flags provide **global overrides** that apply to all models, superseding individual model-level settings:
-
-#### `--no-softDeletes`
-
-When specified, this flag disables soft delete functionality across **all models**, regardless of their individual
-`"softDelete"` configuration in model JSON files:
-
-**Effect:**
-
-- Removes `deletedAt: timestamp('deleted_at')` field from all generated table schemas
-- Delete operations become permanent (hard deletes)
-- No automatic filtering of soft-deleted records in queries
-
-**Example:**
-
-```bash
-# All models will be generated without soft delete support
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softDeletes
-```
-
-**Use Case:** When you don't need soft delete functionality or prefer to implement custom deletion logic.
 
 #### `--no-timestamps`
 
@@ -1144,18 +1118,16 @@ documentation solution.
 // user.json - Model definition
 {
   "name": "User",
-  "timestamps": true, // ← Model says: enable timestamps
-  "softDelete": true // ← Model says: enable soft delete
+  "timestamps": true // ← Model says: enable timestamps
 }
 ```
 
 ```bash
-# CLI override - disables both features for ALL models
-deno run -A src/cli.ts --modelsPath ./models --no-timestamps --no-softDeletes
+# CLI override - disables timestamps for ALL models
+deno run -A src/cli.ts --modelsPath ./models --no-timestamps
 ```
 
-**Result:** The generated User model will have neither timestamps nor soft delete fields, regardless of the JSON
-configuration.
+**Result:** The generated User model will have no timestamp fields, regardless of the JSON configuration.
 
 ### Important Note on Validation
 

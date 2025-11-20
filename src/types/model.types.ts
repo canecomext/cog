@@ -89,17 +89,19 @@ export interface IndexDefinition {
 }
 
 // Check constraint definition
-// Format: { "onlyOneNotNull": [["field1", "field2"]] }
-// For num_nonnulls: { "onlyOneNotNull": [["avatarUrl", "socialLinks"]] } -> num_nonnulls(avatarUrl, socialLinks) = 1
+// Format: { "numNotNulls": [{ "fields": ["field1", "field2"], "num": 1 }] }
+// For num_nonnulls: { "numNotNulls": [{ "fields": ["avatarUrl", "socialLinks"], "num": 1 }] } -> num_nonnulls(avatarUrl, socialLinks) = 1
 export type CheckConstraints = {
-  onlyOneNotNull?: string[][]; // Array of arrays, each inner array contains field names
+  numNotNulls?: Array<{
+    fields: string[]; // Array of field names to check
+    num: number; // Required count of non-null fields
+  }>;
 };
 
 // Model definition
 export interface ModelDefinition {
   name: string; // Model name (e.g., "User")
   tableName: string; // Database table name (e.g., "users")
-  plural?: string; // Custom plural form (e.g., "indices" for "index")
   schema?: string; // Database schema name
   fields: FieldDefinition[];
   enums?: EnumDefinition[]; // Enum definitions for this model
@@ -109,9 +111,7 @@ export interface ModelDefinition {
   timestamps?: boolean | {
     createdAt?: string | boolean;
     updatedAt?: string | boolean;
-    deletedAt?: string | boolean; // For soft deletes
   };
-  softDelete?: boolean;
   description?: string;
   hooks?: {
     // Hook definitions at the model level
@@ -136,7 +136,6 @@ export interface GeneratorConfig {
     schema?: string; // Default schema
   };
   features?: {
-    softDeletes?: boolean;
     timestamps?: boolean;
     hooks?: boolean;
   };
@@ -148,19 +147,6 @@ export interface GeneratorConfig {
     columnNaming?: 'snake_case' | 'camelCase';
   };
   verbose?: boolean; // Show detailed generation progress
-}
-
-// Junction table configuration
-export interface JunctionTableConfig {
-  through: string; // Junction table name
-  enums?: EnumDefinition[]; // Enum definitions for junction table
-  fields?: FieldDefinition[]; // Additional fields for junction table
-  indexes?: IndexDefinition[]; // Indexes for junction table
-}
-
-// Junction table configuration file
-export interface JunctionTableConfigFile {
-  manyToMany: JunctionTableConfig[];
 }
 
 // Generated file metadata

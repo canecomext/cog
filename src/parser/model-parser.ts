@@ -1,10 +1,8 @@
-import { 
-  ModelDefinition, 
-  ValidationError, 
-  FieldDefinition, 
-  RelationshipDefinition,
-  JunctionTableConfig,
-  JunctionTableConfigFile 
+import {
+  ModelDefinition,
+  ValidationError,
+  FieldDefinition,
+  RelationshipDefinition
 } from '../types/model.types.ts';
 
 /**
@@ -12,42 +10,32 @@ import {
  */
 export class ModelParser {
   private models: Map<string, ModelDefinition> = new Map();
-  private junctionConfigs: Map<string, JunctionTableConfig> = new Map();
   private errors: ValidationError[] = [];
 
   /**
    * Parse models from a directory containing JSON files
    */
-  async parseModelsFromDirectory(dirPath: string): Promise<{ 
-    models: ModelDefinition[]; 
-    junctionConfigs: Map<string, JunctionTableConfig>;
-    errors: ValidationError[] 
+  async parseModelsFromDirectory(dirPath: string): Promise<{
+    models: ModelDefinition[];
+    errors: ValidationError[]
   }> {
     this.models.clear();
-    this.junctionConfigs.clear();
     this.errors = [];
 
     try {
-      // First, look for junction table configuration files
-      await this.parseJunctionConfigFiles(dirPath);
-      
       // Read all JSON files from the directory
       for await (const entry of Deno.readDir(dirPath)) {
         if (entry.isFile && entry.name.endsWith('.json')) {
           const filePath = `${dirPath}/${entry.name}`;
-          // Skip files that contain junction configs
-          if (!await this.isJunctionConfigFile(filePath)) {
-            await this.parseModelFile(filePath);
-          }
+          await this.parseModelFile(filePath);
         }
       }
 
       // Validate relationships after all models are loaded
       this.validateRelationships();
-      
+
       return {
         models: Array.from(this.models.values()),
-        junctionConfigs: this.junctionConfigs,
         errors: this.errors
       };
     } catch (error) {
@@ -57,7 +45,6 @@ export class ModelParser {
       });
       return {
         models: [],
-        junctionConfigs: new Map(),
         errors: this.errors
       };
     }
@@ -154,7 +141,6 @@ export class ModelParser {
     const model: ModelDefinition = {
       name: data.name,
       tableName: data.tableName,
-      plural: data.plural, // Add support for custom plural
       fields,
       enums,
       schema: data.schema,
@@ -162,7 +148,6 @@ export class ModelParser {
       indexes: data.indexes || [],
       check: data.check,
       timestamps: data.timestamps,
-      softDelete: data.softDelete,
       description: data.description,
       hooks: data.hooks
     };
@@ -463,35 +448,66 @@ export class ModelParser {
       return false;
     }
 
-    // Only validate onlyOneNotNull for now, ignore other keys
-    if (checkConstraints.onlyOneNotNull) {
-      const constraintDefs = checkConstraints.onlyOneNotNull;
-      
+    // Validate numNotNulls check constraints
+    if (checkConstraints.numNotNulls) {
+      const constraintDefs = checkConstraints.numNotNulls;
+
       if (!Array.isArray(constraintDefs)) {
         this.errors.push({
           model: modelName,
-          message: `Check constraint 'onlyOneNotNull' must be an array`,
+          message: `Check constraint 'numNotNulls' must be an array`,
           severity: 'error'
         });
         return false;
       }
 
       for (const constraintDef of constraintDefs) {
-        if (!Array.isArray(constraintDef) || constraintDef.length === 0) {
+        // Validate structure
+        if (typeof constraintDef !== 'object' || constraintDef === null) {
           this.errors.push({
             model: modelName,
-            message: `Check constraint 'onlyOneNotNull' has invalid definition - must be an array of field names`,
+            message: `Check constraint 'numNotNulls' must contain objects with 'fields' and 'num' properties`,
             severity: 'error'
           });
           return false;
         }
 
-        // Validate that all elements are strings (field names)
-        for (const fieldName of constraintDef) {
+        // Validate fields property
+        if (!Array.isArray(constraintDef.fields) || constraintDef.fields.length === 0) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' must have non-empty 'fields' array`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate num property
+        if (typeof constraintDef.num !== 'number' || !Number.isInteger(constraintDef.num) || constraintDef.num < 1) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' must have 'num' as a positive integer`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate num is reasonable (between 1 and field count)
+        if (constraintDef.num > constraintDef.fields.length) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' 'num' (${constraintDef.num}) cannot exceed field count (${constraintDef.fields.length})`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate that all field names are strings
+        for (const fieldName of constraintDef.fields) {
           if (typeof fieldName !== 'string' || fieldName.trim() === '') {
             this.errors.push({
               model: modelName,
-              message: `Check constraint 'onlyOneNotNull' must contain valid field name strings`,
+              message: `Check constraint 'numNotNulls' must contain valid field name strings`,
               severity: 'error'
             });
             return false;
@@ -500,113 +516,30 @@ export class ModelParser {
 
         // Validate that all referenced fields exist in the model
         const modelFieldNames = new Set(fields.map(f => f.name));
-        for (const fieldName of constraintDef) {
+        for (const fieldName of constraintDef.fields) {
           if (!modelFieldNames.has(fieldName)) {
             this.errors.push({
               model: modelName,
-              message: `Check constraint 'onlyOneNotNull' references non-existent field: ${fieldName}`,
+              message: `Check constraint 'numNotNulls' references non-existent field: ${fieldName}`,
               severity: 'error'
             });
             return false;
           }
         }
+
+        // Check for duplicate field names within same constraint
+        const uniqueFields = new Set(constraintDef.fields);
+        if (uniqueFields.size !== constraintDef.fields.length) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' has duplicate field names`,
+            severity: 'error'
+          });
+          return false;
+        }
       }
     }
 
     return true;
-  }
-
-  /**
-   * Parse junction table configuration files
-   */
-  private async parseJunctionConfigFiles(dirPath: string): Promise<void> {
-    const junctionConfigFiles: string[] = [];
-
-    // Look for files containing manyToMany configuration
-    for await (const entry of Deno.readDir(dirPath)) {
-      if (entry.isFile && entry.name.endsWith('.json')) {
-        const filePath = `${dirPath}/${entry.name}`;
-        if (await this.isJunctionConfigFile(filePath)) {
-          junctionConfigFiles.push(filePath);
-        }
-      }
-    }
-
-    // Ensure only one junction config file exists
-    if (junctionConfigFiles.length > 1) {
-      this.errors.push({
-        message: `Multiple junction configuration files found. Only one file with 'manyToMany' configuration is allowed.`,
-        severity: 'error'
-      });
-      return;
-    }
-
-    // Parse the junction config file if found
-    if (junctionConfigFiles.length === 1) {
-      await this.parseJunctionConfigFile(junctionConfigFiles[0]);
-    }
-  }
-
-  /**
-   * Check if a file is a junction configuration file
-   */
-  private async isJunctionConfigFile(filePath: string): Promise<boolean> {
-    try {
-      const content = await Deno.readTextFile(filePath);
-      const data = JSON.parse(content);
-      return data.manyToMany !== undefined && Array.isArray(data.manyToMany);
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Parse a junction configuration file
-   */
-  private async parseJunctionConfigFile(filePath: string): Promise<void> {
-    try {
-      const content = await Deno.readTextFile(filePath);
-      const data = JSON.parse(content) as JunctionTableConfigFile;
-
-      if (!Array.isArray(data.manyToMany)) {
-        this.errors.push({
-          message: `Junction config file '${filePath}' must have a 'manyToMany' array property`,
-          severity: 'error'
-        });
-        return;
-      }
-
-      for (const config of data.manyToMany) {
-        if (!config.through || typeof config.through !== 'string') {
-          this.errors.push({
-            message: `Junction config in '${filePath}' is missing required 'through' property`,
-            severity: 'error'
-          });
-          continue;
-        }
-
-        // Validate fields if present
-        if (config.fields) {
-          const validatedFields = this.validateFields(config.fields, `junction:${config.through}`);
-          if (!validatedFields) continue;
-          config.fields = validatedFields;
-        }
-
-        // Validate enums if present
-        if (config.enums) {
-          const validatedEnums = this.validateEnums(config.enums, `junction:${config.through}`);
-          if (!validatedEnums) continue;
-          config.enums = validatedEnums;
-        }
-
-        // Store the configuration
-        this.junctionConfigs.set(config.through, config);
-      }
-    } catch (error) {
-      this.errors.push({
-        message: `Failed to parse junction config file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        severity: 'error'
-      });
-    }
   }
 }

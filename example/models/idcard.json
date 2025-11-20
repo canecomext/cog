@@ -1,6 +1,6 @@
 {
-  "name": "UserProfile",
-  "tableName": "user_profiles",
+  "name": "IDCard",
+  "tableName": "id_card",
   "fields": [
     {
       "name": "id",
@@ -10,46 +10,41 @@
       "required": true
     },
     {
-      "name": "userId",
+      "name": "employeeId",
       "type": "uuid",
       "unique": true,
       "required": true,
       "references": {
-        "model": "User",
+        "model": "Employee",
         "field": "id",
         "onDelete": "CASCADE"
       }
     },
     {
-      "name": "bio",
-      "type": "text"
-    },
-    {
-      "name": "avatarUrl",
+      "name": "cardNumber",
       "type": "string",
-      "maxLength": 500
+      "maxLength": 20,
+      "required": true,
+      "unique": true
     },
     {
-      "name": "socialLinks",
-      "type": "jsonb"
+      "name": "issueDate",
+      "type": "date",
+      "required": true
     },
     {
-      "name": "preferences",
-      "type": "jsonb"
+      "name": "expiryDate",
+      "type": "date",
+      "required": true
     }
   ],
   "relationships": [
     {
       "type": "oneToOne",
-      "name": "user",
-      "target": "User",
-      "foreignKey": "userId"
+      "name": "employee",
+      "target": "Employee",
+      "foreignKey": "employeeId"
     }
   ],
-  "check": {
-    "onlyOneNotNull": [
-      ["avatarUrl", "socialLinks"]
-    ]
-  },
   "timestamps": true
 }
