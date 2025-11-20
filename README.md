@@ -688,6 +688,157 @@ genderPreferences: genderEnum('gender_preferences').array();
 **Generated Code Note:** When using `--dbType cockroachdb`, generated schemas include compatibility comments reminding
 you of the v22.2+ requirement for enum types.
 
+## Database Compatibility
+
+COG supports both PostgreSQL and CockroachDB as target databases. While most features work identically across both platforms, there are some important differences to be aware of.
+
+### PostgreSQL vs CockroachDB Feature Comparison
+
+| Feature | PostgreSQL | CockroachDB | Notes |
+|---------|------------|-------------|-------|
+| **Index Types** | | | |
+| BTREE | ✅ Supported | ✅ Supported | Default index type |
+| GIN | ✅ Supported | ✅ Supported | For JSONB, arrays |
+| GIST | ✅ Supported | ✅ Supported | For spatial data (PostGIS) |
+| HASH | ✅ Supported | ❌ Not Supported | Use BTREE instead |
+| SPGIST | ✅ Supported | ❌ Not Supported | Use BTREE or GIST |
+| BRIN | ✅ Supported | ❌ Not Supported | Use BTREE |
+| **Data Types** | | | |
+| Enums | ✅ All versions | ✅ v22.2+ only | See enum section above |
+| PostGIS Spatial | ✅ GEOMETRY + GEOGRAPHY | ✅ GEOMETRY only | GEOGRAPHY converted to GEOMETRY |
+| JSONB | ✅ Supported | ✅ Supported | Full support |
+| Arrays | ✅ Supported | ✅ Supported | Full support |
+| **Numeric Precision** | | | |
+| Bigint defaults | Limited to 2^53-1 | Limited to 2^53-1 | JavaScript limitation (see below) |
+
+### JavaScript Numeric Precision Limitation
+
+**IMPORTANT**: COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INTEGER` (9007199254740991 = 2^53 - 1).
+
+**Why this limitation exists:**
+
+- COG processes model definitions as JSON in JavaScript/TypeScript
+- JSON numbers beyond 2^53 - 1 lose precision when parsed
+- Even though PostgreSQL supports larger BIGINT values (up to 2^63 - 1), the default values in JSON are subject to JavaScript's numeric limitations
+
+**Example:**
+
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9007199254740991  // ✅ Maximum safe default value
+}
+```
+
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9223372036854775807  // ❌ Too large - will lose precision
+}
+```
+
+**Workarounds:**
+
+1. **Omit default values** for large numbers - set them at application runtime instead of database defaults
+2. **Use strings** for very large integer literals in SQL expressions (not in JSON defaults)
+3. **For most use cases**, 9 quadrillion (MAX_SAFE_INTEGER) is more than sufficient
+
+This limitation applies to both PostgreSQL and CockroachDB equally.
+
+### Spatial Data Type Compatibility
+
+**GEOGRAPHY Type:**
+
+CockroachDB does not support the PostGIS `GEOGRAPHY` type - only `GEOMETRY` is supported. COG automatically handles this difference:
+
+**PostgreSQL:**
+- `type: "geography"` → generates `GEOGRAPHY` column type
+- `type: "geography", geometryType: "POINT"` → generates `GEOGRAPHY(POINT, 4326)`
+
+**CockroachDB:**
+- `type: "geography"` → automatically converted to `GEOMETRY`
+- `type: "geography", geometryType: "POINT"` → converted to `GEOMETRY(POINT, 4326)`
+
+This conversion is **automatic and transparent** when using `--dbType cockroachdb`. Your model definitions remain database-agnostic.
+
+**Generic Geometry/Geography Fields:**
+
+When a field has `type: "geometry"` or `type: "geography"` without a specific `geometryType`, COG generates:
+
+- **PostgreSQL**: `GEOMETRY` or `GEOGRAPHY` (without subtype specification)
+- **CockroachDB**: `GEOMETRY` (geography converted)
+
+These generic spatial columns can store any spatial data type (point, linestring, polygon, etc.).
+
+### Index Type Compatibility
+
+When defining indexes in your model JSON files, be aware of CockroachDB's limitations:
+
+**PostgreSQL-Only Index Types:**
+
+```json
+{
+  "indexes": [
+    {
+      "name": "idx_score_hash",
+      "fields": ["score"],
+      "type": "hash"  // ❌ Fails on CockroachDB
+    }
+  ]
+}
+```
+
+**Cross-Compatible Indexes:**
+
+```json
+{
+  "indexes": [
+    {
+      "name": "idx_score_btree",
+      "fields": ["score"],
+      "type": "btree"  // ✅ Works on both PostgreSQL and CockroachDB
+    },
+    {
+      "name": "idx_metadata_gin",
+      "fields": ["metadata"],
+      "type": "gin"  // ✅ Works on both (for JSONB)
+    },
+    {
+      "name": "idx_location_gist",
+      "fields": ["location"],
+      "type": "gist"  // ✅ Works on both (for spatial data)
+    }
+  ]
+}
+```
+
+### Best Practices for Multi-Database Support
+
+If you need to support both PostgreSQL and CockroachDB:
+
+1. **Use compatible index types** - Stick to BTREE, GIN, and GIST
+2. **Test on target database** - Run `deno task db:init` against your target database to catch compatibility issues early
+3. **Avoid HASH indexes** - While faster for equality comparisons in PostgreSQL, they're not supported in CockroachDB
+4. **Check enum support** - Ensure CockroachDB v22.2+ if using enum types
+5. **Keep defaults reasonable** - Use numeric defaults within JavaScript's safe integer range
+
+### Migration Path
+
+If you have existing models with incompatible features:
+
+```bash
+# 1. Remove incompatible index types from model JSON files
+# 2. Regenerate code
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb
+
+# 3. Test database initialization
+deno task db:init
+```
+
+The `--dbType` flag adds compatibility hints to generated code but doesn't fundamentally change the generation - it's primarily for documentation and awareness.
+
 ## API Documentation
 
 COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints. Unlike many frameworks, COG **does not automatically expose** documentation endpoints - giving you full control over where and how to expose your API docs.

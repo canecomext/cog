@@ -489,10 +489,28 @@ role: roleEnum('role').notNull()
 
 ### 5. CockroachDB Compatibility
 
-**Key Differences:**
+**Index Type Support:**
+- **Supported**: BTREE, GIN, GIST
+- **NOT Supported**: HASH, SPGIST, BRIN
+- Use BTREE as alternative to HASH indexes
+
+**Data Type Support:**
 - PostgreSQL enums supported in CockroachDB v22.2+ only
 - Bitwise operations fully supported (all versions)
-- Generator adds compatibility comments when `--dbType cockroachdb`
+- PostGIS `GEOMETRY` supported, but `GEOGRAPHY` type is NOT supported
+  - COG automatically converts GEOGRAPHY → GEOMETRY for CockroachDB
+  - Conversion is transparent when using `--dbType cockroachdb`
+  - Generic geometry/geography fields (without geometryType) use just `GEOMETRY` without subtype
+
+**Numeric Precision Limitation:**
+- COG supports numeric defaults up to `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991)
+- This is a JavaScript/JSON limitation, affects both PostgreSQL and CockroachDB
+- Applies only to default values in model JSON - runtime values can be larger
+- Workaround: Omit default values for large bigint fields
+
+**Generator Behavior:**
+- Adds compatibility comments when `--dbType cockroachdb`
+- Same code generation for both databases (no special handling needed for most features)
 
 ---
 

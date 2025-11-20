@@ -64,7 +64,7 @@ export async function generateFromModels(
   // Apply global feature flag overrides to all models
   for (const model of models) {
     // Override timestamps if explicitly disabled
-    if (config.features.timestamps === false) {
+    if (config.features?.timestamps === false) {
       model.timestamps = false;
     }
     // Apply global schema if specified

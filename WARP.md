@@ -272,6 +272,17 @@ slower than bitwise operations.
 
 #### CockroachDB Compatibility
 
+**Index Type Support:**
+
+| Index Type | PostgreSQL | CockroachDB | Alternative |
+|------------|------------|-------------|-------------|
+| BTREE | ✅ Supported | ✅ Supported | Default |
+| GIN | ✅ Supported | ✅ Supported | For JSONB, arrays |
+| GIST | ✅ Supported | ✅ Supported | For spatial data |
+| HASH | ✅ Supported | ❌ Not Supported | Use BTREE |
+| SPGIST | ✅ Supported | ❌ Not Supported | Use BTREE/GIST |
+| BRIN | ✅ Supported | ❌ Not Supported | Use BTREE |
+
 **Enum Support:**
 
 - PostgreSQL-style enums are supported in **CockroachDB v22.2+** (released December 2022)
@@ -283,6 +294,32 @@ slower than bitwise operations.
 - Fully supported in all CockroachDB versions
 - Bitwise operators (`&`, `|`, `^`, `~`) work identically to PostgreSQL
 - Recommended approach for multi-value enums on CockroachDB
+
+**Spatial Data Types:**
+
+CockroachDB does NOT support the PostGIS `GEOGRAPHY` type:
+
+| Feature | PostgreSQL | CockroachDB | COG Behavior |
+|---------|------------|-------------|--------------|
+| GEOMETRY | ✅ Supported | ✅ Supported | Used as-is |
+| GEOGRAPHY | ✅ Supported | ❌ Not Supported | Auto-converted to GEOMETRY |
+
+When `--dbType cockroachdb` is used, COG automatically converts:
+- `type: "geography"` → `GEOMETRY` column type
+- `type: "geography", geometryType: "POINT"` → `GEOMETRY(POINT, srid)`
+- Generic geometry/geography fields → `GEOMETRY` (without subtype)
+
+This conversion is transparent - your model definitions remain database-agnostic.
+
+**Numeric Precision Limitation:**
+
+COG has a limitation on numeric default values due to JavaScript/JSON constraints:
+
+- Maximum safe default value: `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991)
+- Applies to both PostgreSQL and CockroachDB
+- Larger values lose precision during JSON parsing
+- **Workaround**: Omit default values for large bigint fields and set them at runtime
+- This limitation only affects **default values** in model JSON - runtime values can exceed this limit
 
 **Generated Code:** When generating for CockroachDB (`--dbType cockroachdb`), schemas include comments noting the v22.2+
 requirement for enum types.

@@ -27,7 +27,7 @@
     {
       "name": "bigintField",
       "type": "bigint",
-      "defaultValue": 9223372036854775807
+      "defaultValue": 9007199254740991
     },
     {
       "name": "booleanField",

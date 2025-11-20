@@ -98,11 +98,6 @@
       "type": "btree"
     },
     {
-      "name": "idx_score_hash",
-      "fields": ["score"],
-      "type": "hash"
-    },
-    {
       "name": "idx_metadata_gin",
       "fields": ["metadata"],
       "type": "gin"

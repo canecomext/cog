@@ -745,21 +745,31 @@ export async function healthCheck(): Promise<boolean> {
         case 'decimal':
           return `DECIMAL(${field.precision || 10}, ${field.scale || 2})`;
         case 'point':
-          return this.postgis ? 'GEOMETRY(POINT, 4326)' : 'JSONB';
-        case 'polygon':
-          return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
         case 'linestring':
-          return this.postgis ? 'GEOMETRY(LINESTRING, 4326)' : 'JSONB';
+        case 'polygon':
+        case 'multipoint':
+        case 'multilinestring':
+        case 'multipolygon':
         case 'geometry':
-          if (field.geometryType === 'POLYGON') {
-            return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
+        case 'geography': {
+          if (!this.postgis) {
+            return 'JSONB';
           }
-          return 'JSONB';
-        case 'geography':
-          if (field.geometryType === 'MULTIPOLYGON') {
-            return this.postgis ? 'GEOMETRY(MULTIPOLYGON, 4326)' : 'JSONB';
+          // CockroachDB doesn't support GEOGRAPHY type - convert to GEOMETRY
+          // For generic geometry/geography fields without specific geometryType, use GEOMETRY without subtype
+          if (field.geometryType) {
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${field.geometryType}, ${srid})`;
+          } else if (field.type === 'geometry' || field.type === 'geography') {
+            // Generic geometry - use GEOMETRY without subtype specification
+            return 'GEOMETRY';
+          } else {
+            // Specific type (point, polygon, etc.)
+            const geometryType = field.type.toUpperCase();
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${geometryType}, ${srid})`;
           }
-          return 'JSONB';
+        }
         default:
           return 'TEXT';
       }
@@ -773,21 +783,35 @@ export async function healthCheck(): Promise<boolean> {
         case 'decimal':
           return `DECIMAL(${field.precision || 10}, ${field.scale || 2})`;
         case 'point':
-          return this.postgis ? 'GEOMETRY(POINT, 4326)' : 'JSONB';
-        case 'polygon':
-          return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
         case 'linestring':
-          return this.postgis ? 'GEOMETRY(LINESTRING, 4326)' : 'JSONB';
+        case 'polygon':
+        case 'multipoint':
+        case 'multilinestring':
+        case 'multipolygon':
         case 'geometry':
-          if (field.geometryType === 'POLYGON') {
-            return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
+        case 'geography': {
+          if (!this.postgis) {
+            return 'JSONB';
           }
-          return 'JSONB';
-        case 'geography':
-          if (field.geometryType === 'MULTIPOLYGON') {
-            return this.postgis ? 'GEOGRAPHY(MULTIPOLYGON, 4326)' : 'JSONB';
+          // For generic geometry/geography fields without specific geometryType, use column type without subtype
+          if (field.geometryType) {
+            const srid = field.srid || 4326;
+            const isGeography = field.type === 'geography';
+            const columnType = isGeography ? 'GEOGRAPHY' : 'GEOMETRY';
+            return `${columnType}(${field.geometryType}, ${srid})`;
+          } else if (field.type === 'geometry') {
+            // Generic geometry - use GEOMETRY without subtype specification
+            return 'GEOMETRY';
+          } else if (field.type === 'geography') {
+            // Generic geography - use GEOGRAPHY without subtype specification
+            return 'GEOGRAPHY';
+          } else {
+            // Specific type (point, polygon, etc.)
+            const geometryType = field.type.toUpperCase();
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${geometryType}, ${srid})`;
           }
-          return 'JSONB';
+        }
         default:
           return 'TEXT';
       }

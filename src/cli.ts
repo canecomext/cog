@@ -20,15 +20,15 @@ async function main() {
     database: {
       type: dbType,
       postgis: args.postgis !== false,
-      schema: args.schema
+      schema: args.schema,
     },
     features: {
-      timestamps: args.timestamps !== false
+      timestamps: args.timestamps !== false,
     },
     documentation: {
-      enabled: args.documentation !== false
+      enabled: args.documentation !== false,
     },
-    verbose
+    verbose,
   });
 }
 
@@ -40,8 +40,8 @@ function parseArguments(): Record<string, any> {
   for (let i = 0; i < Deno.args.length; i++) {
     const arg = Deno.args[i];
     if (arg.startsWith('--')) {
-      let key = arg.slice(2);
-      
+      const key = arg.slice(2);
+
       // Handle --no- prefixed flags
       if (key.startsWith('no-')) {
         const actualKey = key.slice(3); // Remove 'no-' prefix
@@ -89,7 +89,6 @@ Example:
   deno run -A src/cli.ts --modelsPath ./my-models --outputPath ./src/generated
   `);
 }
-
 
 // Run the CLI
 if (import.meta.main) {
