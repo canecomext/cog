@@ -156,7 +156,8 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     const hasManyToMany = model.relationships?.some((rel) => rel.type === 'manyToMany');
 
     // We need inArray for batch fetching in findMany when there are relationships
-    let drizzleImports = 'import { eq, desc, asc, sql';
+    // We need AnyColumn for orderBy type casting
+    let drizzleImports = 'import { eq, desc, asc, sql, type AnyColumn';
     if (hasManyToMany) {
       drizzleImports += ', and, inArray';
     } else if (hasRelationships) {
@@ -189,14 +190,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async create(input: New${modelName}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook
-    const validatedInput = ${modelNameLower}InsertSchema.parse(input);
+    const validatedInput = ${modelNameLower}InsertSchema.parse(input) as New${modelName};
 
     // Pre-create hook (within transaction)
     let processedInput = validatedInput;
     if (this.hooks.preCreate) {
       const preResult = await this.hooks.preCreate(validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
-      processedInput = ${modelNameLower}InsertSchema.parse(preResult.data);
+      processedInput = ${modelNameLower}InsertSchema.parse(preResult.data) as New${modelName};
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
@@ -207,7 +208,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // Perform create operation
     const [created] = await tx
       .insert(${modelNameLower}Table)
-      .values(safeInput)
+      .values(safeInput as New${modelName})
       .returning();
 
     // Post-create hook (within transaction)
@@ -307,7 +308,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       if (pagination.orderBy) {
         const orderFn = pagination.orderDirection === 'desc' ? desc : asc;
         // Type-safe column access
-        const column = (${modelNameLower}Table as unknown as Record<string, unknown>)[pagination.orderBy];
+        const column = ${modelNameLower}Table[pagination.orderBy as keyof typeof ${modelNameLower}Table] as AnyColumn;
         if (column) {
           baseQuery = baseQuery.orderBy(orderFn(column)) as unknown as typeof baseQuery;
         }
@@ -365,14 +366,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook (partial update)
-    const validatedInput = ${modelNameLower}UpdateSchema.parse(input);
+    const validatedInput = ${modelNameLower}UpdateSchema.parse(input) as Partial<New${modelName}>;
 
     // Pre-update hook
     let processedInput = validatedInput;
     if (this.hooks.preUpdate) {
       const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
-      processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data);
+      processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data) as Partial<New${modelName}>;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 

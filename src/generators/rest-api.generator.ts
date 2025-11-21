@@ -528,7 +528,7 @@ export type DefaultEnv = {
    * Generate REST index file
    */
   private generateRestIndex(): string {
-    let code = `import { Hono } from '@hono/hono';
+    let code = `import { Hono, type Env } from '@hono/hono';
 `;
 
     // Import all route files
@@ -544,7 +544,7 @@ export type DefaultEnv = {
  * @param app - The Hono app instance
  * @param basePath - Optional base path prefix for API routes (defaults to '/api')
  */
-export function registerRestRoutes(app: Hono, basePath?: string) {
+export function registerRestRoutes<E extends Env = Env>(app: Hono<E>, basePath?: string) {
   const apiPrefix = basePath || '/api';
   
   // Register model routes
@@ -608,7 +608,7 @@ export interface ExtractedRoute {
  * // ]
  * \`\`\`
  */
-export function extractRoutes(app: Hono): ExtractedRoute[] {
+export function extractRoutes<E extends Env = Env>(app: Hono<E>): ExtractedRoute[] {
   return app.routes
     .filter(route => {
       // Filter out middleware routes (method: 'ALL' with wildcards like /* or /api/*)

@@ -142,7 +142,7 @@ export class DrizzleSchemaGenerator {
 
     // Import spatial utilities if PostGIS fields exist
     if (this.postgis && this.hasPostGISFields(model)) {
-      imports += `import { geoJsonToWKT, wktToGeoJSON } from './spatial-utils.ts';\n`;
+      imports += `import { geoJsonToWKT, wktToGeoJSON, type GeoJSON } from './spatial-utils.ts';\n`;
     }
 
     // Import other tables referenced by foreign keys in this schema
@@ -499,22 +499,20 @@ export class DrizzleSchemaGenerator {
 
     // Use customType for PostGIS fields since Drizzle doesn't have native support
     // Convert between GeoJSON (JavaScript standard) and WKT (PostGIS format)
+    // Supports both PostgreSQL (GEOMETRY/GEOGRAPHY) and CockroachDB (GEOMETRY only)
     const code = [
-      `customType<unknown>({`,
+      `customType<{`,
+      `    data: GeoJSON;`,
+      `    driverData: string;`,
+      `  }>({`,
       `    dataType() {`,
       `      return '${columnType}(${geometryType}, ${srid})';`,
       `    },`,
-      `    toDriver(value) {`,
-      `      if (typeof value === 'object' && value !== null && 'type' in value && 'coordinates' in value) {`,
-      `        return geoJsonToWKT(value, ${srid});`,
-      `      }`,
-      `      return value;`,
+      `    toDriver(value: GeoJSON): string {`,
+      `      return geoJsonToWKT(value, ${srid});`,
       `    },`,
-      `    fromDriver(value) {`,
-      `      if (typeof value === 'string') {`,
-      `        return wktToGeoJSON(value);`,
-      `      }`,
-      `      return value;`,
+      `    fromDriver(value: string): GeoJSON {`,
+      `      return wktToGeoJSON(value);`,
       `    }`,
       `  })('${fieldName}')`,
     ].join('\n');
@@ -866,14 +864,13 @@ export class DrizzleSchemaGenerator {
     const modelNameLower = model.name.toLowerCase();
     let code = `// Zod schemas for validation\n`;
 
-    // Generate insert schema (for create operations)
+    // Generate Zod schemas - use default generation
+    // Note: Spatial/GeoJSON fields are validated at runtime via customType
+    // Type safety is ensured via type assertions in the domain layer
     code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table);\n`;
-
-    // Generate update schema (for update operations - all fields optional)
     code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table);\n`;
-
-    // Generate select schema (for validating query results)
     code += `export const ${modelNameLower}SelectSchema = createSelectSchema(${modelNameLower}Table);`;
+
 
     return code;
   }

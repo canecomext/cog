@@ -13,13 +13,13 @@
  * Cleanup: deno task test:clean
  */
 
+import { Assignment, Department, Employee, IDCard, Project, Skill } from '../generated/index.ts';
 import {
   assert,
-  assertEqual,
   assertArray,
+  assertEqual,
   assertExists,
   assertIsUUID,
-  DELETE,
   GET,
   logData,
   logSection,
@@ -28,6 +28,18 @@ import {
   POST,
   PUT,
 } from './http-client.ts';
+
+// Extended types for responses with included relationships
+type EmployeeWithRelations = Employee & {
+  department?: Department;
+  skillList?: Skill[];
+  assignmentList?: Assignment[];
+  idCard?: IDCard;
+};
+
+type DepartmentWithRelations = Department & {
+  employeeList?: Employee[];
+};
 
 // Store created entity IDs for cleanup and relationships
 const createdIds = {
@@ -58,7 +70,7 @@ async function main() {
         type: 'Point',
         coordinates: [-122.4194, 37.7749], // San Francisco
       },
-    });
+    }) as Department;
 
     assertExists(engineering.id, 'engineering.id');
     assertIsUUID(engineering.id, 'engineering.id');
@@ -74,7 +86,7 @@ async function main() {
         type: 'Point',
         coordinates: [-118.2437, 34.0522], // Los Angeles
       },
-    });
+    }) as Department;
 
     assertExists(marketing.id, 'marketing.id');
     assertEqual(marketing.name, 'Marketing', 'Department name should match');
@@ -92,7 +104,7 @@ async function main() {
       lastName: 'Doe',
       email: 'john.doe@example.com',
       departmentId: engineering.id,
-    });
+    }) as Employee;
 
     assertExists(john.id, 'john.id');
     assertIsUUID(john.id, 'john.id');
@@ -108,7 +120,7 @@ async function main() {
       lastName: 'Smith',
       email: 'jane.smith@example.com',
       departmentId: engineering.id,
-    });
+    }) as Employee;
 
     assertExists(jane.id, 'jane.id');
     assertEqual(jane.departmentId, engineering.id, 'Department FK should match');
@@ -121,7 +133,7 @@ async function main() {
       lastName: 'Wilson',
       email: 'bob.wilson@example.com',
       departmentId: marketing.id,
-    });
+    }) as Employee;
 
     assertExists(bob.id, 'bob.id');
     assertEqual(bob.departmentId, marketing.id, 'Department FK should match');
@@ -138,7 +150,7 @@ async function main() {
 
     for (const skillName of skillNames) {
       logStep(`Creating skill: ${skillName}`);
-      const skill = await POST('/api/skill', { name: skillName });
+      const skill = await POST('/api/skill', { name: skillName }) as Skill;
 
       assertExists(skill.id, `skill.id for ${skillName}`);
       assertEqual(skill.name, skillName, 'Skill name should match');
@@ -182,7 +194,7 @@ async function main() {
       cardNumber: 'EMP-001',
       issueDate: new Date('2024-01-01').getTime(),
       expiryDate: new Date('2029-01-01').getTime(),
-    });
+    }) as IDCard;
 
     assertExists(johnCard.id, 'johnCard.id');
     assertEqual(johnCard.employeeId, john.id, 'Employee FK should match');
@@ -225,7 +237,7 @@ async function main() {
           [-122.5, 37.7],
         ]],
       },
-    });
+    }) as Project;
 
     assertExists(mobileApp.id, 'mobileApp.id');
     assertEqual(mobileApp.name, 'Mobile App Redesign', 'Project name should match');
@@ -245,7 +257,7 @@ async function main() {
           [-118.3, 34.0],
         ]],
       },
-    });
+    }) as Project;
 
     assertExists(backendAPI.id, 'backendAPI.id');
     logSuccess(`Created project: ${backendAPI.name} (ID: ${backendAPI.id})`);
@@ -262,7 +274,7 @@ async function main() {
       projectId: mobileApp.id,
       role: 'Lead Developer',
       hours: 40,
-    });
+    }) as Assignment;
 
     assertExists(assignment1.id, 'assignment1.id');
     assertEqual(assignment1.employeeId, john.id, 'Employee FK should match');
@@ -277,7 +289,7 @@ async function main() {
       projectId: backendAPI.id,
       role: 'Developer',
       hours: 35,
-    });
+    }) as Assignment;
 
     assertExists(assignment2.id, 'assignment2.id');
     logSuccess('Assignment created');
@@ -289,7 +301,7 @@ async function main() {
       projectId: mobileApp.id,
       role: 'UI/UX Designer',
       hours: 30,
-    });
+    }) as Assignment;
 
     assertExists(assignment3.id, 'assignment3.id');
     logSuccess('Assignment created');
@@ -301,20 +313,20 @@ async function main() {
     logSection('9. Querying with Relationship Includes');
 
     logStep('Getting John with department and skills included');
-    const johnFull = await GET(`/api/employee/${john.id}?include=department,skillList`);
+    const johnFull = await GET(`/api/employee/${john.id}?include=department,skillList`) as EmployeeWithRelations;
 
     assertExists(johnFull.department, 'johnFull.department');
-    assertEqual(johnFull.department.name, 'Engineering', 'Department name should match');
+    assertEqual(johnFull.department!.name, 'Engineering', 'Department name should match');
     assertArray(johnFull.skillList, 'johnFull.skillList');
-    assertEqual(johnFull.skillList.length, 2, 'Should have 2 skills included');
+    assertEqual(johnFull.skillList!.length, 2, 'Should have 2 skills included');
     logSuccess('Successfully loaded employee with relationships');
     logData('John with relationships', johnFull);
 
     logStep('Getting department with employee list');
-    const engWithEmployees = await GET(`/api/department/${engineering.id}?include=employeeList`);
+    const engWithEmployees = await GET(`/api/department/${engineering.id}?include=employeeList`) as DepartmentWithRelations;
 
     assertArray(engWithEmployees.employeeList, 'engWithEmployees.employeeList');
-    assertEqual(engWithEmployees.employeeList.length, 2, 'Engineering should have 2 employees');
+    assertEqual(engWithEmployees.employeeList!.length, 2, 'Engineering should have 2 employees');
     logSuccess('Successfully loaded department with employees');
 
     // ========================================
@@ -322,10 +334,10 @@ async function main() {
     // ========================================
     logSection('10. Testing Update Operations');
 
-    logStep('Updating John\'s first name to Johnny');
+    logStep("Updating John's first name to Johnny");
     const updatedJohn = await PUT(`/api/employee/${john.id}`, {
       firstName: 'Johnny',
-    });
+    }) as Employee;
 
     assertEqual(updatedJohn.id, john.id, 'ID should not change');
     assertEqual(updatedJohn.firstName, 'Johnny', 'First name should be updated');
@@ -335,7 +347,7 @@ async function main() {
     logStep('Updating assignment hours');
     const updatedAssignment = await PUT(`/api/assignment/${assignment1.id}`, {
       hours: 45,
-    });
+    }) as Assignment;
 
     assertEqual(updatedAssignment.hours, 45, 'Hours should be updated');
     logSuccess('Assignment updated successfully');
@@ -386,7 +398,7 @@ async function main() {
     // ========================================
     logSection('13. Querying Relationship Endpoints');
 
-    logStep('Getting John\'s assignments');
+    logStep("Getting John's assignments");
     const johnAssignments = await GET<unknown[]>(`/api/employee/${john.id}/assignmentList`);
 
     assertArray(johnAssignments, 'johnAssignments');

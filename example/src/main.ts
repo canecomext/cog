@@ -9,9 +9,9 @@ import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } fro
 import type { RestHookContext, RestPostHookResult, RestPreHookResult } from '../generated/rest/hooks.types.ts';
 import type { Department, Employee, NewDepartment, NewEmployee } from '../generated/schema/index.ts';
 import { generatedOpenAPISpec } from '../generated/rest/openapi.ts';
-import type { Env } from './context.ts';
+import type { ExampleEnv } from './context.ts';
 
-const app = new Hono<Env>();
+const app = new Hono<ExampleEnv>();
 const env = await load();
 
 // Middleware: Set custom Env context variables
@@ -41,8 +41,8 @@ await initializeGenerated({
       preCreate: (
         input: NewEmployee,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<NewEmployee, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPreHookResult<NewEmployee, ExampleEnv['Variables']>> => {
         console.log('Employee.preCreate');
         return Promise.resolve({ data: input, context });
       },
@@ -51,15 +51,15 @@ await initializeGenerated({
         _input: NewEmployee,
         result: Employee,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
         console.log('Employee.postCreate');
         return Promise.resolve({ data: result, context });
       },
 
       afterCreate: (
         _result: Employee,
-        _context?: DomainHookContext<Env['Variables']>,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<void> => {
         console.log('Employee.afterCreate - async side effect');
         return Promise.resolve();
@@ -70,8 +70,8 @@ await initializeGenerated({
         _id: string,
         input: Partial<NewEmployee>,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<Partial<NewEmployee>, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPreHookResult<Partial<NewEmployee>, ExampleEnv['Variables']>> => {
         console.log('Employee.preUpdate');
         return Promise.resolve({ data: input, context });
       },
@@ -81,15 +81,15 @@ await initializeGenerated({
         _input: Partial<NewEmployee>,
         result: Employee,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
         console.log('Employee.postUpdate');
         return Promise.resolve({ data: result, context });
       },
 
       afterUpdate: (
         _result: Employee,
-        _context?: DomainHookContext<Env['Variables']>,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<void> => {
         console.log('Employee.afterUpdate - async side effect');
         return Promise.resolve();
@@ -99,8 +99,8 @@ await initializeGenerated({
       preDelete: (
         _id: string,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<{ id: string }, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
         console.log('Employee.preDelete');
         return Promise.resolve({ data: { id: _id }, context });
       },
@@ -109,15 +109,15 @@ await initializeGenerated({
         _id: string,
         result: Employee,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
         console.log('Employee.postDelete');
         return Promise.resolve({ data: result, context });
       },
 
       afterDelete: (
         _result: Employee,
-        _context?: DomainHookContext<Env['Variables']>,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<void> => {
         console.log('Employee.afterDelete - async side effect');
         return Promise.resolve();
@@ -127,8 +127,8 @@ await initializeGenerated({
       preFindById: (
         _id: string,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<{ id: string }, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
         console.log('Employee.preFindById');
         return Promise.resolve({ data: { id: _id }, context });
       },
@@ -137,8 +137,8 @@ await initializeGenerated({
         _id: string,
         result: Employee | null,
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<Employee | null, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPostHookResult<Employee | null, ExampleEnv['Variables']>> => {
         console.log('Employee.postFindById');
         return Promise.resolve({ data: result, context });
       },
@@ -146,8 +146,8 @@ await initializeGenerated({
       preFindMany: (
         _tx: DbTransaction,
         filter?: FilterOptions,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<FilterOptions, Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPreHookResult<FilterOptions, ExampleEnv['Variables']>> => {
         console.log('Employee.preFindMany');
         return Promise.resolve({ data: filter || {}, context });
       },
@@ -156,8 +156,8 @@ await initializeGenerated({
         _filter: FilterOptions | undefined,
         results: Employee[],
         _tx: DbTransaction,
-        context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<Employee[], Env['Variables']>> => {
+        context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<DomainPostHookResult<Employee[], ExampleEnv['Variables']>> => {
         console.log('Employee.postFindMany');
         return Promise.resolve({ data: results, context });
       },
@@ -167,8 +167,8 @@ await initializeGenerated({
         preAddJunction: (
           ids: Record<string, string>,
           _tx: DbTransaction,
-          context?: DomainHookContext<Env['Variables']>,
-        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, Env['Variables']>> => {
+          context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
           console.log('Employee.skillList.preAddJunction');
           return Promise.resolve({ data: { ids }, context });
         },
@@ -176,15 +176,15 @@ await initializeGenerated({
         postAddJunction: (
           _ids: Record<string, string>,
           _tx: DbTransaction,
-          context?: DomainHookContext<Env['Variables']>,
-        ): Promise<DomainPostHookResult<undefined, Env['Variables']>> => {
+          context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
           console.log('Employee.skillList.postAddJunction');
           return Promise.resolve({ data: undefined, context });
         },
 
         afterAddJunction: (
           _ids: Record<string, string>,
-          _context?: DomainHookContext<Env['Variables']>,
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<void> => {
           console.log('Employee.skillList.afterAddJunction - async side effect');
           return Promise.resolve();
@@ -193,8 +193,8 @@ await initializeGenerated({
         preRemoveJunction: (
           ids: Record<string, string>,
           _tx: DbTransaction,
-          context?: DomainHookContext<Env['Variables']>,
-        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, Env['Variables']>> => {
+          context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
           console.log('Employee.skillList.preRemoveJunction');
           return Promise.resolve({ data: { ids }, context });
         },
@@ -202,15 +202,15 @@ await initializeGenerated({
         postRemoveJunction: (
           _ids: Record<string, string>,
           _tx: DbTransaction,
-          context?: DomainHookContext<Env['Variables']>,
-        ): Promise<DomainPostHookResult<undefined, Env['Variables']>> => {
+          context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
           console.log('Employee.skillList.postRemoveJunction');
           return Promise.resolve({ data: undefined, context });
         },
 
         afterRemoveJunction: (
           _ids: Record<string, string>,
-          _context?: DomainHookContext<Env['Variables']>,
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<void> => {
           console.log('Employee.skillList.afterRemoveJunction - async side effect');
           return Promise.resolve();
@@ -225,9 +225,9 @@ await initializeGenerated({
       // CREATE hooks with full signatures
       preCreate: (
         input: NewDepartment,
-        c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<NewDepartment, Env['Variables']>> => {
+        c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPreHookResult<NewDepartment, ExampleEnv['Variables']>> => {
         console.log('Department.REST.preCreate - accessing Env:', c.get('someString'));
         return Promise.resolve({ data: input, context });
       },
@@ -235,9 +235,9 @@ await initializeGenerated({
       postCreate: (
         _input: NewDepartment,
         result: Department,
-        c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPostHookResult<Department, Env['Variables']>> => {
+        c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
         console.log('Department.REST.postCreate');
         c.header('X-Resource-Id', result.id);
         return Promise.resolve({ data: result, context });
@@ -247,9 +247,9 @@ await initializeGenerated({
       preUpdate: (
         _id: string,
         input: Partial<NewDepartment>,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<Partial<NewDepartment>, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPreHookResult<Partial<NewDepartment>, ExampleEnv['Variables']>> => {
         console.log('Department.REST.preUpdate');
         return Promise.resolve({ data: input, context });
       },
@@ -258,9 +258,9 @@ await initializeGenerated({
         _id: string,
         _input: Partial<NewDepartment>,
         result: Department,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPostHookResult<Department, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
         console.log('Department.REST.postUpdate');
         return Promise.resolve({ data: result, context });
       },
@@ -268,9 +268,9 @@ await initializeGenerated({
       // DELETE hooks with full signatures
       preDelete: (
         _id: string,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<{ id: string }, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
         console.log('Department.REST.preDelete');
         return Promise.resolve({ data: { id: _id }, context });
       },
@@ -278,9 +278,9 @@ await initializeGenerated({
       postDelete: (
         _id: string,
         result: Department,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPostHookResult<Department, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
         console.log('Department.REST.postDelete');
         return Promise.resolve({ data: result, context });
       },
@@ -288,9 +288,9 @@ await initializeGenerated({
       // FIND hooks with full signatures
       preFindById: (
         _id: string,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<{ id: string }, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
         console.log('Department.REST.preFindById');
         return Promise.resolve({ data: { id: _id }, context });
       },
@@ -298,26 +298,26 @@ await initializeGenerated({
       postFindById: (
         _id: string,
         result: Department | null,
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPostHookResult<Department | null, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPostHookResult<Department | null, ExampleEnv['Variables']>> => {
         console.log('Department.REST.postFindById');
         return Promise.resolve({ data: result, context });
       },
 
       preFindMany: (
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<Record<string, never>, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPreHookResult<Record<string, never>, ExampleEnv['Variables']>> => {
         console.log('Department.REST.preFindMany');
         return Promise.resolve({ data: {}, context });
       },
 
       postFindMany: (
         results: { data: Department[]; total: number },
-        _c: Context<Env>,
-        context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPostHookResult<{ data: Department[]; total: number }, Env['Variables']>> => {
+        _c: Context<ExampleEnv>,
+        context?: RestHookContext<ExampleEnv['Variables']>,
+      ): Promise<RestPostHookResult<{ data: Department[]; total: number }, ExampleEnv['Variables']>> => {
         console.log('Department.REST.postFindMany');
         return Promise.resolve({ data: results, context });
       },
@@ -327,10 +327,10 @@ await initializeGenerated({
 
 // Documentation endpoints
 app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
-app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as unknown as (c: Context<Env>) => Response);
+app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as unknown as (c: Context<ExampleEnv>) => Response);
 
 // Error handling
-app.onError((err: Error, c: Context<Env>) => {
+app.onError((err: Error, c: Context<ExampleEnv>) => {
   if (err instanceof HTTPException) {
     return c.json({ error: err.message }, err.status);
   }
