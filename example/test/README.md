@@ -141,7 +141,7 @@ If tests fail, check:
 ## Educational Value
 
 This test suite serves as:
-- 📚 Living documentation for the API
-- 🎓 Examples of how to use relationships
-- ✅ Validation that COG-generated code works
-- 🚀 Starting point for your own integration tests
+- Living documentation for the API
+- Examples of how to use relationships
+- Validation that COG-generated code works
+- Starting point for your own integration tests
