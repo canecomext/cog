@@ -1,4 +1,4 @@
-import { ModelDefinition, FieldDefinition } from '../types/model.types.ts';
+import { FieldDefinition, ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates domain API layer with CRUD operations and hooks
@@ -35,7 +35,7 @@ export class DomainAPIGenerator {
    * Generate hooks types
    */
   private generateHooksTypes(): string {
-    return `import { SQL } from 'npm:drizzle-orm';
+    return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
 
 /**
@@ -47,14 +47,14 @@ import { type DbTransaction } from '../db/database.ts';
  * If your Env type has Variables: { requestId?: string; userId?: string; tenantId?: string }
  * Then in hooks you can access: context.requestId, context.userId, context.tenantId
  */
-export type DomainHookContext<DomainEnvVars extends Record<string, any> = Record<string, any>> = DomainEnvVars;
+export type DomainHookContext<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> = DomainEnvVars;
 
-export interface DomainPreHookResult<T, DomainEnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainPreHookResult<T, DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   data: T;
   context?: DomainHookContext<DomainEnvVars>;
 }
 
-export interface DomainPostHookResult<T, DomainEnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainPostHookResult<T, DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   data: T;
   context?: DomainHookContext<DomainEnvVars>;
 }
@@ -81,7 +81,7 @@ export interface FilterOptions {
  * The generic DomainEnvVars type allows you to specify your Env Variables type for type-safe
  * access to context variables in hooks.
  */
-export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
@@ -126,7 +126,7 @@ export interface PaginationOptions {
  * The generic DomainEnvVars type allows you to specify your Env Variables type for type-safe
  * access to context variables in hooks.
  */
-export interface JunctionTableHooks<DomainEnvVars extends Record<string, any> = Record<string, any>> {
+export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   // Pre-operation hooks (within transaction)
   preAddJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
   preRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
@@ -154,25 +154,25 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, any> = 
     // Check if we need additional imports for relationships
     const hasRelationships = model.relationships && model.relationships.length > 0;
     const hasManyToMany = model.relationships?.some((rel) => rel.type === 'manyToMany');
-    
+
     // We need inArray for batch fetching in findMany when there are relationships
-    let drizzleImports = "import { eq, desc, asc, sql";
+    let drizzleImports = 'import { eq, desc, asc, sql';
     if (hasManyToMany) {
-      drizzleImports += ", and, inArray";
+      drizzleImports += ', and, inArray';
     } else if (hasRelationships) {
-      drizzleImports += ", inArray";
+      drizzleImports += ', inArray';
     }
-    drizzleImports += " } from 'npm:drizzle-orm';";
+    drizzleImports += " } from 'drizzle-orm';";
 
     return `${drizzleImports}
-import { HTTPException } from 'jsr:@hono/hono/http-exception';
+import { HTTPException } from '@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 ${this.generateJunctionTableImports(model)}
 import { DomainHooks, JunctionTableHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
-export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Record<string, any>> {
+export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
   ${this.generateJunctionHooksFields(model)}
 
@@ -202,7 +202,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
 
     // Strip protected timestamp fields (createdAt, updatedAt) - database defaults will apply
     // Allow custom id field if provided (useful for migrations, testing, data imports)
-    const { createdAt: _, updatedAt: __, ...safeInput } = processedInput as any;
+    const { createdAt: _, updatedAt: __, ...safeInput } = processedInput as unknown as Record<string, unknown>;
 
     // Perform create operation
     const [created] = await tx
@@ -296,10 +296,10 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
 
     // Build query with chaining to avoid type issues
     let baseQuery = db.select().from(${modelNameLower}Table);
-    
+
     // Apply filters
     if (filter?.where) {
-      baseQuery = baseQuery.where(filter.where) as any;
+      baseQuery = baseQuery.where(filter.where) as unknown as typeof baseQuery;
     }
 
     // Apply pagination
@@ -307,16 +307,16 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
       if (pagination.orderBy) {
         const orderFn = pagination.orderDirection === 'desc' ? desc : asc;
         // Type-safe column access
-        const column = (${modelNameLower}Table as any)[pagination.orderBy];
+        const column = (${modelNameLower}Table as unknown as Record<string, unknown>)[pagination.orderBy];
         if (column) {
-          baseQuery = baseQuery.orderBy(orderFn(column)) as any;
+          baseQuery = baseQuery.orderBy(orderFn(column)) as unknown as typeof baseQuery;
         }
       }
       if (pagination.limit) {
-        baseQuery = baseQuery.limit(pagination.limit) as any;
+        baseQuery = baseQuery.limit(pagination.limit) as unknown as typeof baseQuery;
       }
       if (pagination.offset) {
-        baseQuery = baseQuery.offset(pagination.offset) as any;
+        baseQuery = baseQuery.offset(pagination.offset) as unknown as typeof baseQuery;
       }
     }
     
@@ -378,14 +378,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
 
     // Strip protected fields (id, createdAt, updatedAt) to prevent modification
     // These fields are managed by the domain layer and cannot be overridden
-    const { id: _, createdAt: __, updatedAt: ___, ...safeInput } = processedInput as any;
+    const { id: _, createdAt: __, updatedAt: ___, ...safeInput } = processedInput as unknown as Record<string, unknown>;
 
     // Perform update
     const [updated] = await tx
       .update(${modelNameLower}Table)
       .set({
         ...safeInput,
-        ${model.timestamps ? 'updatedAt: new Date(),' : ''}
+        ${model.timestamps ? 'updatedAt: Date.now(),' : ''}
       })
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id))
       .returning();
@@ -451,7 +451,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Reco
   ${this.generateRelationshipMethods(model)}
 }
 
-// Export singleton instance (uses default Record<string, any> for EnvVars)
+// Export singleton instance (uses default Record<string, unknown> for EnvVars)
 export const ${modelNameLower}Domain = new ${modelName}Domain();
 `;
   }
@@ -526,10 +526,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     // Generate the include logic for relationships
     let code = '\n    // Handle relationship includes\n';
     code += '    if (options?.include && options.include.length > 0 && found) {\n';
-    
+
     for (const rel of model.relationships) {
       code += `        if (options.include.includes('${rel.name}')) {\n`;
-      
+
       if (rel.type === 'manyToOne') {
         // For manyToOne, fetch the single related entity
         const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
@@ -540,9 +540,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `              .from(${rel.target.toLowerCase()}Table)\n`;
         code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
         code += `              .limit(1);\n`;
-        code += `            (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+        code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
         code += `          } else {\n`;
-        code += `            (found as any).${rel.name} = null;\n`;
+        code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
         code += `          }\n`;
       } else if (rel.type === 'oneToMany') {
         // For oneToMany, fetch the array of related entities
@@ -552,7 +552,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `            .select()\n`;
         code += `            .from(${rel.target.toLowerCase()}Table)\n`;
         code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id));\n`;
-        code += `          (found as any).${rel.name} = ${rel.name};\n`;
+        code += `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
       } else if (rel.type === 'manyToMany' && rel.through) {
         // For manyToMany, fetch through junction table
         const junctionTable = rel.through.toLowerCase();
@@ -562,9 +562,11 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `          const ${rel.name}Result = await db\n`;
         code += `            .select()\n`;
         code += `            .from(${junctionTable}Table)\n`;
-        code += `            .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
+        code +=
+          `            .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `            .where(eq(${junctionTable}Table.${sourceFK}, id));\n`;
-        code += `          (found as any).${rel.name} = ${rel.name}Result.map(r => r.${rel.target.toLowerCase()});\n`;
+        code +=
+          `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Result.map(r => r.${rel.target.toLowerCase()});\n`;
       } else if (rel.type === 'oneToOne') {
         // For oneToOne, check if foreign key is on this model
         const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
@@ -578,9 +580,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           code += `              .from(${rel.target.toLowerCase()}Table)\n`;
           code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
           code += `              .limit(1);\n`;
-          code += `            (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+          code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
           code += `          } else {\n`;
-          code += `            (found as any).${rel.name} = null;\n`;
+          code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
           code += `          }\n`;
         } else {
           // Foreign key is on the target model, fetch the related entity
@@ -591,15 +593,15 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           code += `            .from(${rel.target.toLowerCase()}Table)\n`;
           code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id))\n`;
           code += `            .limit(1);\n`;
-          code += `          (found as any).${rel.name} = ${rel.name}[0] || null;\n`;
+          code += `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
         }
       }
-      
+
       code += `        }\n`;
     }
-    
+
     code += '    }';
-    
+
     return code;
   }
 
@@ -614,15 +616,16 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     // Generate the include logic for relationships in findMany
     let code = '// Handle relationship includes for multiple results\n';
     code += '    if (filter?.include && filter.include.length > 0 && results.length > 0) {\n';
-    
+
     for (const rel of model.relationships) {
       code += `      if (filter.include.includes('${rel.name}')) {\n`;
-      
+
       if (rel.type === 'manyToOne') {
         // For manyToOne, batch fetch related entities
         const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
         code += `        // Load ${rel.name} (manyToOne) for all results\n`;
-        code += `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+        code +=
+          `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
         code += `        if (${rel.name}Ids.length > 0) {\n`;
         code += `          const ${rel.name}Map = new Map();\n`;
         code += `          const ${rel.name}Data = await db\n`;
@@ -631,11 +634,12 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
         code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
         code += `          results.forEach(result => {\n`;
-        code += `            (result as any).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
+        code +=
+          `            (result as unknown as Record<string, unknown>).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
         code += `          });\n`;
         code += `        } else {\n`;
         code += `          results.forEach(result => {\n`;
-        code += `            (result as any).${rel.name} = null;\n`;
+        code += `            (result as unknown as Record<string, unknown>).${rel.name} = null;\n`;
         code += `          });\n`;
         code += `        }\n`;
       } else if (rel.type === 'oneToMany') {
@@ -647,7 +651,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `          .select()\n`;
         code += `          .from(${rel.target.toLowerCase()}Table)\n`;
         code += `          .where(inArray(${rel.target.toLowerCase()}Table.${foreignKey}, resultIds));\n`;
-        code += `        const ${rel.name}Map = new Map<string, any[]>();\n`;
+        code += `        const ${rel.name}Map = new Map<string, unknown[]>();\n`;
         code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
         code += `        ${rel.name}Data.forEach(item => {\n`;
         code += `          if (item.${foreignKey}) {\n`;
@@ -656,7 +660,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `          }\n`;
         code += `        });\n`;
         code += `        results.forEach(result => {\n`;
-        code += `          (result as any).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
+        code +=
+          `          (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
         code += `        });\n`;
       } else if (rel.type === 'manyToMany' && rel.through) {
         // For manyToMany, batch fetch through junction table
@@ -668,9 +673,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `        const ${rel.name}Data = await db\n`;
         code += `          .select()\n`;
         code += `          .from(${junctionTable}Table)\n`;
-        code += `          .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
+        code +=
+          `          .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `          .where(inArray(${junctionTable}Table.${sourceFK}, resultIds));\n`;
-        code += `        const ${rel.name}Map = new Map<string, any[]>();\n`;
+        code += `        const ${rel.name}Map = new Map<string, unknown[]>();\n`;
         code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
         code += `        ${rel.name}Data.forEach(item => {\n`;
         code += `          if (item.${junctionTable}.${sourceFK}) {\n`;
@@ -679,7 +685,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `          }\n`;
         code += `        });\n`;
         code += `        results.forEach(result => {\n`;
-        code += `          (result as any).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
+        code +=
+          `          (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
         code += `        });\n`;
       } else if (rel.type === 'oneToOne') {
         // For oneToOne, batch fetch related entities
@@ -688,7 +695,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           // Foreign key is on this model
           const foreignKey = rel.foreignKey!;
           code += `        // Load ${rel.name} (oneToOne - owned) for all results\n`;
-          code += `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+          code +=
+            `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
           code += `        if (${rel.name}Ids.length > 0) {\n`;
           code += `          const ${rel.name}Map = new Map();\n`;
           code += `          const ${rel.name}Data = await db\n`;
@@ -697,11 +705,12 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
           code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
           code += `          results.forEach(result => {\n`;
-          code += `            (result as any).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
+          code +=
+            `            (result as unknown as Record<string, unknown>).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
           code += `          });\n`;
           code += `        } else {\n`;
           code += `          results.forEach(result => {\n`;
-          code += `            (result as any).${rel.name} = null;\n`;
+          code += `            (result as unknown as Record<string, unknown>).${rel.name} = null;\n`;
           code += `          });\n`;
           code += `        }\n`;
         } else {
@@ -718,16 +727,17 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           code += `          ${rel.name}Map.set(item.${foreignKey}, item);\n`;
           code += `        });\n`;
           code += `        results.forEach(result => {\n`;
-          code += `            (result as any).${rel.name} = ${rel.name}Map.get(result.id) || null;\n`;
+          code +=
+            `            (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || null;\n`;
           code += `        });\n`;
         }
       }
-      
+
       code += `      }\n`;
     }
-    
+
     code += '    }\n';
-    
+
     return code;
   }
 
@@ -779,7 +789,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const junctionTable = rel.through.toLowerCase();
         const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
         const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
-        const sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
+        const _sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
 
         // Derive singular form by removing "List" suffix if present
         const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
@@ -817,7 +827,12 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     await tx.insert(${junctionTable}Table).values({
       ${sourceFK}: ids.${this.toCamelCase(sourceFK)},
       ${targetFK}: ids.${this.toCamelCase(targetFK)}
-    } as New${(() => { const parts = rel.through.split('_'); return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_'); })()});
+    } as New${
+          (() => {
+            const parts = rel.through.split('_');
+            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_');
+          })()
+        });
 
     // Post-add hook
     if (this.${relName}JunctionHooks.postAddJunction) {
@@ -848,9 +863,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Remove ${singularRelName} from ${model.name}
    */
-  async remove${SingularRelName}(id: string, ${
-          targetNameLower
-        }Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-remove hook
     let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.preRemoveJunction) {
@@ -911,9 +924,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Check if ${model.name} has a specific ${singularRelName}
    */
-  async has${SingularRelName}(id: string, ${
-          targetNameLower
-        }Id: string, tx?: DbTransaction): Promise<boolean> {
+  async has${SingularRelName}(id: string, ${targetNameLower}Id: string, tx?: DbTransaction): Promise<boolean> {
     const db = tx || withoutTransaction();
 
     const result = await db
@@ -971,7 +982,6 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
   }
 
-
   /**
    * Get TypeScript type for a field
    */
@@ -979,10 +989,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     // If it's an enum field with values, generate union type
     if (fieldType === 'enum' && field) {
       if (field.enumValues && field.enumValues.length > 0) {
-        return field.enumValues.map(v => `"${v}"`).join(' | ');
+        return field.enumValues.map((v) => `"${v}"`).join(' | ');
       }
     }
-    
+
     const typeMap: Record<string, string> = {
       'text': 'string',
       'string': 'string',
@@ -990,32 +1000,32 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       'bigint': 'number',
       'decimal': 'number',
       'boolean': 'boolean',
-      'date': 'Date',
+      'date': 'number',
       'uuid': 'string',
-      'json': 'any',
-      'jsonb': 'any',
+      'json': 'unknown',
+      'jsonb': 'unknown',
       'enum': 'string',
       // PostGIS types
-      'point': 'any',
-      'linestring': 'any',
-      'polygon': 'any',
-      'multipoint': 'any',
-      'multilinestring': 'any',
-      'multipolygon': 'any',
-      'geometry': 'any',
-      'geography': 'any',
+      'point': 'unknown',
+      'linestring': 'unknown',
+      'polygon': 'unknown',
+      'multipoint': 'unknown',
+      'multilinestring': 'unknown',
+      'multipolygon': 'unknown',
+      'geometry': 'unknown',
+      'geography': 'unknown',
     };
-    return typeMap[fieldType] || 'any';
+    return typeMap[fieldType] || 'unknown';
   }
 
   /**
    * Generate junction hooks fields for domain class
    */
   private generateJunctionHooksFields(model: ModelDefinition): string {
-    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    const manyToManyRels = model.relationships?.filter((rel) => rel.type === 'manyToMany') || [];
     if (manyToManyRels.length === 0) return '';
 
-    const fields = manyToManyRels.map(rel => {
+    const fields = manyToManyRels.map((rel) => {
       const relName = rel.name;
       return `private ${relName}JunctionHooks: JunctionTableHooks<DomainEnvVars>;`;
     });
@@ -1027,10 +1037,10 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Generate junction hooks constructor parameters
    */
   private generateJunctionHooksParams(model: ModelDefinition): string {
-    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    const manyToManyRels = model.relationships?.filter((rel) => rel.type === 'manyToMany') || [];
     if (manyToManyRels.length === 0) return '';
 
-    const params = manyToManyRels.map(rel => {
+    const params = manyToManyRels.map((rel) => {
       const relName = rel.name;
       return `${relName}JunctionHooks?: JunctionTableHooks<DomainEnvVars>`;
     });
@@ -1042,14 +1052,14 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Generate junction hooks assignments in constructor
    */
   private generateJunctionHooksAssignments(model: ModelDefinition): string {
-    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    const manyToManyRels = model.relationships?.filter((rel) => rel.type === 'manyToMany') || [];
     if (manyToManyRels.length === 0) return '';
-    
-    const assignments = manyToManyRels.map(rel => {
+
+    const assignments = manyToManyRels.map((rel) => {
       const relName = rel.name;
       return `this.${relName}JunctionHooks = ${relName}JunctionHooks || {};`;
     });
-    
+
     return assignments.join('\n    ');
   }
 }

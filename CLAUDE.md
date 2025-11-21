@@ -34,12 +34,16 @@ This file serves as a quick-reference guide for AI assistants (like Claude) work
 | `bigint` | 64-bit integer | `"type": "bigint"` (max default: 2^53-1) |
 | `decimal` | Fixed-point decimal | `"type": "decimal", "precision": 10, "scale": 2` |
 | `boolean` | True/false | `"type": "boolean"` |
-| `date` | Timestamp | `"type": "date"` |
+| `date` | EPOCH milliseconds (bigint) | `"type": "date"` (API uses numbers like `1704067200000`) |
 | `uuid` | UUID | `"type": "uuid"` |
 | `json`, `jsonb` | JSON data | `"type": "jsonb"` |
 | `enum` | Enumerated type | `"type": "enum", "enumName": "Status"` |
 
+**Date Fields**: Stored as EPOCH millisecond integers. Use `Date.getTime()` in JavaScript/TypeScript to convert to/from Date objects.
+
 **PostGIS Spatial Types**: `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography`
+
+**PostGIS GeoJSON**: COG automatically converts between GeoJSON (API) and WKT (database). Use standard GeoJSON objects in REST requests/responses.
 
 **See**: [WARP.md - Supported Data Types](./WARP.md#supported-data-types)
 

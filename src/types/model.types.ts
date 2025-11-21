@@ -3,7 +3,7 @@
  */
 
 // Supported primitive data types
-export type PrimitiveType = 
+export type PrimitiveType =
   | 'text'
   | 'string'
   | 'integer'
@@ -17,7 +17,7 @@ export type PrimitiveType =
   | 'enum';
 
 // PostGIS data types (supporting both standard and CockroachDB implementations)
-export type PostGISType = 
+export type PostGISType =
   | 'point'
   | 'linestring'
   | 'polygon'

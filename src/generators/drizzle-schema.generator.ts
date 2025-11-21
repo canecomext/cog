@@ -1,8 +1,10 @@
 import {
   FieldDefinition,
+  IndexDefinition,
   ModelDefinition,
   RelationshipDefinition
 } from '../types/model.types.ts';
+import { SpatialUtilsGenerator } from './spatial-utils.generator.ts';
 
 /**
  * Generates Drizzle ORM schema files from model definitions
@@ -43,6 +45,13 @@ export class DrizzleSchemaGenerator {
     const junctionTables = this.generateJunctionTables();
     for (const [path, content] of junctionTables) {
       schemas.set(path, content);
+    }
+
+    // Generate spatial utilities if PostGIS is enabled and any model has PostGIS fields
+    if (this.postgis && this.models.some(model => this.hasPostGISFields(model))) {
+      const spatialUtilsGenerator = new SpatialUtilsGenerator();
+      const spatialUtilsContent = spatialUtilsGenerator.generate();
+      schemas.set('schema/spatial-utils.ts', spatialUtilsContent);
     }
 
     // Generate relations file
@@ -114,21 +123,27 @@ export class DrizzleSchemaGenerator {
       drizzleImports.add('customType');
     }
 
-    // Ensure timestamp is imported when generated timestamp columns are present
+    // Ensure bigint is imported when generated timestamp columns are present
+    // (timestamps are stored as EPOCH milliseconds using bigint)
     if (model.timestamps) {
-      drizzleImports.add('timestamp');
+      drizzleImports.add('bigint');
     }
 
     // Base imports from pg-core and drizzle-orm
-    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
+    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'drizzle-orm/pg-core';\n`;
 
     // Always add index and check imports since we're using table-level definitions
-    imports += `import { index, uniqueIndex, check } from 'npm:drizzle-orm/pg-core';\n`;
+    imports += `import { index, uniqueIndex, check } from 'drizzle-orm/pg-core';\n`;
 
-    imports += `import { sql } from 'npm:drizzle-orm';\n`;
-    
-    // Add Zod and drizzle-zod imports for schema validation
-    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
+    imports += `import { sql } from 'drizzle-orm';\n`;
+
+    // Add drizzle-zod imports for schema validation
+    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
+
+    // Import spatial utilities if PostGIS fields exist
+    if (this.postgis && this.hasPostGISFields(model)) {
+      imports += `import { geoJsonToWKT, wktToGeoJSON } from './spatial-utils.ts';\n`;
+    }
 
     // Import other tables referenced by foreign keys in this schema
     const referencedModels = new Set<string>();
@@ -159,7 +174,7 @@ export class DrizzleSchemaGenerator {
       'bigint': 'bigint',
       'decimal': 'decimal',
       'boolean': 'boolean',
-      'date': 'timestamp',
+      'date': 'bigint', // Dates are stored as EPOCH milliseconds (bigint)
       'uuid': 'uuid',
       'json': 'json',
       'jsonb': 'jsonb',
@@ -328,9 +343,10 @@ export class DrizzleSchemaGenerator {
         definition += `integer('${this.toSnakeCase(field.name)}')`;
         break;
       case 'bigint':
+        // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
         definition += `bigint('${this.toSnakeCase(field.name)}', { mode: 'number' })`;
         break;
-      case 'decimal':
+      case 'decimal': {
         const decimalOpts = [];
         if (field.precision) decimalOpts.push(`precision: ${field.precision}`);
         if (field.scale !== undefined) {
@@ -340,11 +356,14 @@ export class DrizzleSchemaGenerator {
           decimalOpts.length ? `, { ${decimalOpts.join(', ')} }` : ''
         })`;
         break;
+      }
       case 'boolean':
         definition += `boolean('${this.toSnakeCase(field.name)}')`;
         break;
       case 'date':
-        definition += `timestamp('${this.toSnakeCase(field.name)}', { mode: 'date' })`;
+        // Store dates as EPOCH milliseconds (bigint)
+        // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
+        definition += `bigint('${this.toSnakeCase(field.name)}', { mode: 'number' })`;
         break;
       case 'uuid':
         definition += `uuid('${this.toSnakeCase(field.name)}')`;
@@ -457,8 +476,8 @@ export class DrizzleSchemaGenerator {
     // Inline enum values (create inline pgEnum)
     if (field.enumValues) {
       // For inline enums, create an inline pgEnum - not recommended but supported
-      const values = field.enumValues.map(v => `'${v}'`).join(', ');
-      const enumName = `${field.name.toLowerCase()}Enum`;
+      const _values = field.enumValues.map(v => `'${v}'`).join(', ');
+      const _enumName = `${field.name.toLowerCase()}Enum`;
       // This would need to be defined earlier - for now throw error
       throw new Error(
         `Field '${field.name}' uses inline enumValues. Please define enums in model.enums instead.`
@@ -479,43 +498,58 @@ export class DrizzleSchemaGenerator {
     const columnType = isGeography ? 'geography' : 'geometry';
 
     // Use customType for PostGIS fields since Drizzle doesn't have native support
-    return `customType<any>({
-    dataType() {
-      return '${columnType}(${geometryType}, ${srid})';
-    },
-    toDriver(value) {
-      return value;
-    },
-    fromDriver(value) {
-      return value;
-    }
-  })('${fieldName}')`;
+    // Convert between GeoJSON (JavaScript standard) and WKT (PostGIS format)
+    const code = [
+      `customType<unknown>({`,
+      `    dataType() {`,
+      `      return '${columnType}(${geometryType}, ${srid})';`,
+      `    },`,
+      `    toDriver(value) {`,
+      `      if (typeof value === 'object' && value !== null && 'type' in value && 'coordinates' in value) {`,
+      `        return geoJsonToWKT(value, ${srid});`,
+      `      }`,
+      `      return value;`,
+      `    },`,
+      `    fromDriver(value) {`,
+      `      if (typeof value === 'string') {`,
+      `        return wktToGeoJSON(value);`,
+      `      }`,
+      `      return value;`,
+      `    }`,
+      `  })('${fieldName}')`,
+    ].join('\n');
+
+    return code;
   }
 
   /**
    * Generate timestamp fields
    */
-  private generateTimestampFields(timestamps: boolean | any): string[] {
+  private generateTimestampFields(timestamps: boolean | { createdAt?: string | boolean; updatedAt?: string | boolean }): string[] {
     const fields: string[] = [];
+
+    // Timestamps are stored as EPOCH milliseconds (bigint)
+    // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
+    const defaultEpochMillis = `sql\`(extract(epoch from now()) * 1000)::bigint\``;
 
     if (timestamps === true) {
       fields.push(
-        `  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`,
+        `  createdAt: bigint('created_at', { mode: 'number' }).default(${defaultEpochMillis}).notNull()`,
       );
       fields.push(
-        `  updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().notNull()`,
+        `  updatedAt: bigint('updated_at', { mode: 'number' }).default(${defaultEpochMillis}).notNull()`,
       );
     } else if (typeof timestamps === 'object') {
       if (timestamps.createdAt) {
         const fieldName = typeof timestamps.createdAt === 'string' ? timestamps.createdAt : 'created_at';
         fields.push(
-          `  createdAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
+          `  createdAt: bigint('${fieldName}', { mode: 'number' }).default(${defaultEpochMillis}).notNull()`,
         );
       }
       if (timestamps.updatedAt) {
         const fieldName = typeof timestamps.updatedAt === 'string' ? timestamps.updatedAt : 'updated_at';
         fields.push(
-          `  updatedAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
+          `  updatedAt: bigint('${fieldName}', { mode: 'number' }).default(${defaultEpochMillis}).notNull()`,
         );
       }
     }
@@ -526,7 +560,7 @@ export class DrizzleSchemaGenerator {
   /**
    * Generate modern index definition (outside of table definition)
    */
-  private generateModernIndexDefinition(tableName: string, idx: any): string {
+  private generateModernIndexDefinition(tableName: string, idx: IndexDefinition): string {
     const indexName = idx.name || `idx_${tableName}_${idx.fields.join('_')}`;
     const indexType = idx.unique ? 'uniqueIndex' : 'index';
     const fields = idx.fields.map((f: string) => `${tableName}Table.${f}`);
@@ -620,7 +654,8 @@ export class DrizzleSchemaGenerator {
     const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
 
     // Determine what imports we need based on the primary key types
-    const imports = new Set<string>(['pgTable', 'timestamp', 'primaryKey', 'index']);
+    // Note: timestamps are stored as EPOCH milliseconds using bigint
+    const imports = new Set<string>(['pgTable', 'bigint', 'primaryKey', 'index']);
 
     // Add the appropriate type import for each foreign key
     const sourceDrizzleType = this.getDrizzleImportForType(sourcePK);
@@ -632,9 +667,9 @@ export class DrizzleSchemaGenerator {
     else if (targetPK.type === 'uuid') imports.add('uuid');
 
     // Generate imports
-    let code = `import { ${Array.from(imports).join(', ')} } from 'npm:drizzle-orm/pg-core';
+    let code = `import { ${Array.from(imports).join(', ')} } from 'drizzle-orm/pg-core';
 `;
-    code += `import { sql } from 'npm:drizzle-orm';\n`;
+    code += `import { sql } from 'drizzle-orm';\n`;
 
     // Import source table
     code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
@@ -647,7 +682,7 @@ export class DrizzleSchemaGenerator {
     }
 
     // Add Zod imports for validation
-    code += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
+    code += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
     code += `\n`;
 
     // Generate table definition
@@ -662,10 +697,11 @@ export class DrizzleSchemaGenerator {
     // Generate target foreign key column
     code += this.generateJunctionFKColumn(targetFKColumn, targetPK, targetModel.name.toLowerCase(), targetPK.name);
 
-    // Add timestamps if enabled globally
+    // Add timestamps if enabled globally (stored as EPOCH milliseconds)
+    // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
     if (hasTimestamps) {
-      code += `,\n  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`;
+      code += `,\n  createdAt: bigint('created_at', { mode: 'number' }).default(sql\`(extract(epoch from now()) * 1000)::bigint\`).notNull()`;
     }
 
     code += `\n}, (table) => [\n`;
@@ -711,15 +747,16 @@ export class DrizzleSchemaGenerator {
       case 'uuid':
         columnDef = `  ${columnName}: uuid('${columnName}')`;
         break;
-      case 'string':
+      case 'string': {
         const maxLength = pkField.maxLength || 255;
         columnDef = `  ${columnName}: varchar('${columnName}', { length: ${maxLength} })`;
         break;
+      }
       case 'integer':
         columnDef = `  ${columnName}: integer('${columnName}')`;
         break;
       case 'bigint':
-        columnDef = `  ${columnName}: bigint('${columnName}', { mode: 'number' })`;
+        columnDef = `  ${columnName}: bigint('${columnName}')`;
         break;
       default:
         // Fallback to text for unknown types
@@ -744,7 +781,7 @@ export class DrizzleSchemaGenerator {
    * Generate relations file
    */
   private generateRelations(): string {
-    let code = `import { relations } from 'npm:drizzle-orm';\n`;
+    let code = `import { relations } from 'drizzle-orm';\n`;
 
     // Import all tables
     for (const model of this.models) {
@@ -788,7 +825,7 @@ export class DrizzleSchemaGenerator {
     fields: [${model.name.toLowerCase()}Table.${rel.foreignKey}],
     references: [${rel.target.toLowerCase()}Table.id]
   })`;
-      case 'oneToOne':
+      case 'oneToOne': {
         // Check if the foreign key is on this model's table
         const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
         if (hasFK) {
@@ -802,6 +839,7 @@ export class DrizzleSchemaGenerator {
           // For inverse oneToOne, we don't specify fields/references in Drizzle
           return `  ${rel.name}: one(${rel.target.toLowerCase()}Table)`;
         }
+      }
       case 'manyToMany':
         // Many-to-many relationships are handled through a junction table
         return `  ${rel.name}: many(${rel.target.toLowerCase()}Table)`;
@@ -827,13 +865,13 @@ export class DrizzleSchemaGenerator {
   private generateZodSchemas(model: ModelDefinition): string {
     const modelNameLower = model.name.toLowerCase();
     let code = `// Zod schemas for validation\n`;
-    
+
     // Generate insert schema (for create operations)
     code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table);\n`;
-    
+
     // Generate update schema (for update operations - all fields optional)
     code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table);\n`;
-    
+
     // Generate select schema (for validating query results)
     code += `export const ${modelNameLower}SelectSchema = createSelectSchema(${modelNameLower}Table);`;
 

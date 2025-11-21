@@ -3,6 +3,21 @@
 import { generateFromModels } from './mod.ts';
 
 /**
+ * CLI argument types
+ */
+interface CliArgs {
+  modelsPath?: string;
+  outputPath?: string;
+  dbType?: 'postgresql' | 'cockroachdb' | string;
+  schema?: string;
+  postgis?: boolean;
+  timestamps?: boolean;
+  documentation?: boolean;
+  verbose?: boolean;
+  help?: boolean;
+}
+
+/**
  * Main CLI for the CRUD Operations Generator
  */
 async function main() {
@@ -13,7 +28,7 @@ async function main() {
   // Set up configuration
   const modelsPath = args.modelsPath || './models';
   const outputPath = args.outputPath || './generated';
-  const dbType = args.dbType || 'postgresql';
+  const dbType = (args.dbType || 'postgresql') as 'postgresql' | 'cockroachdb';
 
   // Call the main generation function - it will handle all output based on verbose flag
   await generateFromModels(modelsPath, outputPath, {
@@ -35,8 +50,8 @@ async function main() {
 /**
  * Parse command line arguments
  */
-function parseArguments(): Record<string, any> {
-  const args: Record<string, any> = {};
+function parseArguments(): CliArgs {
+  const args: CliArgs = {};
   for (let i = 0; i < Deno.args.length; i++) {
     const arg = Deno.args[i];
     if (arg.startsWith('--')) {
@@ -44,15 +59,15 @@ function parseArguments(): Record<string, any> {
 
       // Handle --no- prefixed flags
       if (key.startsWith('no-')) {
-        const actualKey = key.slice(3); // Remove 'no-' prefix
-        args[actualKey] = false;
+        const actualKey = key.slice(3) as keyof CliArgs; // Remove 'no-' prefix
+        args[actualKey] = false as never;
       } else {
         const value = Deno.args[i + 1];
         if (value && !value.startsWith('--')) {
-          args[key] = value;
+          args[key as keyof CliArgs] = value as never;
           i++;
         } else {
-          args[key] = true;
+          args[key as keyof CliArgs] = true as never;
         }
       }
     }

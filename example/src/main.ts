@@ -1,19 +1,14 @@
-import { type Context, Hono } from 'jsr:@hono/hono';
-import { HTTPException } from 'jsr:@hono/hono/http-exception';
+import { type Context, Hono } from '@hono/hono';
+import { HTTPException } from '@hono/hono/http-exception';
 import { Scalar } from '@scalar/hono-api-reference';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import { crypto } from '@std/crypto';
-
-import { type DbTransaction, extractRoutes, initializeGenerated } from './generated/index.ts';
-
-import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } from './generated/domain/hooks.types.ts';
-
-import type { RestHookContext, RestPostHookResult, RestPreHookResult } from './generated/rest/hooks.types.ts';
-
-import type { Department, Employee, NewDepartment, NewEmployee } from './generated/schema/index.ts';
-
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { type DbTransaction, extractRoutes, initializeGenerated } from '../generated/index.ts';
+import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } from '../generated/domain/hooks.types.ts';
+import type { RestHookContext, RestPostHookResult, RestPreHookResult } from '../generated/rest/hooks.types.ts';
+import type { Department, Employee, NewDepartment, NewEmployee } from '../generated/schema/index.ts';
+import { generatedOpenAPISpec } from '../generated/rest/openapi.ts';
 import type { Env } from './context.ts';
 
 const app = new Hono<Env>();
@@ -105,9 +100,9 @@ await initializeGenerated({
         _id: string,
         _tx: DbTransaction,
         context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<Record<string, never>, Env['Variables']>> => {
+      ): Promise<DomainPreHookResult<{ id: string }, Env['Variables']>> => {
         console.log('Employee.preDelete');
-        return Promise.resolve({ data: {}, context });
+        return Promise.resolve({ data: { id: _id }, context });
       },
 
       postDelete: (
@@ -133,9 +128,9 @@ await initializeGenerated({
         _id: string,
         _tx: DbTransaction,
         context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<Record<string, never>, Env['Variables']>> => {
+      ): Promise<DomainPreHookResult<{ id: string }, Env['Variables']>> => {
         console.log('Employee.preFindById');
-        return Promise.resolve({ data: {}, context });
+        return Promise.resolve({ data: { id: _id }, context });
       },
 
       postFindById: (
@@ -150,17 +145,19 @@ await initializeGenerated({
 
       preFindMany: (
         _tx: DbTransaction,
+        filter?: FilterOptions,
         context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPreHookResult<Record<string, never>, Env['Variables']>> => {
+      ): Promise<DomainPreHookResult<FilterOptions, Env['Variables']>> => {
         console.log('Employee.preFindMany');
-        return Promise.resolve({ data: {}, context });
+        return Promise.resolve({ data: filter || {}, context });
       },
 
       postFindMany: (
-        results: { data: Employee[]; total: number },
+        _filter: FilterOptions | undefined,
+        results: Employee[],
         _tx: DbTransaction,
         context?: DomainHookContext<Env['Variables']>,
-      ): Promise<DomainPostHookResult<{ data: Employee[]; total: number }, Env['Variables']>> => {
+      ): Promise<DomainPostHookResult<Employee[], Env['Variables']>> => {
         console.log('Employee.postFindMany');
         return Promise.resolve({ data: results, context });
       },
@@ -273,9 +270,9 @@ await initializeGenerated({
         _id: string,
         _c: Context<Env>,
         context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<Record<string, never>, Env['Variables']>> => {
+      ): Promise<RestPreHookResult<{ id: string }, Env['Variables']>> => {
         console.log('Department.REST.preDelete');
-        return Promise.resolve({ data: {}, context });
+        return Promise.resolve({ data: { id: _id }, context });
       },
 
       postDelete: (
@@ -293,9 +290,9 @@ await initializeGenerated({
         _id: string,
         _c: Context<Env>,
         context?: RestHookContext<Env['Variables']>,
-      ): Promise<RestPreHookResult<Record<string, never>, Env['Variables']>> => {
+      ): Promise<RestPreHookResult<{ id: string }, Env['Variables']>> => {
         console.log('Department.REST.preFindById');
-        return Promise.resolve({ data: {}, context });
+        return Promise.resolve({ data: { id: _id }, context });
       },
 
       postFindById: (
@@ -330,7 +327,7 @@ await initializeGenerated({
 
 // Documentation endpoints
 app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
-app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as any);
+app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as unknown as (c: Context<Env>) => Response);
 
 // Error handling
 app.onError((err: Error, c: Context<Env>) => {

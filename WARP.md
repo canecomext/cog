@@ -221,14 +221,33 @@ Models are defined in JSON with this structure:
 ### Supported Data Types
 
 **Primitives:**
-- `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date`, `uuid`
+- `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid`
 - `json`, `jsonb` (structured data)
 - `enum` (PostgreSQL enums with standard or bitwise modes)
+
+**Date Type - EPOCH Milliseconds:**
+
+COG stores all `date` fields as EPOCH millisecond integers (`bigint`) in the database:
+- **API Input/Output**: Use numeric timestamps (EPOCH milliseconds)
+- **Database Storage**: `bigint` column with values like `1704067200000`
+- **JavaScript/TypeScript**: Use `Date.getTime()` to get timestamp, `new Date(timestamp)` to create Date object
+- **Example**: Send `1704067200000` (represents 2024-01-01) via REST API
+- **Timestamps**: `createdAt` and `updatedAt` automatically use SQL formula: `(extract(epoch from now()) * 1000)::bigint`
+- **Rationale**: Avoids timezone complexities, ISO string parsing issues, and provides universal compatibility
 
 **PostGIS Spatial Types:**
 - `point`, `linestring`, `polygon`
 - `multipoint`, `multilinestring`, `multipolygon`
 - `geometry`, `geography`
+
+**PostGIS GeoJSON Support:**
+
+COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (PostGIS format):
+- **API Input/Output**: Use standard GeoJSON objects
+- **Database Storage**: Automatically converted to WKT/EWKB format
+- **Example**: Send `{ type: 'Point', coordinates: [-122.4194, 37.7749] }` via REST API
+- **Database**: Stored as `SRID=4326;POINT(-122.4194 37.7749)` or EWKB hex
+- **Conversion**: Bidirectional - GeoJSON in requests/responses, WKT in database
 
 **Special Features:**
 - Array types: `"array": true` on any field
@@ -255,11 +274,11 @@ COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INT
 
 COG uses a consistent "List" suffix for collection endpoints:
 
-| Relationship Type | URL Pattern | Example |
-|-------------------|-------------|---------|
-| oneToMany | `/:id/{target}List` | `/employee/:id/assignmentList` |
-| manyToMany | `/:id/{relationName}` | `/employee/:id/skillList` |
-| manyToMany (individual) | `/:id/{relationName}/:targetId` | `/employee/:id/skillList/:skillId` |
+| Relationship Type | URL Pattern | Body | Example |
+|-------------------|-------------|------|---------|
+| oneToMany | `/:id/{target}List` | N/A | `/employee/:id/assignmentList` |
+| manyToMany (plural) | `/:id/{relationName}` | `{ ids: [...] }` | `POST /employee/:id/skillList` |
+| manyToMany (singular) | `/:id/{singularRelName}` | `{ id: "..." }` | `POST /employee/:id/skill` |
 
 ### Hook System
 

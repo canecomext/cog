@@ -1,4 +1,4 @@
-import { DataType, FieldDefinition, ModelDefinition } from '../types/model.types.ts';
+import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
 
 /**
  * Generates OpenAPI 3.1.0 specification from model definitions
@@ -36,7 +36,7 @@ export class OpenAPIGenerator {
  * It can be merged with custom OpenAPI specs for your application-specific endpoints.
  */
 
-import type { OpenAPIV3_1 as OpenAPI } from 'npm:openapi-types@^12.1.3';
+import type { OpenAPIV3_1 as OpenAPI } from 'openapi-types';
 
 /**
  * Base OpenAPI specification for generated CRUD endpoints
@@ -114,13 +114,14 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Build the complete OpenAPI specification object
    */
-  private buildOpenAPISpec(): any {
-    const spec: any = {
+  private buildOpenAPISpec(): Record<string, unknown> {
+    const spec: Record<string, unknown> = {
       openapi: '3.1.0',
       info: {
         title: 'Generated CRUD API',
         version: '1.0.0',
-        description: 'Auto-generated REST API for CRUD operations. This specification can be extended with custom endpoints.',
+        description:
+          'Auto-generated REST API for CRUD operations. This specification can be extended with custom endpoints.',
       },
       servers: [
         {
@@ -142,40 +143,48 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       const modelNameLower = model.name.toLowerCase();
 
       // Add tag for this model
-      spec.tags.push({
+      (spec.tags as unknown[]).push({
         name: model.name,
         description: model.description || `${model.name} operations`,
       });
 
       // Generate schemas
-      spec.components.schemas[model.name] = this.generateModelSchema(model, false);
-      spec.components.schemas[`${model.name}Input`] = this.generateModelSchema(model, true);
-      spec.components.schemas[`${model.name}Update`] = this.generateModelSchema(model, true, true);
+      (spec.components as Record<string, Record<string, unknown>>).schemas[model.name] = this.generateModelSchema(
+        model,
+        false,
+      );
+      (spec.components as Record<string, Record<string, unknown>>).schemas[`${model.name}Input`] = this
+        .generateModelSchema(model, true);
+      (spec.components as Record<string, Record<string, unknown>>).schemas[`${model.name}Update`] = this
+        .generateModelSchema(model, true, true);
 
       // Generate CRUD paths (using singular model names)
-      spec.paths[`/${modelNameLower}`] = this.generateListAndCreatePaths(model);
-      spec.paths[`/${modelNameLower}/{id}`] = this.generateDetailPaths(model);
+      (spec.paths as Record<string, unknown>)[`/${modelNameLower}`] = this.generateListAndCreatePaths(model);
+      (spec.paths as Record<string, unknown>)[`/${modelNameLower}/{id}`] = this.generateDetailPaths(model);
 
       // Generate relationship paths
       if (model.relationships) {
         for (const rel of model.relationships) {
           if (rel.type === 'oneToMany') {
             const targetName = rel.target;
-            spec.paths[`/${modelNameLower}/{id}/${targetName.toLowerCase()}List`] = this.generateOneToManyRelationshipPath(model, rel);
+            (spec.paths as Record<string, unknown>)[`/${modelNameLower}/{id}/${targetName.toLowerCase()}List`] = this
+              .generateOneToManyRelationshipPath(model, rel);
           } else if (rel.type === 'manyToMany') {
             const targetName = rel.target;
             const targetNameLower = targetName.toLowerCase();
-            spec.paths[`/${modelNameLower}/{id}/${targetNameLower}List`] = this.generateManyToManyRelationshipPaths(model, rel);
+            (spec.paths as Record<string, unknown>)[`/${modelNameLower}/{id}/${targetNameLower}List`] = this
+              .generateManyToManyRelationshipPaths(model, rel);
 
-            spec.paths[`/${modelNameLower}/{id}/${targetNameLower}List/{${targetNameLower}Id}`] =
-              this.generateManyToManyDetailPaths(model, rel);
+            (spec.paths as Record<string, unknown>)[
+              `/${modelNameLower}/{id}/${targetNameLower}List/{${targetNameLower}Id}`
+            ] = this.generateManyToManyDetailPaths(model, rel);
           }
         }
       }
     }
 
     // Add common responses
-    spec.components.responses = {
+    (spec.components as Record<string, unknown>).responses = {
       NotFound: {
         description: 'Resource not found',
         content: {
@@ -229,7 +238,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     };
 
     // Add common parameters
-    spec.components.parameters = {
+    (spec.components as Record<string, unknown>).parameters = {
       IdParameter: {
         name: 'id',
         in: 'path',
@@ -287,8 +296,12 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate schema for a model
    */
-  private generateModelSchema(model: ModelDefinition, isInput: boolean = false, isUpdate: boolean = false): any {
-    const schema: any = {
+  private generateModelSchema(
+    model: ModelDefinition,
+    isInput: boolean = false,
+    isUpdate: boolean = false,
+  ): Record<string, unknown> {
+    const schema: Record<string, unknown> = {
       type: 'object',
       properties: {},
       required: [],
@@ -306,31 +319,31 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
         continue;
       }
 
-      schema.properties[field.name] = this.generateFieldSchema(field, model);
+      (schema.properties as Record<string, unknown>)[field.name] = this.generateFieldSchema(field, model);
 
       // Add to required array if field is required and not an update schema
       if (!isUpdate && (field.required || field.primaryKey) && !field.defaultValue) {
-        schema.required.push(field.name);
+        (schema.required as string[]).push(field.name);
       }
     }
 
     // Add timestamp fields if enabled (not in input schemas)
     if (!isInput && model.timestamps) {
-      schema.properties.createdAt = {
+      (schema.properties as Record<string, unknown>).createdAt = {
         type: 'string',
         format: 'date-time',
         description: 'Creation timestamp',
       };
-      schema.properties.updatedAt = {
+      (schema.properties as Record<string, unknown>).updatedAt = {
         type: 'string',
         format: 'date-time',
         description: 'Last update timestamp',
       };
-      schema.required.push('createdAt', 'updatedAt');
+      (schema.required as string[]).push('createdAt', 'updatedAt');
     }
 
     // Remove required array if empty or if update schema
-    if (schema.required.length === 0 || isUpdate) {
+    if ((schema.required as string[]).length === 0 || isUpdate) {
       delete schema.required;
     }
 
@@ -340,13 +353,13 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate schema for a field
    */
-  private generateFieldSchema(field: FieldDefinition, model?: ModelDefinition): any {
+  private generateFieldSchema(field: FieldDefinition, model?: ModelDefinition): Record<string, unknown> {
     // Handle enum fields specially
     if (field.type === 'enum') {
       return this.generateEnumFieldSchema(field, model);
     }
 
-    const schema: any = this.getBaseTypeSchema(field.type);
+    const schema: Record<string, unknown> = this.getBaseTypeSchema(field.type);
 
     // Add description if available
     if (field.name) {
@@ -371,7 +384,9 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
 
     if (field.type === 'decimal') {
       if (field.precision) {
-        schema.description = `${schema.description || ''} (precision: ${field.precision}${field.scale ? `, scale: ${field.scale}` : ''})`.trim();
+        schema.description = `${schema.description || ''} (precision: ${field.precision}${
+          field.scale ? `, scale: ${field.scale}` : ''
+        })`.trim();
       }
     }
 
@@ -402,13 +417,13 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate schema for enum field
    */
-  private generateEnumFieldSchema(field: FieldDefinition, model?: ModelDefinition): any {
+  private generateEnumFieldSchema(field: FieldDefinition, model?: ModelDefinition): Record<string, unknown> {
     let enumValues: string[] = [];
-    let enumDef: any = null;
+    let enumDef: { name: string; values: string[]; useBitwise?: boolean } | undefined = undefined;
 
     // Get enum values
     if (field.enumName && model) {
-      enumDef = model.enums?.find(e => e.name === field.enumName);
+      enumDef = model.enums?.find((e) => e.name === field.enumName);
       if (enumDef) {
         enumValues = enumDef.values;
       }
@@ -419,7 +434,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     // Check if using bitwise storage
     if (enumDef?.useBitwise) {
       // For bitwise enums, use integer in OpenAPI
-      const schema: any = {
+      const schema: Record<string, unknown> = {
         type: 'integer',
         description: `Bitwise flags for ${field.name}. Values: ${enumValues.join(', ')}`,
       };
@@ -432,7 +447,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     }
 
     // Standard enum field
-    const schema: any = {
+    const schema: Record<string, unknown> = {
       type: 'string',
       enum: enumValues,
     };
@@ -440,7 +455,9 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
     // Add description
     if (field.name) {
       const description = field.name.replace(/([A-Z])/g, ' $1').trim();
-      schema.description = `${description.charAt(0).toUpperCase() + description.slice(1)}. Allowed values: ${enumValues.join(', ')}`;
+      schema.description = `${description.charAt(0).toUpperCase() + description.slice(1)}. Allowed values: ${
+        enumValues.join(', ')
+      }`;
     }
 
     // Handle arrays
@@ -466,8 +483,8 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Get base OpenAPI schema type for a data type
    */
-  private getBaseTypeSchema(type: DataType): any {
-    const typeMap: Record<string, any> = {
+  private getBaseTypeSchema(type: DataType): Record<string, unknown> {
+    const typeMap: Record<string, Record<string, unknown>> = {
       text: { type: 'string' },
       string: { type: 'string' },
       integer: { type: 'integer', format: 'int32' },
@@ -496,9 +513,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate paths for list and create operations
    */
-  private generateListAndCreatePaths(model: ModelDefinition): any {
-    const modelNameLower = model.name.toLowerCase();
-
+  private generateListAndCreatePaths(model: ModelDefinition): Record<string, unknown> {
     return {
       get: {
         tags: [model.name],
@@ -571,7 +586,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate paths for get, update, and delete operations
    */
-  private generateDetailPaths(model: ModelDefinition): any {
+  private generateDetailPaths(model: ModelDefinition): Record<string, unknown> {
     return {
       get: {
         tags: [model.name],
@@ -658,7 +673,10 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate path for one-to-many relationship
    */
-  private generateOneToManyRelationshipPath(model: ModelDefinition, rel: any): any {
+  private generateOneToManyRelationshipPath(
+    model: ModelDefinition,
+    rel: RelationshipDefinition,
+  ): Record<string, unknown> {
     const targetName = rel.target;
 
     return {
@@ -690,11 +708,14 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate paths for many-to-many relationship collection operations
    */
-  private generateManyToManyRelationshipPaths(model: ModelDefinition, rel: any): any {
+  private generateManyToManyRelationshipPaths(
+    model: ModelDefinition,
+    rel: RelationshipDefinition,
+  ): Record<string, unknown> {
     const junctionItemSchema = {
       type: 'string',
       format: 'uuid',
-      description: 'ID of the related resource'
+      description: 'ID of the related resource',
     };
 
     return {
@@ -736,7 +757,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
                   [rel.name]: {
                     type: 'array',
                     items: junctionItemSchema,
-                    description: `Array of ${rel.name} IDs`
+                    description: `Array of ${rel.name} IDs`,
                   },
                 },
                 required: [rel.name],
@@ -778,7 +799,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
                   [rel.name]: {
                     type: 'array',
                     items: junctionItemSchema,
-                    description: `Array of ${rel.name} IDs`
+                    description: `Array of ${rel.name} IDs`,
                   },
                 },
                 required: [rel.name],
@@ -850,7 +871,7 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
   /**
    * Generate paths for many-to-many individual item operations
    */
-  private generateManyToManyDetailPaths(model: ModelDefinition, rel: any): any {
+  private generateManyToManyDetailPaths(model: ModelDefinition, rel: RelationshipDefinition): Record<string, unknown> {
     const targetName = rel.target;
     const targetNameLower = targetName.toLowerCase();
 
@@ -921,7 +942,6 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
       },
     };
   }
-
 
   /**
    * Capitalize first letter
