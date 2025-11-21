@@ -1,4 +1,8 @@
-import { FieldDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import {
+  FieldDefinition,
+  ModelDefinition,
+  RelationshipDefinition
+} from '../types/model.types.ts';
 
 /**
  * Generates Drizzle ORM schema files from model definitions
@@ -10,7 +14,10 @@ export class DrizzleSchemaGenerator {
 
   constructor(
     models: ModelDefinition[],
-    options: { isCockroachDB?: boolean; postgis?: boolean } = {},
+    options: {
+      isCockroachDB?: boolean;
+      postgis?: boolean;
+    } = {},
   ) {
     this.models = models;
     this.isCockroachDB = options.isCockroachDB || false;
@@ -53,11 +60,14 @@ export class DrizzleSchemaGenerator {
    * Generate schema for a single model
    */
   private generateModelSchema(model: ModelDefinition): string {
-    const imports = this.generateImports(model);
-    const enumDefinitions = this.generateEnumDefinitions(model);
-    const tableDefinition = this.generateTableDefinition(model);
-    const typeExports = this.generateTypeExports(model);
-    const zodSchemas = this.generateZodSchemas(model);
+    // Add foreign key fields from incoming relationships
+    const enhancedModel = this.addForeignKeyFields(model);
+    
+    const imports = this.generateImports(enhancedModel);
+    const enumDefinitions = this.generateEnumDefinitions(enhancedModel);
+    const tableDefinition = this.generateTableDefinition(enhancedModel);
+    const typeExports = this.generateTypeExports(enhancedModel);
+    const zodSchemas = this.generateZodSchemas(enhancedModel);
 
     return `${imports}\n\n${enumDefinitions}${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
   }
@@ -105,20 +115,20 @@ export class DrizzleSchemaGenerator {
     }
 
     // Ensure timestamp is imported when generated timestamp columns are present
-    if (model.timestamps || model.softDelete) {
+    if (model.timestamps) {
       drizzleImports.add('timestamp');
     }
 
     // Base imports from pg-core and drizzle-orm
-    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'drizzle-orm/pg-core';\n`;
+    let imports = `import { ${Array.from(drizzleImports).join(', ')} } from 'npm:drizzle-orm/pg-core';\n`;
 
-    // Always add index imports since we're using table-level definitions
-    imports += `import { index, uniqueIndex } from 'drizzle-orm/pg-core';\n`;
+    // Always add index and check imports since we're using table-level definitions
+    imports += `import { index, uniqueIndex, check } from 'npm:drizzle-orm/pg-core';\n`;
 
-    imports += `import { sql } from 'drizzle-orm';\n`;
+    imports += `import { sql } from 'npm:drizzle-orm';\n`;
     
     // Add Zod and drizzle-zod imports for schema validation
-    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
+    imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
 
     // Import other tables referenced by foreign keys in this schema
     const referencedModels = new Set<string>();
@@ -206,7 +216,8 @@ export class DrizzleSchemaGenerator {
 
     // Start table definition (no type annotation needed)
     const tableFunction = model.schema ? `${model.schema}Schema.table` : 'pgTable';
-    code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${model.name.toLowerCase()}', {\n`;
+    const tableName = model.tableName || model.name.toLowerCase();
+    code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${tableName}', {\n`;
 
     // Add fields
     const fieldDefinitions: string[] = [];
@@ -221,11 +232,6 @@ export class DrizzleSchemaGenerator {
       fieldDefinitions.push(...timestampFields);
     }
 
-    // Add soft delete field if enabled
-    if (model.softDelete) {
-      fieldDefinitions.push(`  deletedAt: timestamp('deleted_at')`);
-    }
-
     code += fieldDefinitions.map((def) => {
       // For lines with comments, put the comma before the comment
       if (def.includes(' // ')) {
@@ -238,8 +244,8 @@ export class DrizzleSchemaGenerator {
     // Close the fields object and start the table-level definitions
     code += '}, (table) => [\n';
 
-    // Generate indexes within the table definition
-    const tableIndexes = [];
+    // Generate indexes and checks within the table definition
+    const tableConstraints = [];
 
     // Field-level indexes
     for (const field of model.fields) {
@@ -250,9 +256,9 @@ export class DrizzleSchemaGenerator {
         const indexName = `idx_${model.name.toLowerCase()}_${field.name}`;
 
         if (isPostGISField) {
-          tableIndexes.push(`  index('${indexName}').using('gist', table.${field.name})`);
+          tableConstraints.push(`  index('${indexName}').using('gist', table.${field.name})`);
         } else {
-          tableIndexes.push(`  index('${indexName}').on(table.${field.name})`);
+          tableConstraints.push(`  index('${indexName}').on(table.${field.name})`);
         }
       }
     }
@@ -270,14 +276,30 @@ export class DrizzleSchemaGenerator {
           ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
 
         if (isPostGISField) {
-          tableIndexes.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
         } else {
-          tableIndexes.push(`  ${indexType}('${indexName}').on(${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').on(${fields})`);
         }
       }
     }
 
-    code += tableIndexes.join(',\n') + '\n]);';
+    // Check constraints - handle numNotNulls
+    if (model.check && model.check.numNotNulls) {
+      const constraintDefs = model.check.numNotNulls;
+
+      constraintDefs.forEach((constraint, index) => {
+        // Generate numbered constraint name (1-indexed)
+        const checkName = `check_${model.name.toLowerCase()}_numNotNulls${index + 1}`;
+        // Convert field names to snake_case for SQL
+        const columnNames = constraint.fields.map(f => this.toSnakeCase(f)).join(', ');
+        // Use the specified count from constraint.num
+        const checkSql = `num_nonnulls(${columnNames}) = ${constraint.num}`;
+
+        tableConstraints.push(`  check('${checkName}', sql\`${checkSql}\`)`);
+      });
+    }
+
+    code += tableConstraints.join(',\n') + '\n]);';
 
     return code;
   }
@@ -496,10 +518,6 @@ export class DrizzleSchemaGenerator {
           `  updatedAt: timestamp('${fieldName}', { mode: 'date' }).defaultNow().notNull()`,
         );
       }
-      if (timestamps.deletedAt) {
-        const fieldName = typeof timestamps.deletedAt === 'string' ? timestamps.deletedAt : 'deleted_at';
-        fields.push(`  deletedAt: timestamp('${fieldName}', { mode: 'date' })`);
-      }
     }
 
     return fields;
@@ -601,68 +619,118 @@ export class DrizzleSchemaGenerator {
     const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
     const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
 
+    // Determine what imports we need based on the primary key types
+    const imports = new Set<string>(['pgTable', 'timestamp', 'primaryKey', 'index']);
+
+    // Add the appropriate type import for each foreign key
+    const sourceDrizzleType = this.getDrizzleImportForType(sourcePK);
+    if (sourceDrizzleType) imports.add(sourceDrizzleType);
+    else if (sourcePK.type === 'uuid') imports.add('uuid');
+
+    const targetDrizzleType = this.getDrizzleImportForType(targetPK);
+    if (targetDrizzleType) imports.add(targetDrizzleType);
+    else if (targetPK.type === 'uuid') imports.add('uuid');
+
     // Generate imports
-    let code = `import { pgTable, uuid, timestamp, primaryKey, index } from 'drizzle-orm/pg-core';
+    let code = `import { ${Array.from(imports).join(', ')} } from 'npm:drizzle-orm/pg-core';
 `;
+    code += `import { sql } from 'npm:drizzle-orm';\n`;
+
+    // Import source table
     code += `import { ${sourceModel.name.toLowerCase()}Table } from './${sourceModel.name.toLowerCase()}.schema.ts';
 `;
-    code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
+
+    // Import target table only if different from source (avoid duplicate imports in self-referential relationships)
+    if (sourceModel.name.toLowerCase() !== targetModel.name.toLowerCase()) {
+      code += `import { ${targetModel.name.toLowerCase()}Table } from './${targetModel.name.toLowerCase()}.schema.ts';
 `;
+    }
+
+    // Add Zod imports for validation
+    code += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'npm:drizzle-zod';\n`;
     code += `\n`;
 
     // Generate table definition
     code += `export const ${tableName.toLowerCase()}Table = pgTable('${tableName.toLowerCase()}', {
 `;
 
-    // Add foreign key columns
-    if (sourcePK.type === 'uuid') {
-      code += `  ${sourceFKColumn}: uuid('${sourceFKColumn}')
+    // Generate source foreign key column
+    code += this.generateJunctionFKColumn(sourceFKColumn, sourcePK, sourceModel.name.toLowerCase(), sourcePK.name);
+    code += `,
 `;
-      code += `    .notNull()
-`;
-      code += `    .references(() => ${sourceModel.name.toLowerCase()}Table.${sourcePK.name}, { onDelete: 'cascade' }),
-`;
-    }
 
-    if (targetPK.type === 'uuid') {
-      code += `  ${targetFKColumn}: uuid('${targetFKColumn}')
-`;
-      code += `    .notNull()
-`;
-      code += `    .references(() => ${targetModel.name.toLowerCase()}Table.${targetPK.name}, { onDelete: 'cascade' }),
-`;
-    }
+    // Generate target foreign key column
+    code += this.generateJunctionFKColumn(targetFKColumn, targetPK, targetModel.name.toLowerCase(), targetPK.name);
 
     // Add timestamps if enabled globally
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
     if (hasTimestamps) {
-      code += `  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
-`;
+      code += `,\n  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull()`;
     }
 
-    code += `}, (table) => [
-`;
+    code += `\n}, (table) => [\n`;
 
     // Add composite primary key
-    code += `  primaryKey({ columns: [table.${sourceFKColumn}, table.${targetFKColumn}] }),
-`;
+    code += `  primaryKey({ columns: [table.${sourceFKColumn}, table.${targetFKColumn}] }),\n`;
 
-    // Add indexes for performance
-    code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),
-`;
-    code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})
-`;
+    // Add indexes for foreign keys
+    code += `  index('idx_${tableName.toLowerCase()}_${sourceFKColumn}').on(table.${sourceFKColumn}),\n`;
+    code += `  index('idx_${tableName.toLowerCase()}_${targetFKColumn}').on(table.${targetFKColumn})`;
 
-    code += `]);
-`;
+    code += `\n]);\n`;
     code += `\n`;
 
     // Add type exports
     code += `// Type exports\n`;
     code += `export type ${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
-    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;`;
+    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;\n`;
+    code += `\n`;
+
+    // Add Zod schemas
+    code += `// Zod schemas for validation\n`;
+    code += `export const ${tableName.toLowerCase()}InsertSchema = createInsertSchema(${tableName.toLowerCase()}Table);\n`;
+    code += `export const ${tableName.toLowerCase()}UpdateSchema = createUpdateSchema(${tableName.toLowerCase()}Table);\n`;
+    code += `export const ${tableName.toLowerCase()}SelectSchema = createSelectSchema(${tableName.toLowerCase()}Table);`;
 
     return code;
+  }
+
+  /**
+   * Generate foreign key column for junction table
+   */
+  private generateJunctionFKColumn(
+    columnName: string,
+    pkField: FieldDefinition,
+    tableName: string,
+    pkName: string
+  ): string {
+    let columnDef = '';
+    
+    // Generate the appropriate column type based on the primary key type
+    switch (pkField.type) {
+      case 'uuid':
+        columnDef = `  ${columnName}: uuid('${columnName}')`;
+        break;
+      case 'string':
+        const maxLength = pkField.maxLength || 255;
+        columnDef = `  ${columnName}: varchar('${columnName}', { length: ${maxLength} })`;
+        break;
+      case 'integer':
+        columnDef = `  ${columnName}: integer('${columnName}')`;
+        break;
+      case 'bigint':
+        columnDef = `  ${columnName}: bigint('${columnName}', { mode: 'number' })`;
+        break;
+      default:
+        // Fallback to text for unknown types
+        columnDef = `  ${columnName}: text('${columnName}')`;
+    }
+    
+    // Add the not null and references modifiers
+    columnDef += `\n    .notNull()`;
+    columnDef += `\n    .references(() => ${tableName}Table.${pkName}, { onDelete: 'cascade' })`;
+    
+    return columnDef;
   }
 
   /**
@@ -676,7 +744,7 @@ export class DrizzleSchemaGenerator {
    * Generate relations file
    */
   private generateRelations(): string {
-    let code = `import { relations } from 'drizzle-orm';\n`;
+    let code = `import { relations } from 'npm:drizzle-orm';\n`;
 
     // Import all tables
     for (const model of this.models) {
@@ -824,5 +892,50 @@ export class DrizzleSchemaGenerator {
   private toSnakeCase(str: string): string {
     return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
       .replace(/^_/, '');
+  }
+
+  /**
+   * Add foreign key fields from incoming oneToMany relationships
+   */
+  private addForeignKeyFields(model: ModelDefinition): ModelDefinition {
+    // Create a copy of the model to avoid mutations
+    const enhancedModel = { ...model, fields: [...model.fields] };
+    
+    // Find all models that have oneToMany relationships pointing to this model
+    for (const sourceModel of this.models) {
+      if (!sourceModel.relationships) continue;
+      
+      for (const rel of sourceModel.relationships) {
+        if (rel.type === 'oneToMany' && rel.target === model.name) {
+          // Check if the foreign key field already exists
+          const foreignKeyField = rel.foreignKey || this.toSnakeCase(sourceModel.name) + 'Id';
+          const fieldExists = enhancedModel.fields.some(f => f.name === foreignKeyField);
+          
+          if (!fieldExists) {
+            // Find the primary key of the source model
+            const sourcePK = sourceModel.fields.find(f => f.primaryKey);
+            if (sourcePK) {
+              // Add the foreign key field
+              const fkField: FieldDefinition = {
+                name: foreignKeyField,
+                type: sourcePK.type, // Match the type of the source primary key
+                required: false, // Usually nullable for oneToMany
+                references: {
+                  model: sourceModel.name,
+                  field: sourcePK.name
+                }
+              };
+              
+              // Add index for the foreign key for better performance
+              fkField.index = true;
+              
+              enhancedModel.fields.push(fkField);
+            }
+          }
+        }
+      }
+    }
+    
+    return enhancedModel;
   }
 }

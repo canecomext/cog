@@ -1,0 +1,65 @@
+{
+  "name": "Assignment",
+  "tableName": "assignment",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "employeeId",
+      "type": "uuid",
+      "required": true,
+      "references": {
+        "model": "Employee",
+        "field": "id",
+        "onDelete": "CASCADE"
+      }
+    },
+    {
+      "name": "projectId",
+      "type": "uuid",
+      "required": true,
+      "references": {
+        "model": "Project",
+        "field": "id",
+        "onDelete": "CASCADE"
+      }
+    },
+    {
+      "name": "role",
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    },
+    {
+      "name": "hours",
+      "type": "integer",
+      "required": true
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToOne",
+      "name": "employee",
+      "target": "Employee",
+      "foreignKey": "employeeId"
+    },
+    {
+      "type": "manyToOne",
+      "name": "project",
+      "target": "Project",
+      "foreignKey": "projectId"
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["employeeId", "projectId"],
+      "unique": true
+    }
+  ],
+  "timestamps": true
+}

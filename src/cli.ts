@@ -23,12 +23,10 @@ async function main() {
       schema: args.schema,
     },
     features: {
-      softDeletes: args.softDeletes !== false,
       timestamps: args.timestamps !== false,
     },
     documentation: {
       enabled: args.documentation !== false,
-      path: args.docsPath || '/cog',
     },
     verbose,
   });
@@ -42,7 +40,7 @@ function parseArguments(): Record<string, any> {
   for (let i = 0; i < Deno.args.length; i++) {
     const arg = Deno.args[i];
     if (arg.startsWith('--')) {
-      let key = arg.slice(2);
+      const key = arg.slice(2);
 
       // Handle --no- prefixed flags
       if (key.startsWith('no-')) {
@@ -82,10 +80,8 @@ Options:
   --dbType <type>        Database type: postgresql or cockroachdb (default: postgresql)
   --schema <name>        Database schema name
   --no-postgis           Disable PostGIS support
-  --no-softDeletes       Disable soft deletes
   --no-timestamps        Disable timestamps
   --no-documentation     Disable OpenAPI documentation generation
-  --docsPath <path>      Base path for documentation endpoints (default: /cog)
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 

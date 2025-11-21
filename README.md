@@ -35,7 +35,7 @@ mkdir models
 ```json
 {
   "name": "User",
-  "tableName": "users",
+  "tableName": "user",
   "fields": [
     {
       "name": "id",
@@ -120,7 +120,6 @@ COG generates a complete backend stack with:
 - Automatic Zod validation for all CRUD operations
 - Auto-generated API documentation
 - Automatic timestamps (createdAt, updatedAt)
-- Soft deletes with automatic filtering
 - Database transactions with rollback
 - Extensible hook system for custom logic
 - Rich query capabilities with filtering and pagination
@@ -163,28 +162,13 @@ deno run -A src/cli.ts [options]
 | `--schema`           | Database schema name                          | (default)     |
 | `--no-postgis`       | Disable PostGIS support                       | enabled       |
 | `--no-timestamps`    | Disable automatic timestamps globally         | enabled       |
-| `--no-softDeletes`   | Disable soft delete feature globally          | enabled       |
 | `--no-documentation` | Disable OpenAPI documentation generation      | enabled       |
-| `--docsPath`         | Base path for documentation endpoints         | `/cog`        |
 | `--verbose`          | Show generated file paths                     | false         |
 | `--help`             | Show help message                             | -             |
 
 ### Global Feature Flags
 
 The `--no-*` flags provide global control over features across all models:
-
-#### `--no-softDeletes`
-
-Disables soft delete functionality for **all models**, regardless of model-level `"softDelete"` settings:
-
-- Removes `deletedAt` timestamp field from all tables
-- Disables soft delete filtering in queries
-- Delete operations become hard deletes
-
-```bash
-# Generate without soft deletes
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-softDeletes
-```
 
 #### `--no-timestamps`
 
@@ -220,35 +204,17 @@ without timestamps even if `"timestamps": true` is set in individual model JSON 
 Disables OpenAPI documentation generation entirely:
 
 - No `openapi.ts` or `openapi.json` files generated
-- No documentation endpoints registered
-- No Scalar API reference UI
 - Reduces generated code size
+- Useful when you don't need API documentation
 
 ```bash
 # Generate without documentation
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
 ```
 
-**Use Case:** Production builds where you don't want to expose API documentation.
+**Use Case:** Production builds or microservices where API documentation isn't needed.
 
-#### `--docsPath <path>`
-
-Customize the base path for documentation endpoints (default: `/cog`):
-
-```bash
-# Use /docs instead of /cog
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /docs
-
-# Use /api/documentation
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --docsPath /api/documentation
-```
-
-**Generated endpoints:**
-
-- `{docsPath}/openapi.json` - OpenAPI specification
-- `{docsPath}/reference` - Scalar API reference UI
-
-**Use Case:** Integrate with existing API documentation structure or avoid path conflicts.
+**Note:** By default, OpenAPI specs are generated but not automatically exposed. See the API Documentation section below for how to expose and customize documentation.
 
 ### Validation is Always Enabled
 
@@ -268,7 +234,7 @@ Models are defined in JSON with this structure:
 ```json
 {
   "name": "ModelName",
-  "tableName": "table_name",
+  "tableName": "model_name",
   "enums": [
     {
       "name": "EnumName",
@@ -301,7 +267,6 @@ Models are defined in JSON with this structure:
     }
   ],
   "timestamps": true,
-  "softDelete": true,
   "indexes": [
     {
       "fields": ["field1", "field2"],
@@ -723,34 +688,186 @@ genderPreferences: genderEnum('gender_preferences').array();
 **Generated Code Note:** When using `--dbType cockroachdb`, generated schemas include compatibility comments reminding
 you of the v22.2+ requirement for enum types.
 
-## OpenAPI Documentation
+## Database Compatibility
 
-COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints and provides automatic
-documentation endpoints.
+COG supports both PostgreSQL and CockroachDB as target databases. While most features work identically across both platforms, there are some important differences to be aware of.
 
-### Auto-Generated Documentation Endpoints
+### PostgreSQL vs CockroachDB Feature Comparison
 
-When you call `initializeGenerated()`, two documentation endpoints are automatically registered:
+| Feature | PostgreSQL | CockroachDB | Notes |
+|---------|------------|-------------|-------|
+| **Index Types** | | | |
+| BTREE | ✅ Supported | ✅ Supported | Default index type |
+| GIN | ✅ Supported | ✅ Supported | For JSONB, arrays |
+| GIST | ✅ Supported | ✅ Supported | For spatial data (PostGIS) |
+| HASH | ✅ Supported | ❌ Not Supported | Use BTREE instead |
+| SPGIST | ✅ Supported | ❌ Not Supported | Use BTREE or GIST |
+| BRIN | ✅ Supported | ❌ Not Supported | Use BTREE |
+| **Data Types** | | | |
+| Enums | ✅ All versions | ✅ v22.2+ only | See enum section above |
+| PostGIS Spatial | ✅ GEOMETRY + GEOGRAPHY | ✅ GEOMETRY only | GEOGRAPHY converted to GEOMETRY |
+| JSONB | ✅ Supported | ✅ Supported | Full support |
+| Arrays | ✅ Supported | ✅ Supported | Full support |
+| **Numeric Precision** | | | |
+| Bigint defaults | Limited to 2^53-1 | Limited to 2^53-1 | JavaScript limitation (see below) |
 
-#### `/cog/openapi.json`
+### JavaScript Numeric Precision Limitation
 
-- Serves the complete OpenAPI 3.1.0 specification in JSON format
-- Ready to use immediately - no configuration required
-- Import into Postman, Insomnia, or use with OpenAPI Generator
+**IMPORTANT**: COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INTEGER` (9007199254740991 = 2^53 - 1).
 
-#### `/cog/reference`
+**Why this limitation exists:**
 
-- Beautiful, interactive API documentation powered by [Scalar](https://scalar.com)
-- Modern UI with search, "Try it" functionality, and dark mode
-- Browse endpoints by model/tag
-- Mobile-responsive design
-- Default theme: purple (customizable)
+- COG processes model definitions as JSON in JavaScript/TypeScript
+- JSON numbers beyond 2^53 - 1 lose precision when parsed
+- Even though PostgreSQL supports larger BIGINT values (up to 2^63 - 1), the default values in JSON are subject to JavaScript's numeric limitations
 
 **Example:**
+
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9007199254740991  // ✅ Maximum safe default value
+}
+```
+
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9223372036854775807  // ❌ Too large - will lose precision
+}
+```
+
+**Workarounds:**
+
+1. **Omit default values** for large numbers - set them at application runtime instead of database defaults
+2. **Use strings** for very large integer literals in SQL expressions (not in JSON defaults)
+3. **For most use cases**, 9 quadrillion (MAX_SAFE_INTEGER) is more than sufficient
+
+This limitation applies to both PostgreSQL and CockroachDB equally.
+
+### Spatial Data Type Compatibility
+
+**GEOGRAPHY Type:**
+
+CockroachDB does not support the PostGIS `GEOGRAPHY` type - only `GEOMETRY` is supported. COG automatically handles this difference:
+
+**PostgreSQL:**
+- `type: "geography"` → generates `GEOGRAPHY` column type
+- `type: "geography", geometryType: "POINT"` → generates `GEOGRAPHY(POINT, 4326)`
+
+**CockroachDB:**
+- `type: "geography"` → automatically converted to `GEOMETRY`
+- `type: "geography", geometryType: "POINT"` → converted to `GEOMETRY(POINT, 4326)`
+
+This conversion is **automatic and transparent** when using `--dbType cockroachdb`. Your model definitions remain database-agnostic.
+
+**Generic Geometry/Geography Fields:**
+
+When a field has `type: "geometry"` or `type: "geography"` without a specific `geometryType`, COG generates:
+
+- **PostgreSQL**: `GEOMETRY` or `GEOGRAPHY` (without subtype specification)
+- **CockroachDB**: `GEOMETRY` (geography converted)
+
+These generic spatial columns can store any spatial data type (point, linestring, polygon, etc.).
+
+### Index Type Compatibility
+
+When defining indexes in your model JSON files, be aware of CockroachDB's limitations:
+
+**PostgreSQL-Only Index Types:**
+
+```json
+{
+  "indexes": [
+    {
+      "name": "idx_score_hash",
+      "fields": ["score"],
+      "type": "hash"  // ❌ Fails on CockroachDB
+    }
+  ]
+}
+```
+
+**Cross-Compatible Indexes:**
+
+```json
+{
+  "indexes": [
+    {
+      "name": "idx_score_btree",
+      "fields": ["score"],
+      "type": "btree"  // ✅ Works on both PostgreSQL and CockroachDB
+    },
+    {
+      "name": "idx_metadata_gin",
+      "fields": ["metadata"],
+      "type": "gin"  // ✅ Works on both (for JSONB)
+    },
+    {
+      "name": "idx_location_gist",
+      "fields": ["location"],
+      "type": "gist"  // ✅ Works on both (for spatial data)
+    }
+  ]
+}
+```
+
+### Best Practices for Multi-Database Support
+
+If you need to support both PostgreSQL and CockroachDB:
+
+1. **Use compatible index types** - Stick to BTREE, GIN, and GIST
+2. **Test on target database** - Run `deno task db:init` against your target database to catch compatibility issues early
+3. **Avoid HASH indexes** - While faster for equality comparisons in PostgreSQL, they're not supported in CockroachDB
+4. **Check enum support** - Ensure CockroachDB v22.2+ if using enum types
+5. **Keep defaults reasonable** - Use numeric defaults within JavaScript's safe integer range
+
+### Migration Path
+
+If you have existing models with incompatible features:
+
+```bash
+# 1. Remove incompatible index types from model JSON files
+# 2. Regenerate code
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb
+
+# 3. Test database initialization
+deno task db:init
+```
+
+The `--dbType` flag adds compatibility hints to generated code but doesn't fundamentally change the generation - it's primarily for documentation and awareness.
+
+## API Documentation
+
+COG automatically generates a complete OpenAPI 3.1.0 specification for all CRUD endpoints. Unlike many frameworks, COG **does not automatically expose** documentation endpoints - giving you full control over where and how to expose your API docs.
+
+### Generated Documentation Files
+
+COG generates OpenAPI specification files that you can use to create documentation:
+
+- `generated/rest/openapi.ts` - TypeScript module exporting `generatedOpenAPISpec` constant
+- `generated/rest/openapi.json` - Static JSON specification file
+
+### Why Manual Exposure?
+
+COG takes a **developer-first approach** to API documentation:
+
+- **Full control** - You decide where to expose documentation (/docs, /api-docs, /v1/docs, etc.)
+- **Customization** - Merge generated docs with your custom endpoints before exposing
+- **Security** - Choose whether to expose docs in production or development only
+- **Flexibility** - Use any documentation UI (Scalar, Swagger UI, Redoc, etc.)
+
+### Basic Documentation Exposure
+
+Here's how to expose the generated OpenAPI spec and create interactive documentation:
 
 ```typescript
 import { Hono } from '@hono/hono';
 import { initializeGenerated } from './generated/index.ts';
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { Scalar } from '@scalar/hono-api-reference';
 
 const app = new Hono();
 
@@ -761,78 +878,99 @@ await initializeGenerated({
   app,
 });
 
+// Expose OpenAPI spec at your chosen URL
+app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
+
+// Expose interactive API documentation with Scalar
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+  theme: 'purple',
+}) as any);
+
 Deno.serve({ port: 3000 }, app.fetch);
 
-// Documentation is now automatically available at:
-// http://localhost:3000/cog/openapi.json - OpenAPI JSON spec
-// http://localhost:3000/cog/reference - Interactive API docs
+// Documentation now available at:
+// http://localhost:3000/api/openapi.json - OpenAPI JSON spec
+// http://localhost:3000/api/docs - Interactive API documentation
 ```
 
-### Generated Files
+### Merging with Custom Endpoints
 
-COG also generates static documentation files:
-
-- `generated/rest/openapi.ts` - TypeScript module with OpenAPI spec and `mergeOpenAPISpec()` utility
-- `generated/rest/openapi.json` - Static JSON specification file
-
-### Customization
-
-**Change Scalar Theme:**
-
-Edit `generated/rest/index.ts` to change the documentation theme:
+Combine generated CRUD endpoints with your custom authentication, analytics, or business logic endpoints:
 
 ```typescript
-// Find the /cog/reference endpoint in registerRestRoutes()
-app.get(
-  '/cog/reference',
-  Scalar({
-    url: '/cog/openapi.json',
-    theme: 'solarized', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
-  }) as any,
-);
-```
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import type { OpenAPIV3_1 } from 'openapi-types';
 
-**Add Custom Endpoints:**
-
-Extend the OpenAPI spec with your custom (non-generated) endpoints:
-
-```typescript
-import { mergeOpenAPISpec } from './generated/rest/openapi.ts';
-
-const customSpec = {
-  info: {
-    title: 'My Complete API',
-    description: 'Generated CRUD + Custom Endpoints',
-  },
-  paths: {
-    '/auth/login': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'User login',
-        requestBody: {
-          required: true,
+// Define your custom endpoints
+const customPaths: OpenAPIV3_1.PathsObject = {
+  '/auth/login': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'User login',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                email: { type: 'string', format: 'email' },
+                password: { type: 'string' },
+              },
+              required: ['email', 'password'],
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Login successful',
           content: {
             'application/json': {
               schema: {
                 type: 'object',
                 properties: {
-                  email: { type: 'string', format: 'email' },
-                  password: { type: 'string' },
+                  token: { type: 'string' },
+                  user: { $ref: '#/components/schemas/User' },
                 },
-                required: ['email', 'password'],
               },
             },
           },
         },
-        responses: {
-          '200': {
-            description: 'Login successful',
-          },
+        '401': {
+          description: 'Invalid credentials',
         },
       },
     },
   },
+  '/analytics/stats': {
+    get: {
+      tags: ['Analytics'],
+      summary: 'Get application statistics',
+      responses: {
+        '200': {
+          description: 'Statistics retrieved',
+        },
+      },
+    },
+  },
+};
+
+// Merge specs
+const completeSpec: OpenAPIV3_1.Document = {
+  ...generatedOpenAPISpec,
+  info: {
+    ...generatedOpenAPISpec.info,
+    title: 'My Complete API',
+    description: 'Generated CRUD endpoints + Custom business logic',
+  },
+  paths: {
+    ...generatedOpenAPISpec.paths,
+    ...customPaths,
+  },
   components: {
+    ...generatedOpenAPISpec.components,
     securitySchemes: {
       bearerAuth: {
         type: 'http',
@@ -844,21 +982,84 @@ const customSpec = {
   security: [{ bearerAuth: [] }],
 };
 
-const completeSpec = mergeOpenAPISpec(customSpec);
-
-// Update the endpoint in your app or generated/rest/index.ts
-app.get('/cog/openapi.json', (c) => c.json(completeSpec));
+// Expose the merged specification
+app.get('/api/openapi.json', (c) => c.json(completeSpec));
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+}) as any);
 ```
+
+### Environment-Specific Documentation
+
+Expose documentation only in development:
+
+```typescript
+const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
+
+if (isDevelopment) {
+  app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
+  app.get('/docs/reference', Scalar({
+    url: '/docs/openapi.json',
+  }) as any);
+}
+```
+
+### Documentation UI Options
+
+COG-generated OpenAPI specs work with any documentation UI:
+
+**Scalar (Recommended):**
+```typescript
+import { Scalar } from '@scalar/hono-api-reference';
+
+app.get('/docs', Scalar({
+  url: '/api/openapi.json', // Point to your OpenAPI spec URL
+  theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
+}) as any);
+```
+
+**Swagger UI:**
+```typescript
+import { swaggerUI } from '@hono/swagger-ui';
+
+app.get('/docs/*', swaggerUI({ url: '/api/openapi.json' }));
+```
+
+**Redoc:**
+```typescript
+app.get('/docs', (c) => c.html(`
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <title>API Documentation</title>
+    </head>
+    <body>
+      <redoc spec-url="/api/openapi.json"></redoc>
+      <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+    </body>
+  </html>
+`));
+```
+
+### Disabling Documentation Generation
+
+If you don't need OpenAPI documentation at all, disable it during generation:
+
+```bash
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
+```
+
+This skips generating `openapi.ts` and `openapi.json` files, reducing generated code size.
 
 ### Features
 
-- **Zero Configuration** - Documentation endpoints work out of the box
-- **Always Up-to-Date** - Regenerating code automatically updates documentation
 - **Complete Coverage** - All CRUD and relationship endpoints documented
 - **Schema Definitions** - Full request/response schemas for all models
-- **Extendable** - Merge with custom OpenAPI specs for your endpoints
+- **Always Up-to-Date** - Regenerating code automatically updates the spec
 - **Type-Safe** - Uses TypeScript types from `openapi-types`
-- **Beautiful UI** - Modern, professional API reference powered by Scalar
+- **Extendable** - Easy to merge with custom endpoint specifications
+- **Flexible** - Works with any OpenAPI-compatible documentation UI
+- **Control** - You choose where and how to expose documentation
 
 ## Requirements
 

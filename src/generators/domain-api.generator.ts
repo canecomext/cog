@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { ModelDefinition, FieldDefinition } from '../types/model.types.ts';
 
 /**
  * Generates domain API layer with CRUD operations and hooks
@@ -35,28 +35,28 @@ export class DomainAPIGenerator {
    * Generate hooks types
    */
   private generateHooksTypes(): string {
-    return `import { SQL } from 'drizzle-orm';
+    return `import { SQL } from 'npm:drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
 
 /**
- * Hook context that receives all variables from the Hono context.
- * The generic EnvVars type will contain all custom variables defined 
+ * Domain hook context that receives all variables from the Hono context.
+ * The generic DomainEnvVars type will contain all custom variables defined
  * in your application's Env type.
- * 
+ *
  * Example:
  * If your Env type has Variables: { requestId?: string; userId?: string; tenantId?: string }
  * Then in hooks you can access: context.requestId, context.userId, context.tenantId
  */
-export type HookContext<EnvVars extends Record<string, any> = Record<string, any>> = EnvVars;
+export type DomainHookContext<DomainEnvVars extends Record<string, any> = Record<string, any>> = DomainEnvVars;
 
-export interface PreHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainPreHookResult<T, DomainEnvVars extends Record<string, any> = Record<string, any>> {
   data: T;
-  context?: HookContext<EnvVars>;
+  context?: DomainHookContext<DomainEnvVars>;
 }
 
-export interface PostHookResult<T, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainPostHookResult<T, DomainEnvVars extends Record<string, any> = Record<string, any>> {
   data: T;
-  context?: HookContext<EnvVars>;
+  context?: DomainHookContext<DomainEnvVars>;
 }
 
 export interface FilterOptions {
@@ -65,44 +65,46 @@ export interface FilterOptions {
 }
 
 /**
- * CRUD hooks with input validation.
- * 
+ * Domain layer hooks with input validation.
+ *
+ * These hooks run at the domain layer within database transactions.
+ *
  * Input Validation Flow:
  * 1. Input is validated with Zod schema BEFORE pre-hook is called
  * 2. Pre-hook receives validated input and can modify it
  * 3. Pre-hook output is validated with Zod schema BEFORE main operation
  * 4. This ensures pre-hooks cannot emit malformed data to operations
- * 
+ *
  * All validation uses Zod schemas generated from Drizzle table definitions.
  * Validation errors will throw ZodError with detailed error information.
- * 
- * The generic EnvVars type allows you to specify your Env Variables type for type-safe
+ *
+ * The generic DomainEnvVars type allows you to specify your Env Variables type for type-safe
  * access to context variables in hooks.
  */
-export interface CRUDHooks<T, CreateInput, UpdateInput, EnvVars extends Record<string, any> = Record<string, any>> {
+export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends Record<string, any> = Record<string, any>> {
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
   // Note: context contains all variables from your Env type
-  preCreate?: (input: CreateInput, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<CreateInput, EnvVars>>;
-  preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<UpdateInput, EnvVars>>;
-  preDelete?: (id: string, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindById?: (id: string, tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PreHookResult<{ id: string }, EnvVars>>;
-  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: HookContext<EnvVars>) => Promise<PreHookResult<FilterOptions, EnvVars>>;
+  preCreate?: (input: CreateInput, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<CreateInput, DomainEnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<UpdateInput, DomainEnvVars>>;
+  preDelete?: (id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ id: string }, DomainEnvVars>>;
+  preFindById?: (id: string, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ id: string }, DomainEnvVars>>;
+  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<FilterOptions, DomainEnvVars>>;
 
   // Post-operation hooks (within transaction)
-  postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postDelete?: (id: string, result: T, tx: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T, EnvVars>>;
-  postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T | null, EnvVars>>;
-  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: HookContext<EnvVars>) => Promise<PostHookResult<T[], EnvVars>>;
+  postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
+  postDelete?: (id: string, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
+  postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T | null, DomainEnvVars>>;
+  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T[], DomainEnvVars>>;
 
   // After-operation hooks (outside transaction, async)
-  afterCreate?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
-  afterUpdate?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
-  afterDelete?: (result: T, context?: HookContext<EnvVars>) => Promise<void>;
-  afterFindById?: (result: T | null, context?: HookContext<EnvVars>) => Promise<void>;
-  afterFindMany?: (results: T[], context?: HookContext<EnvVars>) => Promise<void>;
+  afterCreate?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterUpdate?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterDelete?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterFindById?: (result: T | null, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterFindMany?: (results: T[], context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
 }
 
 export interface PaginationOptions {
@@ -110,6 +112,32 @@ export interface PaginationOptions {
   offset?: number;
   orderBy?: string;
   orderDirection?: 'asc' | 'desc';
+}
+
+/**
+ * Junction table hooks for many-to-many relationship operations.
+ * These hooks run at the domain layer within database transactions.
+ * For batch operations (addMultiple, removeMultiple), the singular hooks are called for each item.
+ *
+ * The hook functions receive an object with field names matching the junction table's foreign keys.
+ * For example, for a user_roles table with user_id and role_id fields:
+ * preAddJunction({ user_id: '123', role_id: '456' }, tx, context)
+ *
+ * The generic DomainEnvVars type allows you to specify your Env Variables type for type-safe
+ * access to context variables in hooks.
+ */
+export interface JunctionTableHooks<DomainEnvVars extends Record<string, any> = Record<string, any>> {
+  // Pre-operation hooks (within transaction)
+  preAddJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
+  preRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
+
+  // Post-operation hooks (within transaction)
+  postAddJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+
+  // After-operation hooks (outside transaction, async)
+  afterAddJunction?: (ids: Record<string, string>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterRemoveJunction?: (ids: Record<string, string>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
 }
 `;
   }
@@ -134,26 +162,32 @@ export interface PaginationOptions {
     } else if (hasRelationships) {
       drizzleImports += ", inArray";
     }
-    drizzleImports += " } from 'drizzle-orm';";
+    drizzleImports += " } from 'npm:drizzle-orm';";
 
     return `${drizzleImports}
-import { HTTPException } from '@hono/hono/http-exception';
+import { HTTPException } from 'jsr:@hono/hono/http-exception';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
-import { CRUDHooks, HookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
+${this.generateJunctionTableImports(model)}
+import { DomainHooks, JunctionTableHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
 
-export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<string, any>> {
-  private hooks: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>;
+export class ${modelName}Domain<DomainEnvVars extends Record<string, any> = Record<string, any>> {
+  private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
+  ${this.generateJunctionHooksFields(model)}
 
-  constructor(hooks?: CRUDHooks<${modelName}, New${modelName}, Partial<New${modelName}>, EnvVars>) {
+  constructor(
+    hooks?: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>,
+    ${this.generateJunctionHooksParams(model)}
+  ) {
     this.hooks = hooks || {};
+    ${this.generateJunctionHooksAssignments(model)}
   }
 
   /**
    * Create a new ${modelName}
    */
-  async create(input: New${modelName}, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
+  async create(input: New${modelName}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook
     const validatedInput = ${modelNameLower}InsertSchema.parse(input);
 
@@ -163,13 +197,17 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
       const preResult = await this.hooks.preCreate(validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}InsertSchema.parse(preResult.data);
-      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
+
+    // Strip protected timestamp fields (createdAt, updatedAt) - database defaults will apply
+    // Allow custom id field if provided (useful for migrations, testing, data imports)
+    const { createdAt: _, updatedAt: __, ...safeInput } = processedInput as any;
 
     // Perform create operation
     const [created] = await tx
       .insert(${modelNameLower}Table)
-      .values(processedInput)
+      .values(safeInput)
       .returning();
 
     // Post-create hook (within transaction)
@@ -177,7 +215,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     if (this.hooks.postCreate) {
       const postResult = await this.hooks.postCreate(processedInput, created, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-create hook (outside transaction, after post-hook)
@@ -194,7 +232,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
   /**
    * Find ${modelName} by ID
    */
-  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: HookContext<EnvVars>): Promise<${modelName} | null> {
+  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName} | null> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
 
@@ -202,7 +240,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     if (this.hooks.preFindById) {
       const preResult = await this.hooks.preFindById(id, tx, context);
       id = preResult.data.id;
-      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // Build query
@@ -224,7 +262,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
       if (postResult.data !== null) {
         finalResult = postResult.data;
       }
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-find hook (outside transaction, after post-hook)
@@ -244,7 +282,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     tx?: DbTransaction,
     filter?: FilterOptions,
     pagination?: PaginationOptions,
-    context?: HookContext<EnvVars>,
+    context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
@@ -253,7 +291,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     if (this.hooks.preFindMany) {
       const preResult = await this.hooks.preFindMany(tx, filter, context);
       filter = preResult.data as FilterOptions;
-      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // Build query with chaining to avoid type issues
@@ -304,7 +342,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     const finalResults = this.hooks.postFindMany
       ? await (async () => {
           const postResult = await this.hooks.postFindMany!(filter, results, tx, context);
-          context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+          context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
           return postResult.data;
         })()
       : results;
@@ -325,7 +363,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
   /**
    * Update ${modelName}
    */
-  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
+  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Validate input before pre-hook (partial update)
     const validatedInput = ${modelNameLower}UpdateSchema.parse(input);
 
@@ -335,14 +373,18 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
       const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data);
-      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
+
+    // Strip protected fields (id, createdAt, updatedAt) to prevent modification
+    // These fields are managed by the domain layer and cannot be overridden
+    const { id: _, createdAt: __, updatedAt: ___, ...safeInput } = processedInput as any;
 
     // Perform update
     const [updated] = await tx
       .update(${modelNameLower}Table)
       .set({
-        ...processedInput,
+        ...safeInput,
         ${model.timestamps ? 'updatedAt: new Date(),' : ''}
       })
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id))
@@ -357,7 +399,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     if (this.hooks.postUpdate) {
       const postResult = await this.hooks.postUpdate(id, processedInput, updated, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-update hook (outside transaction, after post-hook)
@@ -373,16 +415,16 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
   /**
    * Delete ${modelName}
    */
-  async delete(id: string, tx: DbTransaction, context?: HookContext<EnvVars>): Promise<${modelName}> {
+  async delete(id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Pre-delete hook
     if (this.hooks.preDelete) {
       const preResult = await this.hooks.preDelete(id, tx, context);
       id = preResult.data.id;
-      context = { ...context, ...preResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // Perform delete
-    ${model.softDelete ? this.generateSoftDelete(model, 'tx') : this.generateHardDelete(model, 'tx')}
+    ${this.generateHardDelete(model, 'tx')}
 
     if (!deleted) {
       throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
@@ -393,7 +435,7 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
     if (this.hooks.postDelete) {
       const postResult = await this.hooks.postDelete(id, deleted, tx, context);
       result = postResult.data;
-      context = { ...context, ...postResult.context } as HookContext<EnvVars>;
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-delete hook (outside transaction, after post-hook)
@@ -412,6 +454,34 @@ export class ${modelName}Domain<EnvVars extends Record<string, any> = Record<str
 // Export singleton instance (uses default Record<string, any> for EnvVars)
 export const ${modelNameLower}Domain = new ${modelName}Domain();
 `;
+  }
+
+  /**
+   * Generate junction table imports for many-to-many relationships
+   */
+  private generateJunctionTableImports(model: ModelDefinition): string {
+    if (!model.relationships || model.relationships.length === 0) {
+      return '';
+    }
+
+    const imports: string[] = [];
+    const addedImports = new Set<string>();
+
+    for (const rel of model.relationships) {
+      // Add junction table insert type imports for manyToMany relationships
+      if (rel.type === 'manyToMany' && rel.through && !addedImports.has(rel.through)) {
+        const junctionTableName = rel.through.toLowerCase();
+        // Type name matches schema export: User_spaces (capitalize first part only)
+        const parts = rel.through.split('_');
+        const junctionTypeName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_');
+        imports.push(
+          `import { type New${junctionTypeName} } from '../schema/${junctionTableName}.schema.ts';`,
+        );
+        addedImports.add(rel.through);
+      }
+    }
+
+    return imports.length > 0 ? imports.join('\n') : '';
   }
 
   /**
@@ -490,7 +560,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
         code += `          // Load ${rel.name} (manyToMany)\n`;
         code += `          const ${rel.name}Result = await db\n`;
-        code += `            .select({ ${rel.target.toLowerCase()}: ${rel.target.toLowerCase()}Table })\n`;
+        code += `            .select()\n`;
         code += `            .from(${junctionTable}Table)\n`;
         code += `            .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `            .where(eq(${junctionTable}Table.${sourceFK}, id));\n`;
@@ -596,18 +666,15 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `        // Load ${rel.name} (manyToMany) for all results\n`;
         code += `        const resultIds = results.map(r => r.id);\n`;
         code += `        const ${rel.name}Data = await db\n`;
-        code += `          .select({ \n`;
-        code += `            ${sourceFK}: ${junctionTable}Table.${sourceFK},\n`;
-        code += `            ${rel.target.toLowerCase()}: ${rel.target.toLowerCase()}Table \n`;
-        code += `          })\n`;
+        code += `          .select()\n`;
         code += `          .from(${junctionTable}Table)\n`;
         code += `          .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `          .where(inArray(${junctionTable}Table.${sourceFK}, resultIds));\n`;
         code += `        const ${rel.name}Map = new Map<string, any[]>();\n`;
         code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
         code += `        ${rel.name}Data.forEach(item => {\n`;
-        code += `          if (item.${sourceFK}) {\n`;
-        code += `            const list = ${rel.name}Map.get(item.${sourceFK});\n`;
+        code += `          if (item.${junctionTable}.${sourceFK}) {\n`;
+        code += `            const list = ${rel.name}Map.get(item.${junctionTable}.${sourceFK});\n`;
         code += `            if (list) list.push(item.${rel.target.toLowerCase()});\n`;
         code += `          }\n`;
         code += `        });\n`;
@@ -665,23 +732,6 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Generate soft delete logic
-   */
-  private generateSoftDelete(
-    model: ModelDefinition,
-    txVar: string = 'tx',
-  ): string {
-    return `const [deleted] = await ${txVar}
-        .update(${model.name.toLowerCase()}Table)
-        .set({ 
-          deletedAt: new Date(),
-          ${model.timestamps ? 'updatedAt: new Date()' : ''}
-        })
-        .where(eq(${model.name.toLowerCase()}Table.${model.fields.find((f) => f.primaryKey)?.name || 'id'}, id))
-        .returning();`;
-  }
-
-  /**
    * Generate hard delete logic
    */
   private generateHardDelete(
@@ -706,14 +756,15 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     for (const rel of model.relationships) {
       if (rel.type === 'oneToMany') {
+        const targetName = rel.target;
         methods.push(`
   /**
    * Get ${rel.name} for ${model.name}
    */
-  async get${this.capitalize(rel.name)}(id: string, tx?: DbTransaction): Promise<unknown[]> {
+  async get${targetName}List(id: string, tx?: DbTransaction): Promise<unknown[]> {
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
-    
+
     return await db
       .select()
       .from(${rel.target.toLowerCase()}Table)
@@ -730,112 +781,151 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
         const sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
 
-        // Import junction table at the top of the file (this will be handled separately)
+        // Derive singular form by removing "List" suffix if present
+        const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
+        const SingularRelName = this.capitalize(singularRelName);
 
         methods.push(`
   /**
    * Get ${relName} for ${model.name}
    */
-  async get${RelName}(id: string, tx?: DbTransaction): Promise<${targetName}[]> {
+  async get${RelName}(id: string, tx?: DbTransaction): Promise<Array<${targetName}>> {
     const db = tx || withoutTransaction();
-    
+
     const result = await db
-      .select({ ${targetNameLower}: ${targetNameLower}Table })
+      .select()
       .from(${junctionTable}Table)
       .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
       .where(eq(${junctionTable}Table.${sourceFK}, id));
-    
+
     return result.map(r => r.${targetNameLower});
   }
 
   /**
-   * Add ${relName} to ${model.name}
+   * Add ${singularRelName} to ${model.name}
    */
-  async add${this.singularize(RelName)}(id: string, ${
-          this.singularize(targetNameLower)
-        }Id: string, tx: DbTransaction): Promise<void> {
+  async add${SingularRelName}(id: string, ${targetNameLower}Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+    // Pre-add hook
+    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    if (this.${relName}JunctionHooks.preAddJunction) {
+      const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, tx, context);
+      ids = preResult.data.ids as typeof ids;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
+    }
+
+    // Perform add operation
     await tx.insert(${junctionTable}Table).values({
-      ${sourceFK}: id,
-      ${targetFK}: ${this.singularize(targetNameLower)}Id
-    });
+      ${sourceFK}: ids.${this.toCamelCase(sourceFK)},
+      ${targetFK}: ids.${this.toCamelCase(targetFK)}
+    } as New${(() => { const parts = rel.through.split('_'); return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_'); })()});
+
+    // Post-add hook
+    if (this.${relName}JunctionHooks.postAddJunction) {
+      const postResult = await this.${relName}JunctionHooks.postAddJunction(ids, tx, context);
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
+    }
+
+    // After-add hook (outside transaction, async)
+    if (this.${relName}JunctionHooks.afterAddJunction) {
+      setTimeout(() => {
+        this.${relName}JunctionHooks.afterAddJunction!(ids, context).catch(console.error);
+      }, 0);
+    }
   }
 
   /**
    * Add multiple ${relName} to ${model.name}
    */
-  async add${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+  async add${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     if (${targetNameLower}Ids.length === 0) return;
-    
-    const values = ${targetNameLower}Ids.map(${this.singularize(targetNameLower)}Id => ({
-      ${sourceFK}: id,
-      ${targetFK}: ${this.singularize(targetNameLower)}Id
-    }));
-    
-    await tx.insert(${junctionTable}Table).values(values);
+
+    // Call singular add method for each item to trigger hooks
+    for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
+      await this.add${SingularRelName}(id, ${targetNameLower}Id, tx, context);
+    }
   }
 
   /**
-   * Remove ${this.singularize(relName)} from ${model.name}
+   * Remove ${singularRelName} from ${model.name}
    */
-  async remove${this.singularize(RelName)}(id: string, ${
-          this.singularize(targetNameLower)
-        }Id: string, tx: DbTransaction): Promise<void> {
+  async remove${SingularRelName}(id: string, ${
+          targetNameLower
+        }Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+    // Pre-remove hook
+    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    if (this.${relName}JunctionHooks.preRemoveJunction) {
+      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, tx, context);
+      ids = preResult.data.ids as typeof ids;
+      context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
+    }
+
+    // Perform remove operation
     await tx.delete(${junctionTable}Table)
       .where(
         and(
-          eq(${junctionTable}Table.${sourceFK}, id),
-          eq(${junctionTable}Table.${targetFK}, ${this.singularize(targetNameLower)}Id)
+          eq(${junctionTable}Table.${sourceFK}, ids.${this.toCamelCase(sourceFK)}),
+          eq(${junctionTable}Table.${targetFK}, ids.${this.toCamelCase(targetFK)})
         )
       );
+
+    // Post-remove hook
+    if (this.${relName}JunctionHooks.postRemoveJunction) {
+      const postResult = await this.${relName}JunctionHooks.postRemoveJunction(ids, tx, context);
+      context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
+    }
+
+    // After-remove hook (outside transaction, async)
+    if (this.${relName}JunctionHooks.afterRemoveJunction) {
+      setTimeout(() => {
+        this.${relName}JunctionHooks.afterRemoveJunction!(ids, context).catch(console.error);
+      }, 0);
+    }
   }
 
   /**
    * Remove multiple ${relName} from ${model.name}
    */
-  async remove${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+  async remove${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     if (${targetNameLower}Ids.length === 0) return;
-    
-    await tx.delete(${junctionTable}Table)
-      .where(
-        and(
-          eq(${junctionTable}Table.${sourceFK}, id),
-          inArray(${junctionTable}Table.${targetFK}, ${targetNameLower}Ids)
-        )
-      );
+
+    // Call singular remove method for each item to trigger hooks
+    for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
+      await this.remove${SingularRelName}(id, ${targetNameLower}Id, tx, context);
+    }
   }
 
   /**
    * Set ${relName} for ${model.name} (replace all)
    */
-  async set${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction): Promise<void> {
+  async set${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Delete all existing relationships
     await tx.delete(${junctionTable}Table)
       .where(eq(${junctionTable}Table.${sourceFK}, id));
-    
-    // Add new relationships
+
+    // Add new relationships (hooks will be called for each item)
     if (${targetNameLower}Ids.length > 0) {
-      await this.add${RelName}(id, ${targetNameLower}Ids, tx);
+      await this.add${RelName}(id, ${targetNameLower}Ids, tx, context);
     }
   }
 
   /**
-   * Check if ${model.name} has a specific ${this.singularize(relName)}
+   * Check if ${model.name} has a specific ${singularRelName}
    */
-  async has${this.singularize(RelName)}(id: string, ${
-          this.singularize(targetNameLower)
+  async has${SingularRelName}(id: string, ${
+          targetNameLower
         }Id: string, tx?: DbTransaction): Promise<boolean> {
     const db = tx || withoutTransaction();
-    
+
     const result = await db
       .select({ count: sql<number>\`count(*)\` })
       .from(${junctionTable}Table)
       .where(
         and(
           eq(${junctionTable}Table.${sourceFK}, id),
-          eq(${junctionTable}Table.${targetFK}, ${this.singularize(targetNameLower)}Id)
+          eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Id)
         )
       );
-    
+
     return result[0].count > 0;
   }`);
       }
@@ -875,19 +965,91 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Simple singularization
+   * Convert snake_case to camelCase
    */
-  private singularize(word: string): string {
-    // Handle common patterns
-    if (word.endsWith('ies')) {
-      return word.slice(0, -3) + 'y';
+  private toCamelCase(str: string): string {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+
+  /**
+   * Get TypeScript type for a field
+   */
+  private getTypeScriptType(fieldType: string, field?: FieldDefinition): string {
+    // If it's an enum field with values, generate union type
+    if (fieldType === 'enum' && field) {
+      if (field.enumValues && field.enumValues.length > 0) {
+        return field.enumValues.map(v => `"${v}"`).join(' | ');
+      }
     }
-    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches') || word.endsWith('shes')) {
-      return word.slice(0, -2);
-    }
-    if (word.endsWith('s') && !word.endsWith('ss')) {
-      return word.slice(0, -1);
-    }
-    return word;
+    
+    const typeMap: Record<string, string> = {
+      'text': 'string',
+      'string': 'string',
+      'integer': 'number',
+      'bigint': 'number',
+      'decimal': 'number',
+      'boolean': 'boolean',
+      'date': 'Date',
+      'uuid': 'string',
+      'json': 'any',
+      'jsonb': 'any',
+      'enum': 'string',
+      // PostGIS types
+      'point': 'any',
+      'linestring': 'any',
+      'polygon': 'any',
+      'multipoint': 'any',
+      'multilinestring': 'any',
+      'multipolygon': 'any',
+      'geometry': 'any',
+      'geography': 'any',
+    };
+    return typeMap[fieldType] || 'any';
+  }
+
+  /**
+   * Generate junction hooks fields for domain class
+   */
+  private generateJunctionHooksFields(model: ModelDefinition): string {
+    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    if (manyToManyRels.length === 0) return '';
+
+    const fields = manyToManyRels.map(rel => {
+      const relName = rel.name;
+      return `private ${relName}JunctionHooks: JunctionTableHooks<DomainEnvVars>;`;
+    });
+
+    return fields.join('\n  ');
+  }
+
+  /**
+   * Generate junction hooks constructor parameters
+   */
+  private generateJunctionHooksParams(model: ModelDefinition): string {
+    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    if (manyToManyRels.length === 0) return '';
+
+    const params = manyToManyRels.map(rel => {
+      const relName = rel.name;
+      return `${relName}JunctionHooks?: JunctionTableHooks<DomainEnvVars>`;
+    });
+
+    return params.join(',\n    ');
+  }
+
+  /**
+   * Generate junction hooks assignments in constructor
+   */
+  private generateJunctionHooksAssignments(model: ModelDefinition): string {
+    const manyToManyRels = model.relationships?.filter(rel => rel.type === 'manyToMany') || [];
+    if (manyToManyRels.length === 0) return '';
+    
+    const assignments = manyToManyRels.map(rel => {
+      const relName = rel.name;
+      return `this.${relName}JunctionHooks = ${relName}JunctionHooks || {};`;
+    });
+    
+    return assignments.join('\n    ');
   }
 }

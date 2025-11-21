@@ -1,0 +1,95 @@
+{
+  "name": "Employee",
+  "tableName": "employee",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "firstName",
+      "type": "string",
+      "maxLength": 50,
+      "required": true
+    },
+    {
+      "name": "lastName",
+      "type": "string",
+      "maxLength": 50,
+      "required": true
+    },
+    {
+      "name": "email",
+      "type": "string",
+      "maxLength": 100,
+      "required": true,
+      "unique": true
+    },
+    {
+      "name": "departmentId",
+      "type": "uuid",
+      "required": true,
+      "references": {
+        "model": "Department",
+        "field": "id",
+        "onDelete": "RESTRICT"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "type": "manyToOne",
+      "name": "department",
+      "target": "Department",
+      "foreignKey": "departmentId"
+    },
+    {
+      "type": "oneToMany",
+      "name": "assignmentList",
+      "target": "Assignment",
+      "foreignKey": "employeeId"
+    },
+    {
+      "type": "oneToOne",
+      "name": "idCard",
+      "target": "IDCard",
+      "foreignKey": "employeeId"
+    },
+    {
+      "type": "manyToMany",
+      "name": "skillList",
+      "target": "Skill",
+      "through": "employee_skill",
+      "foreignKey": "employee_id",
+      "targetForeignKey": "skill_id"
+    },
+    {
+      "type": "manyToMany",
+      "name": "menteeList",
+      "target": "Employee",
+      "through": "employee_mentor",
+      "foreignKey": "mentor_id",
+      "targetForeignKey": "mentee_id"
+    },
+    {
+      "type": "manyToMany",
+      "name": "mentorList",
+      "target": "Employee",
+      "through": "employee_mentor",
+      "foreignKey": "mentee_id",
+      "targetForeignKey": "mentor_id"
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["email"]
+    },
+    {
+      "fields": ["departmentId"]
+    }
+  ],
+  "timestamps": true
+}

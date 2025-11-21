@@ -1,4 +1,9 @@
-import { ModelDefinition, ValidationError, FieldDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import {
+  ModelDefinition,
+  ValidationError,
+  FieldDefinition,
+  RelationshipDefinition
+} from '../types/model.types.ts';
 
 /**
  * Parser for reading and validating model definitions from JSON files
@@ -10,7 +15,10 @@ export class ModelParser {
   /**
    * Parse models from a directory containing JSON files
    */
-  async parseModelsFromDirectory(dirPath: string): Promise<{ models: ModelDefinition[]; errors: ValidationError[] }> {
+  async parseModelsFromDirectory(dirPath: string): Promise<{
+    models: ModelDefinition[];
+    errors: ValidationError[]
+  }> {
     this.models.clear();
     this.errors = [];
 
@@ -25,7 +33,7 @@ export class ModelParser {
 
       // Validate relationships after all models are loaded
       this.validateRelationships();
-      
+
       return {
         models: Array.from(this.models.values()),
         errors: this.errors
@@ -123,18 +131,23 @@ export class ModelParser {
       if (!enums) return null;
     }
 
+    // Validate check constraints if present
+    if (data.check) {
+      const checkValid = this.validateCheckConstraints(data.check, data.name, fields);
+      if (!checkValid) return null;
+    }
+
     // Build the model
     const model: ModelDefinition = {
       name: data.name,
       tableName: data.tableName,
-      plural: data.plural, // Add support for custom plural
       fields,
       enums,
       schema: data.schema,
       relationships: data.relationships || [],
       indexes: data.indexes || [],
+      check: data.check,
       timestamps: data.timestamps,
-      softDelete: data.softDelete,
       description: data.description,
       hooks: data.hooks
     };
@@ -416,5 +429,117 @@ export class ModelParser {
       'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
     ];
     return postgisTypes.includes(type);
+  }
+
+  /**
+   * Validate check constraints
+   */
+  private validateCheckConstraints(
+    checkConstraints: any,
+    modelName: string,
+    fields: FieldDefinition[]
+  ): boolean {
+    if (typeof checkConstraints !== 'object' || checkConstraints === null) {
+      this.errors.push({
+        model: modelName,
+        message: `Check constraints must be an object`,
+        severity: 'error'
+      });
+      return false;
+    }
+
+    // Validate numNotNulls check constraints
+    if (checkConstraints.numNotNulls) {
+      const constraintDefs = checkConstraints.numNotNulls;
+
+      if (!Array.isArray(constraintDefs)) {
+        this.errors.push({
+          model: modelName,
+          message: `Check constraint 'numNotNulls' must be an array`,
+          severity: 'error'
+        });
+        return false;
+      }
+
+      for (const constraintDef of constraintDefs) {
+        // Validate structure
+        if (typeof constraintDef !== 'object' || constraintDef === null) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' must contain objects with 'fields' and 'num' properties`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate fields property
+        if (!Array.isArray(constraintDef.fields) || constraintDef.fields.length === 0) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' must have non-empty 'fields' array`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate num property
+        if (typeof constraintDef.num !== 'number' || !Number.isInteger(constraintDef.num) || constraintDef.num < 1) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' must have 'num' as a positive integer`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate num is reasonable (between 1 and field count)
+        if (constraintDef.num > constraintDef.fields.length) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' 'num' (${constraintDef.num}) cannot exceed field count (${constraintDef.fields.length})`,
+            severity: 'error'
+          });
+          return false;
+        }
+
+        // Validate that all field names are strings
+        for (const fieldName of constraintDef.fields) {
+          if (typeof fieldName !== 'string' || fieldName.trim() === '') {
+            this.errors.push({
+              model: modelName,
+              message: `Check constraint 'numNotNulls' must contain valid field name strings`,
+              severity: 'error'
+            });
+            return false;
+          }
+        }
+
+        // Validate that all referenced fields exist in the model
+        const modelFieldNames = new Set(fields.map(f => f.name));
+        for (const fieldName of constraintDef.fields) {
+          if (!modelFieldNames.has(fieldName)) {
+            this.errors.push({
+              model: modelName,
+              message: `Check constraint 'numNotNulls' references non-existent field: ${fieldName}`,
+              severity: 'error'
+            });
+            return false;
+          }
+        }
+
+        // Check for duplicate field names within same constraint
+        const uniqueFields = new Set(constraintDef.fields);
+        if (uniqueFields.size !== constraintDef.fields.length) {
+          this.errors.push({
+            model: modelName,
+            message: `Check constraint 'numNotNulls' has duplicate field names`,
+            severity: 'error'
+          });
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 }

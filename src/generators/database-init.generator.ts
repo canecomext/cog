@@ -22,17 +22,18 @@ export class DatabaseInitGenerator {
    */
   generateDatabaseInitialization(): string {
     const createPostgis = this.postgis
-      ? "\n    // Create PostGIS extension\n    await sql`CREATE EXTENSION IF NOT EXISTS postgis`;\n    console.log('PostGIS extension created');"
+      ? "\n    // Create PostGIS extension\n    await sql`CREATE EXTENSION IF NOT EXISTS postgis`;\n    logger.info?.('PostGIS extension created');"
       : '';
 
     // Remove extra indentation and fix template
-    return `import { connect, DatabaseConfig, disconnect, getSQL } from './database.ts';
+    return `import { connect, DatabaseConfig, disconnect, getSQL, getLogger } from './database.ts';
 
 // Handle interruption signals
 Deno.addSignalListener("SIGINT", async () => {
-  console.log('\\nReceived interrupt signal');
+  const logger = getLogger();
+  logger.info?.('\\nReceived interrupt signal');
   await disconnect();
-  console.log('Database connection closed');
+  logger.info?.('Database connection closed');
   Deno.exit(0);
 });
 
@@ -40,29 +41,35 @@ export async function initializeDatabase(config: DatabaseConfig) {
   try {
     // Initialize database with the existing configuration
     await connect(config);
-    
+
     const sql = getSQL();
+    const logger = getLogger();
 ${createPostgis}
 
     // Drop existing tables (in reverse dependency order)
 ${this.generateTableDropSQL()}
 
-    // Create tables
+    // Create tables (without foreign key constraints)
 ${this.generateTableCreationSQL()}
 
-    // Create junction tables for many-to-many relationships
+    // Create junction tables for many-to-many relationships (without foreign key constraints)
 ${this.generateJunctionTableCreationSQL()}
+
+    // Add foreign key constraints (after all tables exist)
+${this.generateForeignKeyConstraintsSQL()}
 
     // Create indexes
 ${this.generateIndexCreationSQL()}
 
-    console.log('Database initialization completed successfully');
+    logger.info?.('Database initialization completed successfully');
   } catch (error) {
-    console.error('Error during database initialization:', error);
+    const logger = getLogger();
+    logger.error?.('Error during database initialization:', error);
     throw error;
   } finally {
+    const logger = getLogger();
     await disconnect();
-    console.log('Database connection closed');
+    logger.info?.('Database connection closed');
   }
 }
 `;
@@ -72,11 +79,11 @@ ${this.generateIndexCreationSQL()}
    * Generate database utility file
    */
   generateDatabaseInit(): string {
-    return `import { drizzle } from "drizzle-orm/postgres-js";
-import type { ExtractTablesWithRelations } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
-import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+    return `import { drizzle } from "npm:drizzle-orm/postgres-js";
+import type { ExtractTablesWithRelations } from "npm:drizzle-orm";
+import type { PgTransaction } from "npm:drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "npm:drizzle-orm/postgres-js";
+import postgres from "npm:postgres";
 import * as schema from "../schema/index.ts";
 
 // Export transaction type for use in domain layer
@@ -112,13 +119,39 @@ export interface DatabaseConfig {
   idle_timeout?: number;
 }
 
+// Logger configuration with defaults
+export interface Logger {
+  trace?: (message: string, ...args: any[]) => void;
+  debug?: (message: string, ...args: any[]) => void;
+  info?: (message: string, ...args: any[]) => void;
+  warn?: (message: string, ...args: any[]) => void;
+  error?: (message: string, ...args: any[]) => void;
+}
+
 let db: ReturnType<typeof drizzle> | null = null;
 let sql: postgres.Sql<{}> | null = null;
+let logger: Logger = {
+  trace: console.log,
+  debug: console.log,
+  info: console.log,
+  warn: console.warn,
+  error: console.error,
+};
 
 /**
  * Initialize database connection
  */
-export async function connect(config: DatabaseConfig) {
+export async function connect(config: DatabaseConfig, logging?: Logger) {
+  // Configure logger with provided functions or defaults
+  if (logging) {
+    logger = {
+      trace: logging.trace || console.log,
+      debug: logging.debug || console.log,
+      info: logging.info || console.log,
+      warn: logging.warn || console.warn,
+      error: logging.error || console.error,
+    };
+  }
   if (db) {
     return { db, sql };
   }
@@ -149,9 +182,9 @@ export async function connect(config: DatabaseConfig) {
   // Test connection
   try {
     await sql\`SELECT 1\`;
-    console.log('Database connected successfully');
+    logger.info?.('Database connected successfully');
   } catch (error) {
-    console.error('Failed to connect to database:', error);
+    logger.error?.('Failed to connect to database:', error);
     throw error;
   }
 
@@ -170,6 +203,35 @@ export function withoutTransaction() {
 
 /**
  * Execute database operations within a transaction context
+ *
+ * Automatically retries transactions on serialization errors (error code 40001)
+ * which commonly occur in CockroachDB and PostgreSQL under high concurrency.
+ *
+ * @param callback - Function to execute within the transaction
+ * @param options - Transaction and retry configuration options
+ * @returns Result of the transaction callback
+ *
+ * @example
+ * \`\`\`typescript
+ * // Default behavior with automatic retries
+ * await withTransaction(async (tx) => {
+ *   await userDomain.create(userData, tx);
+ * });
+ *
+ * // Disable retries for specific transaction
+ * await withTransaction(async (tx) => {
+ *   // ... operations
+ * }, { enableRetry: false });
+ *
+ * // Custom retry configuration
+ * await withTransaction(async (tx) => {
+ *   // ... operations
+ * }, {
+ *   maxRetries: 10,
+ *   initialDelayMs: 100,
+ *   maxDelayMs: 10000
+ * });
+ * \`\`\`
  */
 export async function withTransaction<T>(
   callback: (tx: DbTransaction) => Promise<T>,
@@ -177,10 +239,62 @@ export async function withTransaction<T>(
     isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
     accessMode?: 'read write' | 'read only';
     deferrable?: boolean;
+    // Retry configuration for handling serialization errors (error code 40001)
+    maxRetries?: number;      // Maximum retry attempts (default: 5)
+    initialDelayMs?: number;  // Initial retry delay in milliseconds (default: 50)
+    maxDelayMs?: number;      // Maximum retry delay in milliseconds (default: 5000)
+    enableRetry?: boolean;    // Enable automatic retries (default: true)
   }
 ): Promise<T> {
   const database = withoutTransaction();
-  return await database.transaction(callback, options);
+  const maxRetries = options?.maxRetries ?? 5;
+  const initialDelay = options?.initialDelayMs ?? 50;
+  const maxDelay = options?.maxDelayMs ?? 5000;
+  const enableRetry = options?.enableRetry ?? true;
+
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Only pass transaction options if they're defined
+      // Passing undefined values causes Drizzle to generate invalid SQL
+      const txOptions: any = {};
+      if (options?.isolationLevel) txOptions.isolationLevel = options.isolationLevel;
+      if (options?.accessMode) txOptions.accessMode = options.accessMode;
+      if (options?.deferrable !== undefined) txOptions.deferrable = options.deferrable;
+
+      return await database.transaction(
+        callback,
+        Object.keys(txOptions).length > 0 ? txOptions : undefined
+      );
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if this is a serialization error (error code 40001)
+      // This occurs in both CockroachDB (WriteTooOldError) and PostgreSQL (serialization_failure)
+      const errorCode = error?.cause?.code || error?.code;
+      const isSerializationError = errorCode === '40001';
+
+      // Only retry on serialization errors if retries are enabled
+      if (!enableRetry || !isSerializationError || attempt >= maxRetries) {
+        throw error;
+      }
+
+      // Calculate exponential backoff with jitter
+      const backoff = initialDelay * Math.pow(2, attempt);
+      const jitter = backoff * 0.1 * (Math.random() - 0.5); // ±10% jitter
+      const delay = Math.min(backoff + jitter, maxDelay);
+
+      logger.warn?.(
+        '[withTransaction] Retrying transaction (attempt ' + (attempt + 1) + '/' + maxRetries + ') ' +
+        'after ' + Math.round(delay) + 'ms due to serialization error (code: ' + errorCode + ')'
+      );
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -191,6 +305,13 @@ export function getSQL(): postgres.Sql<{}> {
     throw new Error('Database not connected. Call connect(...) first.');
   }
   return sql;
+}
+
+/**
+ * Get configured logger instance
+ */
+export function getLogger(): Logger {
+  return logger;
 }
 
 /**
@@ -236,7 +357,7 @@ export async function healthCheck(): Promise<boolean> {
             processedJunctions.add(rel.through);
             const junctionTableName = rel.through.toLowerCase();
             drops.push(
-              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${junctionTableName}');`
+              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${junctionTableName}');`
             );
           }
         }
@@ -248,7 +369,7 @@ export async function healthCheck(): Promise<boolean> {
     for (const model of sortedModels) {
       const tableName = this.toSnakeCase(model.name);
       drops.push(
-        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    console.log('Dropped table if exists: ${tableName}');`
+        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${tableName}');`
       );
     }
     
@@ -325,6 +446,10 @@ export async function healthCheck(): Promise<boolean> {
 
           if (!sourcePK || !targetPK) continue;
 
+          // Get the SQL types for the foreign key columns
+          const sourceFKType = this.getColumnType(sourcePK).replace(' PRIMARY KEY', '').replace(' NOT NULL', '');
+          const targetFKType = this.getColumnType(targetPK).replace(' PRIMARY KEY', '').replace(' NOT NULL', '');
+
           // Generate the junction table name and columns
           const tableName = rel.through.toLowerCase();
           const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
@@ -332,24 +457,20 @@ export async function healthCheck(): Promise<boolean> {
 
           let tableSQL = `    await sql\`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
-        ${sourceFKColumn} UUID NOT NULL REFERENCES "${
-            this.toSnakeCase(model.name)
-          }"(${sourcePK.name}) ON DELETE CASCADE,
-        ${targetFKColumn} UUID NOT NULL REFERENCES "${
-            this.toSnakeCase(targetModel.name)
-          }"(${targetPK.name}) ON DELETE CASCADE,`;
+        ${sourceFKColumn} ${sourceFKType} NOT NULL,
+        ${targetFKColumn} ${targetFKType} NOT NULL`;
 
           // Add timestamps if enabled
           const hasTimestamps = model.timestamps || targetModel.timestamps;
           if (hasTimestamps) {
-            tableSQL += `
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,`;
+            tableSQL += `,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL`;
           }
 
-          tableSQL += `
+          tableSQL += `,
         PRIMARY KEY (${sourceFKColumn}, ${targetFKColumn})
       );\`;
-    console.log('Created junction table: ${tableName}');`;
+    logger.info?.('Created junction table: ${tableName}');`;
 
           junctionTables.push(tableSQL);
 
@@ -357,7 +478,7 @@ export async function healthCheck(): Promise<boolean> {
           const indexSQL = `    // Create indexes for ${tableName}
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${sourceFKColumn} ON "${tableName}"(${sourceFKColumn});\`;
     await sql\`CREATE INDEX IF NOT EXISTS idx_${tableName}_${targetFKColumn} ON "${tableName}"(${targetFKColumn});\`;
-    console.log('Created indexes for junction table: ${tableName}');`;
+    logger.info?.('Created indexes for junction table: ${tableName}');`;
 
           junctionTables.push(indexSQL);
         }
@@ -381,7 +502,7 @@ export async function healthCheck(): Promise<boolean> {
       CREATE TABLE IF NOT EXISTS "${tableName}" (
         ${columns}${constraints ? ',\n        ' + constraints : ''}
       );\`;
-    console.log('Created table: ${tableName}');`;
+    logger.info?.('Created table: ${tableName}');`;
     }).join('\n\n');
   }
 
@@ -417,15 +538,12 @@ export async function healthCheck(): Promise<boolean> {
       columns.push(`created_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
       columns.push(`updated_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
     }
-    if (model.softDelete) {
-      columns.push(`deleted_at TIMESTAMP`);
-    }
 
     return columns.join(',\n        ');
   }
 
   /**
-   * Generate constraints for a table
+   * Generate constraints for a table (excluding foreign key constraints)
    */
   private generateConstraintsSQL(model: ModelDefinition): string {
     const constraints = [];
@@ -438,24 +556,87 @@ export async function healthCheck(): Promise<boolean> {
       }
     }
 
-    // Foreign key constraints
-    for (const field of model.fields) {
-      if (field.references) {
-        const columnName = this.toSnakeCase(field.name);
-        const refTable = this.toSnakeCase(field.references.model);
-        const refColumn = field.references.field || 'id';
-        const onDelete = field.references.onDelete || 'NO ACTION';
-        const onUpdate = field.references.onUpdate || 'NO ACTION';
+    // Foreign key constraints are now added separately after all tables are created
+    // This avoids circular dependency issues
 
-        constraints.push(
-          `CONSTRAINT "${model.name.toLowerCase()}_${columnName}_fk" ` +
+    return constraints.join(',\n        ');
+  }
+
+  /**
+   * Generate SQL statements for foreign key constraint creation
+   */
+  private generateForeignKeyConstraintsSQL(): string {
+    const constraints: string[] = [];
+
+    // Add FK constraints for main tables
+    for (const model of this.models) {
+      const tableName = this.toSnakeCase(model.name);
+      
+      for (const field of model.fields) {
+        if (field.references) {
+          const columnName = this.toSnakeCase(field.name);
+          const refTable = this.toSnakeCase(field.references.model);
+          const refColumn = field.references.field || 'id';
+          const onDelete = field.references.onDelete || 'NO ACTION';
+          const onUpdate = field.references.onUpdate || 'NO ACTION';
+          const constraintName = `${model.name.toLowerCase()}_${columnName}_fk`;
+
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${constraintName}" ` +
             `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
-            `ON DELETE ${onDelete} ON UPDATE ${onUpdate}`,
-        );
+            `ON DELETE ${onDelete} ON UPDATE ${onUpdate};\`;\n` +
+            `    logger.info?.('Added FK constraint: ${constraintName}');`
+          );
+        }
       }
     }
 
-    return constraints.join(',\n        ');
+    // Add FK constraints for junction tables
+    const processedJunctions = new Set<string>();
+    for (const model of this.models) {
+      if (!model.relationships) continue;
+
+      for (const rel of model.relationships) {
+        if (rel.type === 'manyToMany' && rel.through) {
+          if (processedJunctions.has(rel.through)) continue;
+          processedJunctions.add(rel.through);
+
+          const targetModel = this.models.find((m) => m.name === rel.target);
+          if (!targetModel) continue;
+
+          const sourcePK = model.fields.find((f) => f.primaryKey);
+          const targetPK = targetModel.fields.find((f) => f.primaryKey);
+          if (!sourcePK || !targetPK) continue;
+
+          const tableName = rel.through.toLowerCase();
+          const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
+          const targetFKColumn = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+
+          // Add FK constraint for source table
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${tableName}_${sourceFKColumn}_fk" ` +
+            `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
+              this.toSnakeCase(model.name)
+            }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
+            `    logger.info?.('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`
+          );
+
+          // Add FK constraint for target table
+          constraints.push(
+            `    await sql\`ALTER TABLE "${tableName}" ` +
+            `ADD CONSTRAINT "${tableName}_${targetFKColumn}_fk" ` +
+            `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
+              this.toSnakeCase(targetModel.name)
+            }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
+            `    logger.info?.('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`
+          );
+        }
+      }
+    }
+
+    return constraints.join('\n\n');
   }
 
   /**
@@ -473,7 +654,7 @@ export async function healthCheck(): Promise<boolean> {
         if (processedIndexes.has(name)) return '';
         processedIndexes.add(name);
         return `    await sql\`${sql}\`;
-    console.log('Created index: ${name}');`;
+    logger.info?.('Created index: ${name}');`;
       }).filter(Boolean).join('\n');
     }).filter(Boolean).join('\n\n');
   }
@@ -564,21 +745,31 @@ export async function healthCheck(): Promise<boolean> {
         case 'decimal':
           return `DECIMAL(${field.precision || 10}, ${field.scale || 2})`;
         case 'point':
-          return this.postgis ? 'GEOMETRY(POINT, 4326)' : 'JSONB';
-        case 'polygon':
-          return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
         case 'linestring':
-          return this.postgis ? 'GEOMETRY(LINESTRING, 4326)' : 'JSONB';
+        case 'polygon':
+        case 'multipoint':
+        case 'multilinestring':
+        case 'multipolygon':
         case 'geometry':
-          if (field.geometryType === 'POLYGON') {
-            return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
+        case 'geography': {
+          if (!this.postgis) {
+            return 'JSONB';
           }
-          return 'JSONB';
-        case 'geography':
-          if (field.geometryType === 'MULTIPOLYGON') {
-            return this.postgis ? 'GEOMETRY(MULTIPOLYGON, 4326)' : 'JSONB';
+          // CockroachDB doesn't support GEOGRAPHY type - convert to GEOMETRY
+          // For generic geometry/geography fields without specific geometryType, use GEOMETRY without subtype
+          if (field.geometryType) {
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${field.geometryType}, ${srid})`;
+          } else if (field.type === 'geometry' || field.type === 'geography') {
+            // Generic geometry - use GEOMETRY without subtype specification
+            return 'GEOMETRY';
+          } else {
+            // Specific type (point, polygon, etc.)
+            const geometryType = field.type.toUpperCase();
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${geometryType}, ${srid})`;
           }
-          return 'JSONB';
+        }
         default:
           return 'TEXT';
       }
@@ -592,21 +783,35 @@ export async function healthCheck(): Promise<boolean> {
         case 'decimal':
           return `DECIMAL(${field.precision || 10}, ${field.scale || 2})`;
         case 'point':
-          return this.postgis ? 'GEOMETRY(POINT, 4326)' : 'JSONB';
-        case 'polygon':
-          return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
         case 'linestring':
-          return this.postgis ? 'GEOMETRY(LINESTRING, 4326)' : 'JSONB';
+        case 'polygon':
+        case 'multipoint':
+        case 'multilinestring':
+        case 'multipolygon':
         case 'geometry':
-          if (field.geometryType === 'POLYGON') {
-            return this.postgis ? 'GEOMETRY(POLYGON, 4326)' : 'JSONB';
+        case 'geography': {
+          if (!this.postgis) {
+            return 'JSONB';
           }
-          return 'JSONB';
-        case 'geography':
-          if (field.geometryType === 'MULTIPOLYGON') {
-            return this.postgis ? 'GEOGRAPHY(MULTIPOLYGON, 4326)' : 'JSONB';
+          // For generic geometry/geography fields without specific geometryType, use column type without subtype
+          if (field.geometryType) {
+            const srid = field.srid || 4326;
+            const isGeography = field.type === 'geography';
+            const columnType = isGeography ? 'GEOGRAPHY' : 'GEOMETRY';
+            return `${columnType}(${field.geometryType}, ${srid})`;
+          } else if (field.type === 'geometry') {
+            // Generic geometry - use GEOMETRY without subtype specification
+            return 'GEOMETRY';
+          } else if (field.type === 'geography') {
+            // Generic geography - use GEOGRAPHY without subtype specification
+            return 'GEOGRAPHY';
+          } else {
+            // Specific type (point, polygon, etc.)
+            const geometryType = field.type.toUpperCase();
+            const srid = field.srid || 4326;
+            return `GEOMETRY(${geometryType}, ${srid})`;
           }
-          return 'JSONB';
+        }
         default:
           return 'TEXT';
       }
@@ -671,6 +876,25 @@ export async function healthCheck(): Promise<boolean> {
    */
   private getDefaultIndexMethod(): string {
     return this.dbType === 'cockroachdb' ? 'BTREE' : 'BTREE';
+  }
+
+  /**
+   * Format default value for SQL
+   */
+  private formatDefaultValue(field: any): string {
+    if (field.type === 'uuid' && field.defaultValue === 'gen_random_uuid()') {
+      return 'gen_random_uuid()';
+    } else if (typeof field.defaultValue === 'string' && !field.defaultValue.includes('(')) {
+      return `'${field.defaultValue}'`;
+    } else if (typeof field.defaultValue === 'boolean') {
+      return field.defaultValue.toString().toUpperCase();
+    } else if (typeof field.defaultValue === 'number') {
+      return field.defaultValue.toString();
+    } else if (field.defaultValue === null) {
+      return 'NULL';
+    } else {
+      return field.defaultValue;
+    }
   }
 
   /**

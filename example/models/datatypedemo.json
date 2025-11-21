@@ -1,0 +1,91 @@
+{
+  "name": "DataTypeDemo",
+  "tableName": "data_type_demo",
+  "enums": [
+    {
+      "name": "Status",
+      "values": ["draft", "active", "archived"]
+    },
+    {
+      "name": "Priority",
+      "values": ["low", "medium", "high", "urgent"]
+    }
+  ],
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "textField",
+      "type": "text",
+      "defaultValue": "Default text value"
+    },
+    {
+      "name": "bigintField",
+      "type": "bigint",
+      "defaultValue": 9007199254740991
+    },
+    {
+      "name": "booleanField",
+      "type": "boolean",
+      "defaultValue": false,
+      "required": true,
+      "index": true
+    },
+    {
+      "name": "jsonField",
+      "type": "json"
+    },
+    {
+      "name": "jsonbField",
+      "type": "jsonb"
+    },
+    {
+      "name": "decimalField",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2
+    },
+    {
+      "name": "statusEnum",
+      "type": "enum",
+      "enumName": "Status",
+      "required": true,
+      "defaultValue": "draft"
+    },
+    {
+      "name": "priorityEnum",
+      "type": "enum",
+      "enumName": "Priority"
+    },
+    {
+      "name": "stringArrayField",
+      "type": "string",
+      "array": true
+    },
+    {
+      "name": "integerArrayField",
+      "type": "integer",
+      "array": true
+    },
+    {
+      "name": "tagsArray",
+      "type": "string",
+      "array": true
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["statusEnum", "priorityEnum"]
+    },
+    {
+      "fields": ["jsonbField"],
+      "type": "gin"
+    }
+  ],
+  "timestamps": true
+}

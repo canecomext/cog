@@ -1,0 +1,85 @@
+{
+  "name": "SpatialDemo",
+  "tableName": "spatial_demo",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    },
+    {
+      "name": "linestringField",
+      "type": "linestring",
+      "srid": 4326
+    },
+    {
+      "name": "multipointField",
+      "type": "multipoint",
+      "srid": 4326
+    },
+    {
+      "name": "multilinestringField",
+      "type": "multilinestring",
+      "srid": 4326
+    },
+    {
+      "name": "multipolygonField",
+      "type": "multipolygon",
+      "srid": 4326
+    },
+    {
+      "name": "geometryField",
+      "type": "geometry",
+      "srid": 4326
+    },
+    {
+      "name": "geographyField",
+      "type": "geography",
+      "srid": 4326
+    },
+    {
+      "name": "customSridPoint",
+      "type": "point",
+      "srid": 3857
+    }
+  ],
+  "indexes": [
+    {
+      "fields": ["linestringField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["multipointField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["multilinestringField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["multipolygonField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["geometryField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["geographyField"],
+      "type": "gist"
+    },
+    {
+      "fields": ["customSridPoint"],
+      "type": "gist"
+    }
+  ],
+  "timestamps": true
+}

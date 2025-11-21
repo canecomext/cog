@@ -88,22 +88,30 @@ export interface IndexDefinition {
   where?: string; // Partial index condition
 }
 
+// Check constraint definition
+// Format: { "numNotNulls": [{ "fields": ["field1", "field2"], "num": 1 }] }
+// For num_nonnulls: { "numNotNulls": [{ "fields": ["avatarUrl", "socialLinks"], "num": 1 }] } -> num_nonnulls(avatarUrl, socialLinks) = 1
+export type CheckConstraints = {
+  numNotNulls?: Array<{
+    fields: string[]; // Array of field names to check
+    num: number; // Required count of non-null fields
+  }>;
+};
+
 // Model definition
 export interface ModelDefinition {
   name: string; // Model name (e.g., "User")
   tableName: string; // Database table name (e.g., "users")
-  plural?: string; // Custom plural form (e.g., "indices" for "index")
   schema?: string; // Database schema name
   fields: FieldDefinition[];
   enums?: EnumDefinition[]; // Enum definitions for this model
   relationships?: RelationshipDefinition[];
   indexes?: IndexDefinition[];
+  check?: CheckConstraints; // Check constraints for this model
   timestamps?: boolean | {
     createdAt?: string | boolean;
     updatedAt?: string | boolean;
-    deletedAt?: string | boolean; // For soft deletes
   };
-  softDelete?: boolean;
   description?: string;
   hooks?: {
     // Hook definitions at the model level
@@ -128,13 +136,11 @@ export interface GeneratorConfig {
     schema?: string; // Default schema
   };
   features?: {
-    softDeletes?: boolean;
     timestamps?: boolean;
     hooks?: boolean;
   };
   documentation?: {
     enabled?: boolean; // Enable/disable documentation generation (default: true)
-    path?: string; // Base path for documentation endpoints (default: '/cog')
   };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';
