@@ -46,8 +46,8 @@ export class RestAPIGenerator {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
 
-    return `import { Hono } from 'jsr:@hono/hono';
-import { HTTPException } from 'jsr:@hono/hono/http-exception';
+    return `import { Hono, type Context } from '@hono/hono';
+import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import { RestHooks } from './hooks.types.ts';
@@ -55,10 +55,36 @@ import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schem
 import type { DefaultEnv } from './types.ts';
 
 /**
+ * Converts BigInt values to numbers for JSON serialization
+ * Dates are stored as EPOCH milliseconds (bigint) and need conversion for JSON
+ */
+function convertBigIntToNumber<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+
+  if (typeof obj === 'bigint') {
+    return Number(obj) as unknown as T;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertBigIntToNumber(item)) as unknown as T;
+  }
+
+  if (typeof obj === 'object') {
+    const converted: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertBigIntToNumber(value);
+    }
+    return converted as T;
+  }
+
+  return obj;
+}
+
+/**
  * ${modelName} REST Routes
  * Handles HTTP endpoints with optional pre/post hooks at the REST layer
  */
-class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>> {
+class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   public routes: Hono<{ Variables: RestEnvVars }>;
   private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>;
 
@@ -78,7 +104,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Pre-hook (REST layer)
       if (this.hooks.preFindMany) {
-        const preResult = await this.hooks.preFindMany(c as any, context);
+        const preResult = await this.hooks.preFindMany(c as unknown as Context<{ Variables: RestEnvVars }>, context);
         context = { ...context, ...preResult.context };
       }
 
@@ -102,13 +128,13 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Post-hook (REST layer)
       if (this.hooks.postFindMany) {
-        const postResult = await this.hooks.postFindMany(result, c as any, context);
+        const postResult = await this.hooks.postFindMany(result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         result = postResult.data;
         context = { ...context, ...postResult.context };
       }
 
       return c.json({
-        data: result.data,
+        data: convertBigIntToNumber(result.data),
         pagination: {
           total: result.total,
           limit: parseInt(limit),
@@ -127,7 +153,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Pre-hook (REST layer)
       if (this.hooks.preFindById) {
-        const preResult = await this.hooks.preFindById(id, c as any, context);
+        const preResult = await this.hooks.preFindById(id, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         id = preResult.data.id;
         context = { ...context, ...preResult.context };
       }
@@ -148,12 +174,12 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Post-hook (REST layer)
       if (this.hooks.postFindById) {
-        const postResult = await this.hooks.postFindById(id, result, c as any, context);
+        const postResult = await this.hooks.postFindById(id, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         result = postResult.data;
         context = { ...context, ...postResult.context };
       }
 
-      return c.json({ data: result });
+      return c.json({ data: convertBigIntToNumber(result) });
     });
 
     /**
@@ -166,7 +192,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Pre-hook (REST layer)
       if (this.hooks.preCreate) {
-        const preResult = await this.hooks.preCreate(body, c as any, context);
+        const preResult = await this.hooks.preCreate(body, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         body = preResult.data;
         context = { ...context, ...preResult.context };
       }
@@ -181,12 +207,12 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Post-hook (REST layer)
       if (this.hooks.postCreate) {
-        const postResult = await this.hooks.postCreate(body, result, c as any, context);
+        const postResult = await this.hooks.postCreate(body, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         result = postResult.data;
         context = { ...context, ...postResult.context };
       }
 
-      return c.json({ data: result }, 201);
+      return c.json({ data: convertBigIntToNumber(result) }, 201);
     });
 
     /**
@@ -194,13 +220,13 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
      * Update a ${modelName}
      */
     this.routes.put('/:id', async (c) => {
-      let id = c.req.param('id');
+      const id = c.req.param('id');
       let body = await c.req.json();
       let context = c.var as RestEnvVars;
 
       // Pre-hook (REST layer)
       if (this.hooks.preUpdate) {
-        const preResult = await this.hooks.preUpdate(id, body, c as any, context);
+        const preResult = await this.hooks.preUpdate(id, body, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         body = preResult.data;
         context = { ...context, ...preResult.context };
       }
@@ -216,12 +242,12 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Post-hook (REST layer)
       if (this.hooks.postUpdate) {
-        const postResult = await this.hooks.postUpdate(id, body, result, c as any, context);
+        const postResult = await this.hooks.postUpdate(id, body, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         result = postResult.data;
         context = { ...context, ...postResult.context };
       }
 
-      return c.json({ data: result });
+      return c.json({ data: convertBigIntToNumber(result) });
     });
 
     /**
@@ -234,7 +260,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Pre-hook (REST layer)
       if (this.hooks.preDelete) {
-        const preResult = await this.hooks.preDelete(id, c as any, context);
+        const preResult = await this.hooks.preDelete(id, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         id = preResult.data.id;
         context = { ...context, ...preResult.context };
       }
@@ -249,12 +275,12 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<st
 
       // Post-hook (REST layer)
       if (this.hooks.postDelete) {
-        const postResult = await this.hooks.postDelete(id, result, c as any, context);
+        const postResult = await this.hooks.postDelete(id, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
         result = postResult.data;
         context = { ...context, ...postResult.context };
       }
 
-      return c.json({ data: result });
+      return c.json({ data: convertBigIntToNumber(result) });
     });
 
 ${this.generateRelationshipEndpointsWithHooks(model)}
@@ -265,11 +291,11 @@ ${this.generateRelationshipEndpointsWithHooks(model)}
 export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
 
 // Export function to initialize with hooks
-export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, any> = Record<string, any>>(
+export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Record<string, unknown>>(
   hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>
 ) {
   const instance = new ${modelName}RestRoutes(hooks);
-  ${modelNameLower}Routes = instance.routes as any;
+  ${modelNameLower}Routes = instance.routes as unknown as Hono<{ Variables: Record<string, unknown> }>;
   return instance.routes;
 }
 `;
@@ -286,14 +312,14 @@ export function initialize${modelName}RestRoutes<RestEnvVars extends Record<stri
  * The generic RestEnvVars type will contain all custom variables defined
  * in your application's Env type.
  */
-export type RestHookContext<RestEnvVars extends Record<string, any> = Record<string, any>> = RestEnvVars;
+export type RestHookContext<RestEnvVars extends Record<string, unknown> = Record<string, unknown>> = RestEnvVars;
 
-export interface RestPreHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestPreHookResult<T, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   data: T;
   context?: RestHookContext<RestEnvVars>;
 }
 
-export interface RestPostHookResult<T, RestEnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestPostHookResult<T, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   data: T;
   context?: RestHookContext<RestEnvVars>;
 }
@@ -314,13 +340,13 @@ export interface RestPostHookResult<T, RestEnvVars extends Record<string, any> =
  * Note: These hooks do NOT receive database transactions.
  * For database operations, use domain hooks instead.
  */
-export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Record<string, any> = Record<string, any>> {
+export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   // Pre-operation hooks (before domain operation, no transaction)
   preCreate?: (input: CreateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<CreateInput, RestEnvVars>>;
   preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<UpdateInput, RestEnvVars>>;
   preDelete?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
   preFindById?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
-  preFindMany?: (c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<Record<string, any>, RestEnvVars>>;
+  preFindMany?: (c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<Record<string, unknown>, RestEnvVars>>;
 
   // Post-operation hooks (after domain operation, no transaction)
   postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
@@ -356,7 +382,7 @@ export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Reco
 // You should override this in your application
 export type DefaultEnv = {
   Variables: {
-    [key: string]: any;
+    [key: string]: unknown;
   }
 }
 `;
@@ -388,13 +414,12 @@ export type DefaultEnv = {
 
       const result = await ${modelNameLower}Domain.get${targetName}List(id);
 
-      return c.json({ data: result });
+      return c.json({ data: convertBigIntToNumber(result) });
     });`);
       } else if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
         const RelName = this.capitalize(relName);
         const targetNameLower = rel.target.toLowerCase();
-        // No singularization - use target model name as-is
         const targetName = rel.target;
 
         // Derive singular form by removing "List" suffix if present
@@ -403,93 +428,95 @@ export type DefaultEnv = {
 
         endpoints.push(`
     /**
-     * GET /${modelNameLower}/:id/${targetNameLower}List
-     * Get ${targetName} list for a ${model.name}
+     * GET /${modelNameLower}/:id/${relName}
+     * Get ${relName} for a ${model.name}
      */
-    this.routes.get('/:id/${targetNameLower}List', async (c) => {
+    this.routes.get('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
 
       const result = await ${modelNameLower}Domain.get${RelName}(id);
 
-      return c.json({ data: result });
+      return c.json({ data: convertBigIntToNumber(result) });
     });
 
     /**
-     * POST /${modelNameLower}/:id/${targetNameLower}List
-     * Add ${targetName} list to a ${model.name}
+     * POST /${modelNameLower}/:id/${relName}
+     * Add multiple ${relName} to a ${model.name}
      */
-    this.routes.post('/:id/${targetNameLower}List', async (c) => {
+    this.routes.post('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+      const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${RelName}(id, ${targetNameLower}Ids, tx);
+        await ${modelNameLower}Domain.add${RelName}(id, ids, tx);
       });
 
-      return c.json({ data: { message: '${targetName} list added successfully' } }, 201);
+      return c.json({ data: { message: '${relName} added successfully' } }, 201);
     });
 
     /**
-     * PUT /${modelNameLower}/:id/${targetNameLower}List
-     * Replace all ${targetName} for a ${model.name}
+     * PUT /${modelNameLower}/:id/${relName}
+     * Replace all ${relName} for a ${model.name}
      */
-    this.routes.put('/:id/${targetNameLower}List', async (c) => {
+    this.routes.put('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+      const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ${targetNameLower}Ids, tx);
+        await ${modelNameLower}Domain.set${RelName}(id, ids, tx);
       });
 
-      return c.json({ data: { message: '${relName}List updated successfully' } });
+      return c.json({ data: { message: '${relName} updated successfully' } });
     });
 
     /**
-     * POST /${modelNameLower}/:id/${relName}List/:${targetNameLower}Id
-     * Add a specific ${targetName} to a ${model.name}
+     * POST /${modelNameLower}/:id/${singularRelName}
+     * Add a specific ${singularRelName} to a ${model.name}
      */
-    this.routes.post('/:id/${relName}List/:${targetNameLower}Id', async (c) => {
+    this.routes.post('/:id/${singularRelName}', async (c) => {
       const id = c.req.param('id');
-      const ${targetNameLower}Id = c.req.param('${targetNameLower}Id');
+      const body = await c.req.json();
+      const relatedId = body.id;
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${SingularRelName}(id, ${targetNameLower}Id, tx);
+        await ${modelNameLower}Domain.add${SingularRelName}(id, relatedId, tx);
       });
 
-      return c.json({ data: { message: '${targetName} added successfully' } }, 201);
+      return c.json({ data: { message: '${singularRelName} added successfully' } }, 201);
     });
 
     /**
-     * DELETE /${modelNameLower}/:id/${relName}List/:${targetNameLower}Id
-     * Remove a specific ${targetName} from a ${model.name}
+     * DELETE /${modelNameLower}/:id/${singularRelName}
+     * Remove a specific ${singularRelName} from a ${model.name}
      */
-    this.routes.delete('/:id/${relName}List/:${targetNameLower}Id', async (c) => {
+    this.routes.delete('/:id/${singularRelName}', async (c) => {
       const id = c.req.param('id');
-      const ${targetNameLower}Id = c.req.param('${targetNameLower}Id');
+      const body = await c.req.json();
+      const relatedId = body.id;
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${SingularRelName}(id, ${targetNameLower}Id, tx);
+        await ${modelNameLower}Domain.remove${SingularRelName}(id, relatedId, tx);
       });
 
-      return c.json({ data: { message: '${targetName} removed successfully' } });
+      return c.json({ data: { message: '${singularRelName} removed successfully' } });
     });
 
     /**
-     * DELETE /${modelNameLower}/:id/${relName}List
+     * DELETE /${modelNameLower}/:id/${relName}
      * Remove multiple ${relName} from a ${model.name}
      */
-    this.routes.delete('/:id/${targetNameLower}List', async (c) => {
+    this.routes.delete('/:id/${relName}', async (c) => {
       const id = c.req.param('id');
       const body = await c.req.json();
-      const ${targetNameLower}Ids = body.${targetNameLower}Ids || body.ids || [];
+      const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${RelName}(id, ${targetNameLower}Ids, tx);
+        await ${modelNameLower}Domain.remove${RelName}(id, ids, tx);
       });
 
-      return c.json({ data: { message: '${targetName} list removed successfully' } });
+      return c.json({ data: { message: '${relName} removed successfully' } });
     });`);
       }
     }
@@ -497,12 +524,11 @@ export type DefaultEnv = {
     return endpoints.join('\n');
   }
 
-
   /**
    * Generate REST index file
    */
   private generateRestIndex(): string {
-    let code = `import { Hono } from 'jsr:@hono/hono';
+    let code = `import { Hono } from '@hono/hono';
 `;
 
     // Import all route files
@@ -518,7 +544,7 @@ export type DefaultEnv = {
  * @param app - The Hono app instance
  * @param basePath - Optional base path prefix for API routes (defaults to '/api')
  */
-export function registerRestRoutes(app: Hono<any>, basePath?: string) {
+export function registerRestRoutes(app: Hono, basePath?: string) {
   const apiPrefix = basePath || '/api';
   
   // Register model routes
@@ -582,7 +608,7 @@ export interface ExtractedRoute {
  * // ]
  * \`\`\`
  */
-export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
+export function extractRoutes(app: Hono): ExtractedRoute[] {
   return app.routes
     .filter(route => {
       // Filter out middleware routes (method: 'ALL' with wildcards like /* or /api/*)
@@ -629,14 +655,12 @@ export function extractRoutes(app: Hono<any>): ExtractedRoute[] {
     return code;
   }
 
-
   /**
    * Capitalize first letter
    */
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
-
 
   /**
    * Find model by name

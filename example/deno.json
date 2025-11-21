@@ -8,7 +8,8 @@
     "drizzle-orm": "npm:drizzle-orm@^0.44.7",
     "drizzle-zod": "npm:drizzle-zod@^0.8.3",
     "openapi-types": "npm:openapi-types@^12.1.3",
-    "postgres": "npm:postgres@^3.4.7"
+    "postgres": "npm:postgres@^3.4.7",
+    "zod": "npm:zod@^3.23.0"
   },
   "compilerOptions": {
     "strict": true
@@ -17,7 +18,10 @@
     "cog:crdb:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
     "cog:psql:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType postgresql",
     "db:init": "deno run -A ./db-init.ts",
-    "run": "deno run -A ./src/main.ts"
+    "db:clean": "deno run -A ./db-clean.ts",
+    "run": "deno run -A ./src/main.ts",
+    "test": "deno run -A ./test/test.ts",
+    "test:clean": "deno run -A ./test/cleanup.ts"
   },
   "fmt": {
     "useTabs": false,

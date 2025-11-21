@@ -10,16 +10,16 @@ This example showcases every major COG feature through interconnected business m
 
 ### Models Overview
 
-| Model | Key Features |
-|-------|--------------|
-| **Employee** | All relationship types, self-referential many-to-many (mentors/mentees), composite indexes |
-| **Department** | PostGIS point field, GIST spatial index, one-to-many relationships |
-| **Project** | PostGIS polygon field, GIST spatial index, one-to-many relationships |
-| **Assignment** | Junction-like table, composite unique index, foreign key CASCADE actions |
-| **IDCard** | One-to-one relationship, date fields, unique constraints |
-| **Skill** | Many-to-many with Employee via `employee_skill` junction table |
-| **DataTypeDemo** | All primitive types (text, bigint, decimal, json, jsonb, boolean), enums, arrays, GIN indexes |
-| **SpatialDemo** | All PostGIS types (linestring, multipoint, multilinestring, multipolygon, geometry, geography), custom SRIDs |
+| Model            | Key Features                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Employee**     | All relationship types, self-referential many-to-many (mentors/mentees), composite indexes                       |
+| **Department**   | PostGIS point field, GIST spatial index, one-to-many relationships                                               |
+| **Project**      | PostGIS polygon field, GIST spatial index, one-to-many relationships                                             |
+| **Assignment**   | Junction-like table, composite unique index, foreign key CASCADE actions                                         |
+| **IDCard**       | One-to-one relationship, date fields, unique constraints                                                         |
+| **Skill**        | Many-to-many with Employee via `employee_skill` junction table                                                   |
+| **DataTypeDemo** | All primitive types (text, bigint, decimal, json, jsonb, boolean), enums, arrays, GIN indexes                    |
+| **SpatialDemo**  | All PostGIS types (linestring, multipoint, multilinestring, multipolygon, geometry, geography), custom SRIDs     |
 | **AdvancedDemo** | Custom schema (`analytics`), self-referential relationships, check constraints, named indexes with WHERE clauses |
 
 ### Relationship Types Demonstrated
@@ -45,32 +45,38 @@ AdvancedDemo ──[oneToMany]──→ AdvancedDemo (children)
 ### Features Demonstrated
 
 **Data Types:**
+
 - Primitives: `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date`, `uuid`
 - Structured: `json`, `jsonb`, `enum` (Status, Priority)
 - Spatial: `point`, `polygon`, `linestring`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography`
 - Arrays: `string[]`, `integer[]`
 
 **Index Types:**
+
 - BTREE (standard, composite, named)
 - GIN (for JSONB and arrays)
 - GIST (for PostGIS spatial data)
 - Partial indexes with WHERE clauses
 
 **Check Constraints:**
+
 - `numNotNulls` - Require N of M fields to be non-null (AdvancedDemo)
 
 **Foreign Key Actions:**
+
 - `CASCADE` (Assignment → Employee/Project)
 - `SET NULL` (AdvancedDemo → parent)
 - `RESTRICT` (Employee → Department)
 - `NO ACTION` (AdvancedDemo → related)
 
 **Hooks System:**
+
 - **Domain Hooks** - Employee model (all CRUD operations, within transaction)
 - **REST Hooks** - Department model (HTTP layer, no transaction)
 - **Junction Hooks** - Employee.skillList (many-to-many operations)
 
 **Advanced Features:**
+
 - Custom database schemas (`analytics` for AdvancedDemo)
 - Self-referential relationships (Employee mentors, AdvancedDemo hierarchy)
 - Named indexes with WHERE clauses
@@ -107,11 +113,13 @@ For local development without SSL, modify `src/main.ts` to remove the `ssl` opti
 ### 3. Generate Code
 
 **For PostgreSQL:**
+
 ```bash
 deno task cog:psql:generate
 ```
 
 **For CockroachDB:**
+
 ```bash
 deno task cog:crdb:generate
 ```
@@ -131,6 +139,117 @@ deno task run
 ```
 
 Server starts at `http://localhost:3000`
+
+---
+
+## Testing
+
+### Comprehensive Test Suite
+
+The example includes a complete test suite (`test/api-demo.ts`) that validates all generated functionality:
+
+```bash
+deno task test
+```
+
+**What It Tests (13 Sections):**
+
+1. **Creating Departments** - Spatial data (PostGIS Point), GeoJSON handling
+2. **Creating Employees** - Foreign key relationships, basic CRUD
+3. **Creating Skills** - Simple entity creation
+4. **Adding Skills to Employees** - Many-to-many relationships via junction table
+5. **Creating ID Cards** - One-to-one relationships
+6. **Creating Mentor Relationships** - Self-referential many-to-many
+7. **Creating Projects** - Spatial boundaries (PostGIS Polygon)
+8. **Creating Assignments** - Junction-like table with additional fields
+9. **Querying with Includes** - Loading related entities via `?include=` parameter
+10. **Update Operations** - PUT requests, partial updates
+11. **Pagination and Ordering** - `limit`, `offset`, `orderBy`, `orderDirection`
+12. **List Operations** - GET all endpoints with pagination
+13. **Relationship Endpoints** - Querying related entities directly
+
+**Test Coverage:**
+
+- ✅ All CRUD operations (Create, Read, Update, Delete)
+- ✅ All relationship types (one-to-many, many-to-one, many-to-many, one-to-one)
+- ✅ Self-referential relationships
+- ✅ Spatial data (Point, Polygon) with GeoJSON
+- ✅ Date fields (EPOCH milliseconds)
+- ✅ Pagination and ordering
+- ✅ Include queries (eager loading)
+- ✅ Foreign key constraints
+- ✅ Unique constraints
+- ✅ Validation (Zod schemas)
+
+**Expected Output:**
+
+```
+Starting API Demo & Test Suite...
+
+============================================================
+  1. Creating Departments with Spatial Data
+============================================================
+
+> Creating Engineering department in San Francisco
+  Created department: Engineering (ID: ...)
+
+> Creating Marketing department in Los Angeles
+  Created department: Marketing (ID: ...)
+...
+
+============================================================
+  All Tests Passed!
+============================================================
+
+Summary:
+  Departments created: 2
+  Employees created: 3
+  Skills created: 5
+  Projects created: 2
+  Assignments created: 3
+  ID Cards created: 1
+
+Tip: Run 'deno task db:clean' to remove test data
+```
+
+### Database Cleanup
+
+**Quick Cleanup (Fast - Data Only):**
+
+```bash
+deno task db:clean
+```
+
+Deletes all data from tables in dependency order, but keeps schema intact. Use this between test runs for fast cleanup.
+
+**Full Reset (Slow - Schema + Data):**
+
+```bash
+deno task db:init
+```
+
+Drops and recreates all tables, indexes, and constraints. Use this when:
+
+- Schema has changed (after regenerating code)
+- You need a complete fresh start
+- Initial setup
+
+**Cleanup Workflow:**
+
+```bash
+# Run tests
+deno task test
+
+# Quick cleanup (fast)
+deno task db:clean
+
+# Run tests again
+deno task test
+
+# If schema changed, full reset (slow)
+deno task db:init
+deno task test
+```
 
 ---
 
@@ -179,6 +298,7 @@ GET    /api/project/:id/assignmentList  # Get project's assignments
 ### Query Parameters
 
 All `GET` list endpoints support:
+
 - `limit` - Pagination limit (default: 10)
 - `offset` - Pagination offset (default: 0)
 - `orderBy` - Sort field (e.g., `createdAt`)
@@ -226,7 +346,15 @@ curl -X POST http://localhost:3000/api/skill \
 ### Add Skill to Employee (Many-to-Many)
 
 ```bash
-curl -X POST http://localhost:3000/api/employee/:employeeId/skillList/:skillId
+# Add single skill
+curl -X POST http://localhost:3000/api/employee/:employeeId/skill \
+  -H "Content-Type: application/json" \
+  -d '{"id": "skillId"}'
+
+# Add multiple skills
+curl -X POST http://localhost:3000/api/employee/:employeeId/skillList \
+  -H "Content-Type: application/json" \
+  -d '{"ids": ["skillId1", "skillId2"]}'
 ```
 
 ### Create Project
@@ -293,6 +421,7 @@ curl "http://localhost:3000/api/employee?limit=20&offset=0&orderBy=lastName&orde
 - **Interactive Docs**: http://localhost:3000/docs/reference
 
 The interactive docs (powered by Scalar) provide:
+
 - All endpoints with request/response schemas
 - Try-it-out functionality
 - Generated type definitions
@@ -325,6 +454,7 @@ domainHooks: {
 ```
 
 **Use domain hooks for:**
+
 - Data validation with database access
 - Enriching data with related records
 - Enforcing business rules
@@ -349,6 +479,7 @@ restHooks: {
 ```
 
 **Use REST hooks for:**
+
 - HTTP-specific operations (headers, logging)
 - Authorization checks
 - Request/response transformation
@@ -373,10 +504,10 @@ app.use('*', async (c, next) => {
 });
 
 // Access in REST hooks
-preCreate: (input, c, context) => {
+preCreate: ((input, c, context) => {
   const value = c.get('someString');
   // ...
-}
+});
 ```
 
 ---
@@ -405,16 +536,19 @@ models/
 This example works with both PostgreSQL and CockroachDB:
 
 **PostgreSQL:**
+
 - Full PostGIS support (GEOGRAPHY + GEOMETRY)
 - All index types (BTREE, GIN, GIST)
 - Enums supported (all versions)
 
 **CockroachDB:**
+
 - PostGIS GEOMETRY support (GEOGRAPHY auto-converts)
 - All index types (BTREE, GIN, GIST)
 - Enums supported (v22.2+)
 
 Generate with appropriate flag:
+
 - PostgreSQL: `deno task cog:psql:generate`
 - CockroachDB: `deno task cog:crdb:generate`
 
@@ -436,7 +570,11 @@ example/
 │       ├── schema/           # Drizzle schemas + Zod
 │       ├── domain/           # Business logic
 │       └── rest/             # REST endpoints + OpenAPI
+├── test/
+│   ├── api-demo.ts           # Comprehensive test suite (13 sections)
+│   └── http-client.ts        # Test utilities and assertions
 ├── db-init.ts                # Database initialization script
+├── quick-clean.ts            # Fast database cleanup (data only)
 ├── deno.json                 # Dependencies + tasks
 └── .env                      # Database configuration
 ```

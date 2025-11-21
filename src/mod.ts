@@ -8,7 +8,7 @@ import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
 import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
 import { OpenAPIGenerator } from './generators/openapi.generator.ts';
-import { GeneratorConfig } from './types/model.types.ts';
+import { GeneratorConfig, ModelDefinition } from './types/model.types.ts';
 
 export * from './types/model.types.ts';
 
@@ -131,38 +131,38 @@ export async function generateFromModels(
 /**
  * Generate main index file
  */
-function generateMainIndex(models: any[]): string {
+function generateMainIndex(models: ModelDefinition[]): string {
   return `/**
  * Generated CRUD Backend
  *
  * This is the main entry point for the generated backend code.
  */
 
-import { Hono } from 'jsr:@hono/hono';
+import { Hono } from '@hono/hono';
 import { connect, type DatabaseConfig } from './db/database.ts';
 import { registerRestRoutes, ${models.map((m) => `initialize${m.name}RestRoutes`).join(', ')} } from './rest/index.ts';
 import * as domain from './domain/index.ts';
 import * as schema from './schema/index.ts';
 
 // Generic initialization config - works with any Hono Env type
-export interface InitializationConfig<Env extends { Variables: Record<string, any> } = any> {
+export interface InitializationConfig<Env extends { Variables: Record<string, unknown> } = { Variables: Record<string, unknown> }> {
   database: DatabaseConfig;
   app: Hono<Env>;
   api?: {
     basePath?: string; // Optional base path prefix for API routes (e.g., '/api/v1', default: '/api')
   };
   logging?: {
-    trace?: (message: string, ...args: any[]) => void;
-    debug?: (message: string, ...args: any[]) => void;
-    info?: (message: string, ...args: any[]) => void;
-    warn?: (message: string, ...args: any[]) => void;
-    error?: (message: string, ...args: any[]) => void;
+    trace?: (message: string, ...args: unknown[]) => void;
+    debug?: (message: string, ...args: unknown[]) => void;
+    info?: (message: string, ...args: unknown[]) => void;
+    warn?: (message: string, ...args: unknown[]) => void;
+    error?: (message: string, ...args: unknown[]) => void;
   };
   domainHooks?: {
-    [modelName: string]: any;
+    [modelName: string]: unknown;
   };
   restHooks?: {
-    [modelName: string]: any;
+    [modelName: string]: unknown;
   };
 }
 
@@ -171,7 +171,7 @@ export interface InitializationConfig<Env extends { Variables: Record<string, an
  * @param config Configuration object with database, app, and optional hooks
  * @returns Initialized database connection, SQL client, domain objects, and schema
  */
-export async function initializeGenerated<Env extends { Variables: Record<string, any> } = any>(config: InitializationConfig<Env>) {
+export async function initializeGenerated<Env extends { Variables: Record<string, unknown> } = { Variables: Record<string, unknown> }>(config: InitializationConfig<Env>) {
   // Initialize database
   const { db, sql } = await connect(config.database, config.logging);
 

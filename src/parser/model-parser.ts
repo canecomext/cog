@@ -2,7 +2,7 @@ import {
   ModelDefinition,
   ValidationError,
   FieldDefinition,
-  RelationshipDefinition
+  EnumDefinition,
 } from '../types/model.types.ts';
 
 /**
@@ -81,9 +81,21 @@ export class ModelParser {
   /**
    * Validate and transform raw model data
    */
-  private validateAndTransformModel(data: any, filePath: string): ModelDefinition | null {
+  private validateAndTransformModel(data: unknown, filePath: string): ModelDefinition | null {
+    // Type guard for object
+    if (typeof data !== 'object' || data === null) {
+      this.errors.push({
+        message: `Model in ${filePath} is not a valid object`,
+        severity: 'error'
+      });
+      return null;
+    }
+
+    // Cast to a record for validation
+    const modelData = data as Record<string, unknown>;
+
     // Validate required fields
-    if (!data.name || typeof data.name !== 'string') {
+    if (!modelData.name || typeof modelData.name !== 'string') {
       this.errors.push({
         message: `Model in ${filePath} is missing a valid 'name' field`,
         severity: 'error'
@@ -91,65 +103,65 @@ export class ModelParser {
       return null;
     }
 
-    if (!data.tableName || typeof data.tableName !== 'string') {
+    if (!modelData.tableName || typeof modelData.tableName !== 'string') {
       this.errors.push({
-        model: data.name,
-        message: `Model '${data.name}' is missing a valid 'tableName' field`,
+        model: modelData.name,
+        message: `Model '${modelData.name}' is missing a valid 'tableName' field`,
         severity: 'error'
       });
       return null;
     }
 
-    if (!Array.isArray(data.fields) || data.fields.length === 0) {
+    if (!Array.isArray(modelData.fields) || modelData.fields.length === 0) {
       this.errors.push({
-        model: data.name,
-        message: `Model '${data.name}' must have at least one field`,
+        model: modelData.name,
+        message: `Model '${modelData.name}' must have at least one field`,
         severity: 'error'
       });
       return null;
     }
 
     // Validate fields
-    const fields = this.validateFields(data.fields, data.name);
+    const fields = this.validateFields(modelData.fields, modelData.name);
     if (!fields) return null;
 
     // Ensure there's at least one primary key
     const hasPrimaryKey = fields.some(f => f.primaryKey);
     if (!hasPrimaryKey) {
       this.errors.push({
-        model: data.name,
-        message: `Model '${data.name}' must have at least one primary key field`,
+        model: modelData.name,
+        message: `Model '${modelData.name}' must have at least one primary key field`,
         severity: 'error'
       });
       return null;
     }
 
     // Validate enums if present
-    let enums: any[] | undefined;
-    if (data.enums) {
-      enums = this.validateEnums(data.enums, data.name);
+    let enums: EnumDefinition[] | undefined;
+    if (modelData.enums) {
+      enums = this.validateEnums(modelData.enums, modelData.name) ?? undefined;
       if (!enums) return null;
     }
 
     // Validate check constraints if present
-    if (data.check) {
-      const checkValid = this.validateCheckConstraints(data.check, data.name, fields);
+    if (modelData.check) {
+      const checkValid = this.validateCheckConstraints(modelData.check, modelData.name, fields);
       if (!checkValid) return null;
     }
 
     // Build the model
     const model: ModelDefinition = {
-      name: data.name,
-      tableName: data.tableName,
+      name: modelData.name,
+      tableName: modelData.tableName,
       fields,
       enums,
-      schema: data.schema,
-      relationships: data.relationships || [],
-      indexes: data.indexes || [],
-      check: data.check,
-      timestamps: data.timestamps,
-      description: data.description,
-      hooks: data.hooks
+      schema: modelData.schema as string | undefined,
+      relationships: (modelData.relationships || []) as ModelDefinition['relationships'],
+      indexes: (modelData.indexes || []) as ModelDefinition['indexes'],
+      check: modelData.check as ModelDefinition['check'],
+      timestamps: modelData.timestamps as boolean | undefined,
+      description: modelData.description as string | undefined,
+      hooks: modelData.hooks as ModelDefinition['hooks']
     };
 
     return model;
@@ -158,13 +170,25 @@ export class ModelParser {
   /**
    * Validate fields array
    */
-  private validateFields(fields: any[], modelName: string): FieldDefinition[] | null {
+  private validateFields(fields: unknown[], modelName: string): FieldDefinition[] | null {
     const validatedFields: FieldDefinition[] = [];
     const fieldNames = new Set<string>();
 
-    for (const field of fields) {
+    for (const fieldData of fields) {
+      // Type guard for object
+      if (typeof fieldData !== 'object' || fieldData === null) {
+        this.errors.push({
+          model: modelName,
+          message: `Field is not a valid object`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      const field = fieldData as Record<string, unknown>;
+
       // Check for duplicate field names
-      if (fieldNames.has(field.name)) {
+      if (typeof field.name === 'string' && fieldNames.has(field.name)) {
         this.errors.push({
           model: modelName,
           field: field.name,
@@ -173,7 +197,9 @@ export class ModelParser {
         });
         return null;
       }
-      fieldNames.add(field.name);
+      if (typeof field.name === 'string') {
+        fieldNames.add(field.name);
+      }
 
       // Validate field structure
       if (!field.name || typeof field.name !== 'string') {
@@ -291,7 +317,7 @@ export class ModelParser {
         }
       }
 
-      validatedFields.push(field);
+      validatedFields.push(field as unknown as FieldDefinition);
     }
 
     return validatedFields;
@@ -347,11 +373,32 @@ export class ModelParser {
   /**
    * Validate enum definitions
    */
-  private validateEnums(enums: any[], modelName: string): any[] | null {
-    const validatedEnums: any[] = [];
+  private validateEnums(enums: unknown, modelName: string): EnumDefinition[] | null {
+    if (!Array.isArray(enums)) {
+      this.errors.push({
+        model: modelName,
+        message: `Enums must be an array`,
+        severity: 'error'
+      });
+      return null;
+    }
+
+    const validatedEnums: EnumDefinition[] = [];
     const enumNames = new Set<string>();
 
-    for (const enumDef of enums) {
+    for (const enumData of enums) {
+      // Type guard for object
+      if (typeof enumData !== 'object' || enumData === null) {
+        this.errors.push({
+          model: modelName,
+          message: `Enum definition is not a valid object`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      const enumDef = enumData as Record<string, unknown>;
+
       if (!enumDef.name || typeof enumDef.name !== 'string') {
         this.errors.push({
           model: modelName,
@@ -404,7 +451,7 @@ export class ModelParser {
         return null;
       }
 
-      validatedEnums.push(enumDef);
+      validatedEnums.push(enumDef as unknown as EnumDefinition);
     }
 
     return validatedEnums;
@@ -435,7 +482,7 @@ export class ModelParser {
    * Validate check constraints
    */
   private validateCheckConstraints(
-    checkConstraints: any,
+    checkConstraints: unknown,
     modelName: string,
     fields: FieldDefinition[]
   ): boolean {
@@ -448,9 +495,11 @@ export class ModelParser {
       return false;
     }
 
+    const constraints = checkConstraints as Record<string, unknown>;
+
     // Validate numNotNulls check constraints
-    if (checkConstraints.numNotNulls) {
-      const constraintDefs = checkConstraints.numNotNulls;
+    if (constraints.numNotNulls) {
+      const constraintDefs = constraints.numNotNulls;
 
       if (!Array.isArray(constraintDefs)) {
         this.errors.push({

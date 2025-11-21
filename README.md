@@ -20,28 +20,31 @@ JSON Models → COG → REST API + Domain Logic + Database Schema + OpenAPI Docs
 
 ### 1. Define Your Model
 
-Create `models/user.json`:
+Create `models/department.json`:
 
 ```json
 {
-  "name": "User",
-  "tableName": "user",
+  "name": "Department",
+  "tableName": "department",
   "fields": [
     {
       "name": "id",
       "type": "uuid",
       "primaryKey": true,
-      "defaultValue": "gen_random_uuid()"
-    },
-    {
-      "name": "email",
-      "type": "string",
-      "unique": true,
+      "defaultValue": "gen_random_uuid()",
       "required": true
     },
     {
       "name": "name",
       "type": "string",
+      "maxLength": 100,
+      "required": true,
+      "unique": true
+    },
+    {
+      "name": "location",
+      "type": "point",
+      "srid": 4326,
       "required": true
     }
   ],
@@ -76,11 +79,11 @@ Deno.serve({ port: 3000 }, app.fetch);
 That's it! Your REST API is ready:
 
 ```bash
-GET    /api/user       # List users
-POST   /api/user       # Create user
-GET    /api/user/:id   # Get user
-PUT    /api/user/:id   # Update user
-DELETE /api/user/:id   # Delete user
+GET    /api/department       # List departments
+POST   /api/department       # Create department
+GET    /api/department/:id   # Get department
+PUT    /api/department/:id   # Update department
+DELETE /api/department/:id   # Delete department
 ```
 
 ---
@@ -125,10 +128,12 @@ DELETE /api/user/:id   # Delete user
 
 | Category | Types |
 |----------|-------|
-| **Primitives** | `string`, `text`, `integer`, `bigint`, `decimal`, `boolean`, `date`, `uuid` |
+| **Primitives** | `string`, `text`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid` |
 | **Structured** | `json`, `jsonb`, `enum` |
-| **Spatial** | `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography` |
+| **Spatial** | `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography` (uses GeoJSON in API, WKT in DB) |
 | **Arrays** | Any type with `"array": true` |
+
+**Note:** `date` fields are stored as EPOCH millisecond integers (`bigint`) in the database. The API accepts and returns numeric timestamps. Use `Date.getTime()` in JavaScript/TypeScript.
 
 ### Relationship Support
 
@@ -298,9 +303,9 @@ Generates: `CHECK (num_nonnulls(field1, field2, field3) >= 2)`
 
 ```json
 {
-  "name": "AnalyticsData",
-  "tableName": "analytics_data",
-  "schema": "analytics"
+  "name": "Employee",
+  "tableName": "employee",
+  "schema": "hr"
 }
 ```
 
@@ -309,7 +314,7 @@ Generates: `CHECK (num_nonnulls(field1, field2, field3) >= 2)`
 ```json
 {
   "references": {
-    "model": "User",
+    "model": "Department",
     "field": "id",
     "onDelete": "CASCADE",
     "onUpdate": "NO ACTION"
@@ -323,7 +328,7 @@ Generates: `CHECK (num_nonnulls(field1, field2, field3) >= 2)`
 
 ## Important Notes
 
-**Table Naming:** Use singular names (`user`, not `users`)
+**Table Naming:** Use singular names (`employee`, not `employees`)
 
 **Numeric Limits:** Default values limited to `Number.MAX_SAFE_INTEGER` (2^53-1)
 

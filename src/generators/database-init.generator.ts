@@ -1,4 +1,4 @@
-import { ModelDefinition } from '../types/model.types.ts';
+import { FieldDefinition, ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Generates database initialization code
@@ -79,11 +79,11 @@ ${this.generateIndexCreationSQL()}
    * Generate database utility file
    */
   generateDatabaseInit(): string {
-    return `import { drizzle } from "npm:drizzle-orm/postgres-js";
-import type { ExtractTablesWithRelations } from "npm:drizzle-orm";
-import type { PgTransaction } from "npm:drizzle-orm/pg-core";
-import type { PostgresJsQueryResultHKT } from "npm:drizzle-orm/postgres-js";
-import postgres from "npm:postgres";
+    return `import { drizzle } from "drizzle-orm/postgres-js";
+import type { ExtractTablesWithRelations } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "../schema/index.ts";
 
 // Export transaction type for use in domain layer
@@ -121,15 +121,15 @@ export interface DatabaseConfig {
 
 // Logger configuration with defaults
 export interface Logger {
-  trace?: (message: string, ...args: any[]) => void;
-  debug?: (message: string, ...args: any[]) => void;
-  info?: (message: string, ...args: any[]) => void;
-  warn?: (message: string, ...args: any[]) => void;
-  error?: (message: string, ...args: any[]) => void;
+  trace?: (message: string, ...args: unknown[]) => void;
+  debug?: (message: string, ...args: unknown[]) => void;
+  info?: (message: string, ...args: unknown[]) => void;
+  warn?: (message: string, ...args: unknown[]) => void;
+  error?: (message: string, ...args: unknown[]) => void;
 }
 
 let db: ReturnType<typeof drizzle> | null = null;
-let sql: postgres.Sql<{}> | null = null;
+let sql: postgres.Sql<Record<string, never>> | null = null;
 let logger: Logger = {
   trace: console.log,
   debug: console.log,
@@ -252,13 +252,13 @@ export async function withTransaction<T>(
   const maxDelay = options?.maxDelayMs ?? 5000;
   const enableRetry = options?.enableRetry ?? true;
 
-  let lastError: any;
+  let lastError: unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       // Only pass transaction options if they're defined
       // Passing undefined values causes Drizzle to generate invalid SQL
-      const txOptions: any = {};
+      const txOptions: Record<string, unknown> = {};
       if (options?.isolationLevel) txOptions.isolationLevel = options.isolationLevel;
       if (options?.accessMode) txOptions.accessMode = options.accessMode;
       if (options?.deferrable !== undefined) txOptions.deferrable = options.deferrable;
@@ -267,12 +267,12 @@ export async function withTransaction<T>(
         callback,
         Object.keys(txOptions).length > 0 ? txOptions : undefined
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
 
       // Check if this is a serialization error (error code 40001)
       // This occurs in both CockroachDB (WriteTooOldError) and PostgreSQL (serialization_failure)
-      const errorCode = error?.cause?.code || error?.code;
+      const errorCode = (error as { cause?: { code?: string }; code?: string } | undefined)?.cause?.code || (error as { code?: string } | undefined)?.code;
       const isSerializationError = errorCode === '40001';
 
       // Only retry on serialization errors if retries are enabled
@@ -300,7 +300,7 @@ export async function withTransaction<T>(
 /**
  * Get SQL instance
  */
-export function getSQL(): postgres.Sql<{}> {
+export function getSQL(): postgres.Sql<Record<string, never>> {
   if (!sql) {
     throw new Error('Database not connected. Call connect(...) first.');
   }
@@ -346,7 +346,7 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateTableDropSQL(): string {
     const drops: string[] = [];
-    
+
     // First, drop junction tables (they depend on main tables)
     const processedJunctions = new Set<string>();
     for (const model of this.models) {
@@ -357,22 +357,22 @@ export async function healthCheck(): Promise<boolean> {
             processedJunctions.add(rel.through);
             const junctionTableName = rel.through.toLowerCase();
             drops.push(
-              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${junctionTableName}');`
+              `    await sql\`DROP TABLE IF EXISTS "${junctionTableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${junctionTableName}');`,
             );
           }
         }
       }
     }
-    
+
     // Then drop main tables in reverse dependency order
     const sortedModels = this.sortModelsByDependencies().reverse();
     for (const model of sortedModels) {
-      const tableName = this.toSnakeCase(model.name);
+      const tableName = model.tableName;
       drops.push(
-        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${tableName}');`
+        `    await sql\`DROP TABLE IF EXISTS "${tableName}" CASCADE\`;\n    logger.info?.('Dropped table if exists: ${tableName}');`,
       );
     }
-    
+
     return drops.join('\n');
   }
 
@@ -460,11 +460,11 @@ export async function healthCheck(): Promise<boolean> {
         ${sourceFKColumn} ${sourceFKType} NOT NULL,
         ${targetFKColumn} ${targetFKType} NOT NULL`;
 
-          // Add timestamps if enabled
+          // Add timestamps if enabled (stored as EPOCH milliseconds - bigint)
           const hasTimestamps = model.timestamps || targetModel.timestamps;
           if (hasTimestamps) {
             tableSQL += `,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL`;
+        created_at INT8 DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL`;
           }
 
           tableSQL += `,
@@ -494,7 +494,7 @@ export async function healthCheck(): Promise<boolean> {
   private generateTableCreationSQL(): string {
     const sortedModels = this.sortModelsByDependencies();
     return sortedModels.map((model) => {
-      const tableName = this.toSnakeCase(model.name);
+      const tableName = model.tableName;
       const columns = this.generateColumnsSQL(model);
       const constraints = this.generateConstraintsSQL(model);
 
@@ -532,11 +532,12 @@ export async function healthCheck(): Promise<boolean> {
       columns.push(`"${columnName}" ${columnType}${constraints}`);
     }
 
-    // Common columns
+    // Common columns (timestamps stored as EPOCH milliseconds - bigint)
     if (model.timestamps !== false) {
-      const timestampType = 'TIMESTAMP';
-      columns.push(`created_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
-      columns.push(`updated_at ${timestampType} DEFAULT CURRENT_TIMESTAMP NOT NULL`);
+      const timestampType = 'INT8'; // bigint for EPOCH milliseconds
+      const defaultValue = '(extract(epoch from now()) * 1000)::bigint';
+      columns.push(`created_at ${timestampType} DEFAULT ${defaultValue} NOT NULL`);
+      columns.push(`updated_at ${timestampType} DEFAULT ${defaultValue} NOT NULL`);
     }
 
     return columns.join(',\n        ');
@@ -570,8 +571,8 @@ export async function healthCheck(): Promise<boolean> {
 
     // Add FK constraints for main tables
     for (const model of this.models) {
-      const tableName = this.toSnakeCase(model.name);
-      
+      const tableName = model.tableName;
+
       for (const field of model.fields) {
         if (field.references) {
           const columnName = this.toSnakeCase(field.name);
@@ -583,10 +584,10 @@ export async function healthCheck(): Promise<boolean> {
 
           constraints.push(
             `    await sql\`ALTER TABLE "${tableName}" ` +
-            `ADD CONSTRAINT "${constraintName}" ` +
-            `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
-            `ON DELETE ${onDelete} ON UPDATE ${onUpdate};\`;\n` +
-            `    logger.info?.('Added FK constraint: ${constraintName}');`
+              `ADD CONSTRAINT "${constraintName}" ` +
+              `FOREIGN KEY ("${columnName}") REFERENCES "${refTable}"("${refColumn}") ` +
+              `ON DELETE ${onDelete} ON UPDATE ${onUpdate};\`;\n` +
+              `    logger.info?.('Added FK constraint: ${constraintName}');`,
           );
         }
       }
@@ -616,21 +617,21 @@ export async function healthCheck(): Promise<boolean> {
           // Add FK constraint for source table
           constraints.push(
             `    await sql\`ALTER TABLE "${tableName}" ` +
-            `ADD CONSTRAINT "${tableName}_${sourceFKColumn}_fk" ` +
-            `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
-              this.toSnakeCase(model.name)
-            }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
-            `    logger.info?.('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`
+              `ADD CONSTRAINT "${tableName}_${sourceFKColumn}_fk" ` +
+              `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
+                this.toSnakeCase(model.name)
+              }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
+              `    logger.info?.('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`,
           );
 
           // Add FK constraint for target table
           constraints.push(
             `    await sql\`ALTER TABLE "${tableName}" ` +
-            `ADD CONSTRAINT "${tableName}_${targetFKColumn}_fk" ` +
-            `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
-              this.toSnakeCase(targetModel.name)
-            }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
-            `    logger.info?.('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`
+              `ADD CONSTRAINT "${tableName}_${targetFKColumn}_fk" ` +
+              `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
+                this.toSnakeCase(targetModel.name)
+              }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
+              `    logger.info?.('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`,
           );
         }
       }
@@ -645,7 +646,7 @@ export async function healthCheck(): Promise<boolean> {
   private generateIndexCreationSQL(): string {
     const processedIndexes = new Set(); // Track unique index names
     return this.models.map((model) => {
-      const tableName = this.toSnakeCase(model.name);
+      const _tableName = model.tableName;
       const indexes = this.generateIndexes(model);
 
       if (!indexes.length) return '';
@@ -664,7 +665,7 @@ export async function healthCheck(): Promise<boolean> {
    */
   private generateIndexes(model: ModelDefinition): Array<{ sql: string; name: string }> {
     const indexes = [];
-    const tableName = this.toSnakeCase(model.name);
+    const tableName = model.tableName;
 
     // Field-level indexes
     for (const field of model.fields) {
@@ -687,15 +688,15 @@ export async function healthCheck(): Promise<boolean> {
       for (const idx of model.indexes) {
         const columns = idx.fields.map((f) => `"${this.toSnakeCase(f)}"`).join(', ');
         const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => this.toSnakeCase(f)).join('_')}`;
-        
+
         // Determine index method, respecting postgis setting
         let method = idx.type || this.getDefaultIndexMethod();
-        
+
         // If PostGIS is disabled and index type is GIST, fall back to GIN for JSONB
         if (!this.postgis && method.toUpperCase() === 'GIST') {
           method = 'GIN';
         }
-        
+
         const methodClause = method ? `USING ${method}` : '';
 
         indexes.push({
@@ -712,7 +713,7 @@ export async function healthCheck(): Promise<boolean> {
   /**
    * Get SQL type for a field
    */
-  private getColumnType(field: any): string {
+  private getColumnType(field: FieldDefinition): string {
     // Handle array types first
     if (field.array) {
       if (field.type === 'text') return 'TEXT[]';
@@ -726,9 +727,9 @@ export async function healthCheck(): Promise<boolean> {
       'string': field.maxLength ? `VARCHAR(${field.maxLength})` : 'TEXT',
       'text': 'TEXT',
       'boolean': 'BOOLEAN',
-      'date': 'TIMESTAMP',
+      'date': 'INT8', // Store dates as EPOCH milliseconds (bigint)
       'jsonb': 'JSONB',
-      'timestamp': 'TIMESTAMP',
+      'timestamp': 'INT8', // Store timestamps as EPOCH milliseconds (bigint)
     };
 
     if (field.type in commonTypes) {
@@ -821,7 +822,7 @@ export async function healthCheck(): Promise<boolean> {
   /**
    * Get SQL constraints for a field
    */
-  private getColumnConstraints(field: any): string {
+  private getColumnConstraints(field: FieldDefinition): string {
     const constraints = [];
 
     if (field.required) {
@@ -850,7 +851,7 @@ export async function healthCheck(): Promise<boolean> {
   /**
    * Get index method based on field type
    */
-  private getIndexMethod(field: any): string {
+  private getIndexMethod(field: FieldDefinition): string {
     // CockroachDB only supports BTREE and INVERTED indexes
     if (this.dbType === 'cockroachdb') {
       if (field.type === 'json' || field.type === 'jsonb') {
@@ -881,7 +882,7 @@ export async function healthCheck(): Promise<boolean> {
   /**
    * Format default value for SQL
    */
-  private formatDefaultValue(field: any): string {
+  private formatDefaultValue(field: FieldDefinition): string {
     if (field.type === 'uuid' && field.defaultValue === 'gen_random_uuid()') {
       return 'gen_random_uuid()';
     } else if (typeof field.defaultValue === 'string' && !field.defaultValue.includes('(')) {
@@ -893,7 +894,7 @@ export async function healthCheck(): Promise<boolean> {
     } else if (field.defaultValue === null) {
       return 'NULL';
     } else {
-      return field.defaultValue;
+      return field.defaultValue?.toString() || '';
     }
   }
 
