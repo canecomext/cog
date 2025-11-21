@@ -4,7 +4,7 @@ import { Scalar } from '@scalar/hono-api-reference';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import { crypto } from '@std/crypto';
-import { type DbTransaction, extractRoutes, initializeGenerated } from '../generated/index.ts';
+import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated } from '../generated/index.ts';
 import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } from '../generated/domain/hooks.types.ts';
 import type { RestHookContext, RestPostHookResult, RestPreHookResult } from '../generated/rest/hooks.types.ts';
 import type { Department, Employee, NewDepartment, NewEmployee } from '../generated/schema/index.ts';
