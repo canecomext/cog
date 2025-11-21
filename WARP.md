@@ -1,308 +1,469 @@
-# WARP.md - COG Internal Documentation
+# WARP - Complete Technical Documentation
+
+> **WARP**: **W**ork **A**rchitecture **R**eference **P**ackage
+> Complete technical reference for COG (CRUD Operations Generator)
+
+---
+
+## Table of Contents
+
+- [What is COG?](#what-is-cog)
+- [Project Structure](#project-structure)
+- [Generation Pipeline](#generation-pipeline)
+- [Generated Code Architecture](#generated-code-architecture)
+- [Key Concepts](#key-concepts)
+  - [Model Definition Structure](#model-definition-structure)
+  - [Supported Data Types](#supported-data-types)
+  - [Relationship Types](#relationship-types)
+  - [Hook System](#hook-system)
+  - [Validation System](#validation-system)
+  - [Check Constraints](#check-constraints)
+- [Database Compatibility](#database-compatibility)
+- [CLI Reference](#cli-reference)
+- [Generated Code Usage](#generated-code-usage)
+- [Common Development Patterns](#common-development-patterns)
+- [File Naming Conventions](#file-naming-conventions)
+- [Critical Gotchas & Edge Cases](#critical-gotchas--edge-cases)
+- [Dependencies](#dependencies)
+- [Related Documentation](#related-documentation)
+
+---
 
 ## What is COG?
 
-COG (CRUD Operations Generator) transforms JSON model definitions into a complete, production-ready TypeScript backend.
-Think of it as a compiler for backend applications - you describe your data models, and COG generates all the layers you
-need: database schemas, domain logic, REST APIs, and the glue that holds them together.
+**COG (CRUD Operations Generator)** is a TypeScript code generator that transforms JSON model definitions into production-ready backend code. Think of it as a compiler for backend applications.
 
-## The Problem It Solves
+**Input**: Simple JSON model definitions (user, post, comment, etc.)
+**Output**: Complete layered TypeScript backend with database, domain logic, REST APIs, and OpenAPI docs
 
-Writing CRUD operations is repetitive. Every model needs the same patterns: database tables, validation, API endpoints,
-error handling, transactions. Developers spend countless hours writing this boilerplate instead of focusing on unique
-business logic. COG eliminates this waste by generating consistent, well-structured code that follows best practices.
+**Stack**: Deno + TypeScript + Drizzle ORM + Hono + Zod + PostgreSQL/CockroachDB
 
-## How COG Works
+### Design Philosophy
 
-### The Generation Pipeline
+COG follows these principles:
 
-1. **Parse** - Read JSON model definitions from a directory
-2. **Validate** - Check model integrity, relationships, and data types
-3. **Transform** - Convert models into internal representation
-4. **Generate** - Produce TypeScript code for each layer
-5. **Write** - Output organized code structure ready for use
+1. **Model-First Development** - Define your data model in JSON, generate everything else
+2. **Layered Architecture** - Clean separation between REST, Domain, Schema, and Database layers
+3. **Type Safety** - Full TypeScript types throughout the stack
+4. **Database Agnostic** - Support for both PostgreSQL and CockroachDB with automatic compatibility handling
+5. **Extensible** - Hook system allows custom logic without modifying generated code
+6. **OpenAPI First** - Complete API documentation generated automatically
+7. **Validation Always On** - Zod validation cannot be disabled, ensuring data integrity
 
-### Input: Model Definitions
+---
 
-Models are defined in JSON files with a simple, declarative structure:
+## Project Structure
 
-```json
-{
-  "name": "User",
-  "tableName": "user",
-  "fields": [
-    {
-      "name": "id",
-      "type": "uuid",
-      "primaryKey": true
-    },
-    {
-      "name": "email",
-      "type": "string",
-      "unique": true,
-      "required": true
-    }
-  ],
-  "relationships": [
-    {
-      "type": "oneToMany",
-      "name": "posts",
-      "target": "Post"
-    }
-  ],
-  "timestamps": true
-}
+```
+cog/
+├── src/
+│   ├── cli.ts                           # CLI entry point
+│   ├── mod.ts                           # Main generator orchestrator
+│   ├── types/
+│   │   └── model.types.ts               # TypeScript type definitions
+│   ├── parser/
+│   │   └── model-parser.ts              # JSON model validation & parsing
+│   └── generators/
+│       ├── drizzle-schema.generator.ts  # Generates Drizzle ORM schemas
+│       ├── database-init.generator.ts   # Generates DB connection & init
+│       ├── domain-api.generator.ts      # Generates business logic layer
+│       ├── rest-api.generator.ts        # Generates Hono REST endpoints
+│       └── openapi.generator.ts         # Generates OpenAPI 3.1.0 docs
+├── example/
+│   ├── models/                          # Example JSON model definitions
+│   └── generated/                       # Example generated code
+├── WARP.md                              # This file (complete technical docs)
+├── CLAUDE.md                            # Brief reference (points to WARP.md)
+└── README.md                            # User-facing documentation
 ```
 
-### Output: Layered Architecture
+---
 
-COG generates four distinct layers that work together:
+## Generation Pipeline
+
+```
+JSON Models → Parse & Validate → Transform → Generate → Write Files
+     ↓              ↓                ↓          ↓           ↓
+  models/    model-parser.ts    mod.ts    generators/   generated/
+```
+
+### Pipeline Steps:
+
+1. **Parse** - Read & validate JSON model definitions from `modelsPath`
+2. **Validate** - Check model integrity, relationships, data types
+3. **Transform** - Convert to internal representation (`ModelDefinition[]`)
+4. **Generate** - Each generator produces TypeScript code strings
+5. **Write** - Output organized code structure to `outputPath`
+
+---
+
+## Generated Code Architecture
+
+COG generates a 4-layer architecture:
+
+```
+generated/
+├── index.ts                     # Main entry point + initializeGenerated()
+├── db/
+│   ├── database.ts             # Database connection & pooling
+│   └── initialize-database.ts  # Database initialization & PostGIS setup
+├── schema/
+│   ├── [model].schema.ts       # Drizzle table definitions + Zod schemas
+│   ├── relations.ts            # Drizzle relationship definitions
+│   └── index.ts
+├── domain/
+│   ├── [model].domain.ts       # Business logic (CRUD operations)
+│   ├── hooks.types.ts          # Hook type definitions
+│   └── index.ts
+└── rest/
+    ├── [model].rest.ts         # Hono REST endpoints
+    ├── openapi.ts              # OpenAPI specification (TypeScript)
+    ├── openapi.json            # OpenAPI specification (JSON)
+    ├── middleware.ts
+    ├── types.ts
+    └── index.ts
+```
+
+### Layer Responsibilities:
 
 #### Database Layer (`/db`)
 
-Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with
-PostgreSQL or CockroachDB.
+Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with PostgreSQL or CockroachDB.
+
+**Key Files:**
+- `database.ts` - Connection pooling, transaction management, SQL client access
+- `initialize-database.ts` - Creates tables, indexes, constraints, PostGIS setup
 
 #### Schema Layer (`/schema`)
 
-Drizzle ORM table definitions with full TypeScript types, relationships, indexes, and constraints. Supports all
-PostgreSQL types including PostGIS spatial data. Also includes Zod validation schemas automatically generated from table
-definitions.
+Drizzle ORM table definitions and Zod validation schemas. This layer defines the data structure and validation rules.
+
+**Key Files:**
+- `[model].schema.ts` - Table schema, Zod schemas (insert/update/select)
+- `relations.ts` - Drizzle relationship definitions
+- `index.ts` - Exports all schemas
 
 #### Domain Layer (`/domain`)
 
-Pure business logic implementation. Each model gets a domain class with:
+Pure business logic layer with no HTTP dependencies. All operations accept a database transaction parameter.
 
-- CRUD operations (create, findOne, findMany, update, delete)
-- Automatic input validation using Zod schemas
-- Relationship management (fetch related data, manage associations)
-- Hook integration points
-- Transaction support
-- No HTTP dependencies - can be used by any interface
+**Key Features:**
+- CRUD operations (create, findById, findMany, update, delete)
+- Relationship operations (add/remove for many-to-many)
+- Hook integration (pre/post/after for all operations)
+- Transaction-based (all operations run within provided transaction)
 
 #### REST Layer (`/rest`)
 
-HTTP interface using Hono framework. Translates HTTP requests to domain operations:
+HTTP interface using Hono framework. Translates HTTP requests to domain operations.
 
-- Standard CRUD endpoints (GET, POST, PUT, DELETE)
-- Relationship endpoints (GET /users/:id/posts)
-- OpenAPI 3.1.0 specification for all endpoints
-- Automatic transaction wrapping for write operations
+**Key Features:**
+- RESTful endpoints for all CRUD operations
+- Relationship endpoints (e.g., `/employee/:id/skillList`)
+- Input validation via Zod
+- Hook integration (pre/post at HTTP layer)
 - Error handling and status codes
-- Request/response validation
-- REST hook integration (pre/post hooks at HTTP layer)
-- Class-based route structure for dynamic hook injection
 
-## Supported Data Types
+---
 
-### Primitives
+## Key Concepts
 
-- `text` - Unlimited text
-- `string` - VARCHAR with optional maxLength
-- `integer` - 32-bit integers
-- `bigint` - 64-bit integers for large numbers
-- `decimal` - Precise decimal numbers with scale/precision
-- `boolean` - True/false values
-- `date` - Timestamps stored as epoch milliseconds
-- `uuid` - Universally unique identifiers
-- `json`/`jsonb` - Structured JSON data
-- `enum` - PostgreSQL enum type with single or multiple value support (via bitwise flags)
+### Model Definition Structure
 
-### Spatial Types (PostGIS)
-
-- `point` - Single coordinate
-- `linestring` - Connected line segments
-- `polygon` - Closed area
-- `multipoint` - Multiple points
-- `multilinestring` - Multiple lines
-- `multipolygon` - Multiple polygons
-- `geometry` - Generic geometry type
-- `geography` - Geographic data on sphere
-
-Each spatial type supports:
-
-- SRID (Spatial Reference ID) specification
-- Geometry type constraints
-- Dimension configuration (2D, 3D, 4D)
-
-### Enum Types
-
-COG supports PostgreSQL enum types with two modes: standard enums (single value) and bitwise enums (multiple values).
-
-#### Standard Enum Mode
-
-For fields that can only have ONE value from a predefined set:
+Models are defined in JSON with this structure:
 
 ```json
 {
-  "name": "User",
-  "enums": [
+  "name": "User",                    // Model name (PascalCase)
+  "tableName": "user",               // Database table name (singular, snake_case)
+  "schema": "public",                // Optional: database schema
+  "enums": [                         // Optional: enum definitions
     {
-      "name": "Role",
-      "values": ["admin", "editor", "viewer"]
+      "name": "AccountType",
+      "values": ["free", "premium"]
     }
   ],
-  "fields": [
+  "fields": [                        // Required: field definitions
     {
-      "name": "role",
-      "type": "enum",
-      "enumName": "Role",
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
       "required": true
+    }
+  ],
+  "relationships": [                 // Optional: relationships
+    {
+      "type": "oneToMany",
+      "name": "postList",
+      "target": "Post",
+      "foreignKey": "authorId"
+    }
+  ],
+  "indexes": [                       // Optional: custom indexes
+    {
+      "fields": ["email", "isActive"],
+      "unique": true
+    }
+  ],
+  "check": {                         // Optional: check constraints
+    "numNotNulls": [
+      {
+        "fields": ["field1", "field2"],
+        "num": 1
+      }
+    ]
+  },
+  "timestamps": true                 // Optional: auto createdAt/updatedAt
+}
+```
+
+### Supported Data Types
+
+**Primitives:**
+- `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date`, `uuid`
+- `json`, `jsonb` (structured data)
+- `enum` (PostgreSQL enums with standard or bitwise modes)
+
+**PostGIS Spatial Types:**
+- `point`, `linestring`, `polygon`
+- `multipoint`, `multilinestring`, `multipolygon`
+- `geometry`, `geography`
+
+**Special Features:**
+- Array types: `"array": true` on any field
+- Foreign keys: `"references": { "model": "...", "field": "..." }`
+- Enums: Standard (single value) or bitwise (multiple values via integer flags)
+
+**Numeric Precision Limitation:**
+
+COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991).
+
+**Why**: JSON numbers beyond 2^53 - 1 lose precision when parsed by JavaScript.
+
+**Workaround**: Omit default values for large bigint fields and set them at runtime.
+
+### Relationship Types
+
+- **oneToMany** - Parent-child (e.g., User → Post)
+- **manyToOne** - Child-parent (e.g., Post → User)
+- **manyToMany** - Junction table (e.g., User ↔ Role via user_role)
+- **oneToOne** - Direct relationship (e.g., User → Profile)
+- **Self-referential** - Model references itself (e.g., Employee → mentor/mentee)
+
+**Relationship Endpoint URL Patterns:**
+
+COG uses a consistent "List" suffix for collection endpoints:
+
+| Relationship Type | URL Pattern | Example |
+|-------------------|-------------|---------|
+| oneToMany | `/:id/{target}List` | `/employee/:id/assignmentList` |
+| manyToMany | `/:id/{relationName}` | `/employee/:id/skillList` |
+| manyToMany (individual) | `/:id/{relationName}/:targetId` | `/employee/:id/skillList/:skillId` |
+
+### Hook System
+
+Hooks provide extension points for custom logic without modifying generated code.
+
+#### Hook Execution Flow
+
+```
+Begin Transaction
+  → Input Validation (Zod)
+  → Pre-hook (modify input, within transaction)
+  → Pre-hook Output Validation (Zod)
+  → Main Operation (database operation)
+  → Post-hook (modify output, within transaction)
+Commit Transaction
+→ After-hook (async side effects, outside transaction)
+```
+
+**Hook Types:**
+- **Pre-hooks** - Modify input before operation (validated twice: before and after hook)
+- **Post-hooks** - Modify output after operation (within transaction)
+- **After-hooks** - Side effects after commit (notifications, logging, external APIs)
+
+**Hook Context:**
+- `requestId` - Unique request identifier
+- `userId` - Current user from authentication
+- `metadata` - Custom data passed between hooks
+- `transaction` - Active database transaction (domain hooks only)
+
+#### Domain Hooks vs REST Hooks
+
+COG provides TWO types of hooks that run at different layers:
+
+**Domain Hooks** (within transactions):
+- Run at the domain layer
+- Have access to database transaction
+- Execute within transaction boundary
+- For database-related logic, validation, data transformation
+- Signature includes `tx: DbTransaction` parameter
+
+**REST Hooks** (at HTTP layer):
+- Run at the REST layer BEFORE/AFTER domain operations
+- NO access to database transaction
+- Have access to full Hono context (`c: Context`)
+- For HTTP-specific operations: request/response transformation, authorization, logging
+- Execute outside transaction boundary
+
+**Execution Flow with Both Hooks:**
+```
+HTTP Request
+  → REST Pre-hook (no transaction)
+    → Begin Transaction
+      → Domain Pre-hook (within transaction)
+      → Main Operation
+      → Domain Post-hook (within transaction)
+    → Commit Transaction
+  → REST Post-hook (no transaction)
+  → Domain After-hook (async, no transaction)
+→ HTTP Response
+```
+
+**Use Domain Hooks when:**
+- Modifying data before/after database operations
+- Validating business rules that require DB queries
+- Enriching data with related records from database
+- Any operation that needs transaction safety
+
+**Use REST Hooks when:**
+- Transforming HTTP request/response formats
+- HTTP-specific authorization checks
+- Logging HTTP requests/responses
+- Setting HTTP headers
+- Rate limiting
+- Request/response sanitization at HTTP level
+
+### Validation System (Always Enabled)
+
+**CRITICAL**: Zod validation is MANDATORY and cannot be disabled.
+
+**Generated Schemas (per model):**
+```typescript
+export const userInsertSchema = createInsertSchema(userTable);  // Create ops
+export const userUpdateSchema = createUpdateSchema(userTable);  // Update ops (partial)
+export const userSelectSchema = createSelectSchema(userTable);  // Select ops
+```
+
+**Dual Validation Flow:**
+1. Initial input validated before pre-hook
+2. Pre-hook output validated before database operation
+
+This prevents hooks from emitting malformed data.
+
+### Check Constraints
+
+COG supports PostgreSQL check constraints via the `"check"` property in model definitions.
+
+**Supported Constraint Types:**
+
+#### num_nonnulls Constraint
+
+Ensures a minimum number of fields are non-null from a specified list.
+
+**Example:**
+```json
+{
+  "name": "AdvancedDemo",
+  "fields": [
+    {"name": "optionalField1", "type": "string"},
+    {"name": "optionalField2", "type": "integer"},
+    {"name": "optionalField3", "type": "boolean"}
+  ],
+  "check": {
+    "numNotNulls": [
+      {
+        "fields": ["optionalField1", "optionalField2", "optionalField3"],
+        "num": 2
+      }
+    ]
+  }
+}
+```
+
+**Generated SQL:**
+```sql
+CHECK (num_nonnulls(optional_field1, optional_field2, optional_field3) >= 2)
+```
+
+**Use Case**: Require at least N fields to be filled out from a group of optional fields.
+
+---
+
+## Database Compatibility
+
+COG supports both PostgreSQL and CockroachDB as target databases. While most features work identically across both platforms, there are important differences.
+
+### PostgreSQL vs CockroachDB Feature Comparison
+
+| Feature | PostgreSQL | CockroachDB | Notes |
+|---------|------------|-------------|-------|
+| **Index Types** | | | |
+| BTREE | Supported | Supported | Default index type |
+| GIN | Supported | Supported | For JSONB, arrays |
+| GIST | Supported | Supported | For spatial data (PostGIS) |
+| HASH | Supported | Not Supported | Use BTREE instead |
+| SPGIST | Supported | Not Supported | Use BTREE or GIST |
+| BRIN | Supported | Not Supported | Use BTREE |
+| **Data Types** | | | |
+| Enums | All versions | v22.2+ only | See enum section |
+| PostGIS Spatial | GEOMETRY + GEOGRAPHY | GEOMETRY only | GEOGRAPHY converted to GEOMETRY |
+| JSONB | Supported | Supported | Full support |
+| Arrays | Supported | Supported | Full support |
+| **Numeric Precision** | | | |
+| Bigint defaults | Limited to 2^53-1 | Limited to 2^53-1 | JavaScript limitation |
+
+### Index Type Compatibility
+
+When defining indexes in your model JSON files, be aware of CockroachDB's limitations:
+
+**PostgreSQL-Only Index Types:**
+
+```json
+{
+  "indexes": [
+    {
+      "name": "idx_score_hash",
+      "fields": ["score"],
+      "type": "hash"  // Fails on CockroachDB
     }
   ]
 }
 ```
 
-Generates:
-
-```typescript
-export const roleEnum = pgEnum('role', ['admin', 'editor', 'viewer']);
-
-export const userTable = pgTable('user', {
-  role: roleEnum('role').notNull(),
-  // ...
-});
-```
-
-#### Bitwise Enum Mode
-
-For fields that can have MULTIPLE values stored as bitwise flags (efficient for preferences, permissions, filters):
+**Cross-Compatible Indexes:**
 
 ```json
 {
-  "name": "Profile",
-  "enums": [
+  "indexes": [
     {
-      "name": "Gender",
-      "values": ["man", "woman", "non_binary"]
-    }
-  ],
-  "fields": [
-    {
-      "name": "gender",
-      "type": "enum",
-      "enumName": "Gender",
-      "required": true
+      "name": "idx_score_btree",
+      "fields": ["score"],
+      "type": "btree"  // Works on both
     },
     {
-      "name": "genderPreference",
-      "type": "integer",
-      "required": true,
-      "defaultValue": 7
+      "name": "idx_metadata_gin",
+      "fields": ["metadata"],
+      "type": "gin"  // Works on both (for JSONB)
+    },
+    {
+      "name": "idx_location_gist",
+      "fields": ["location"],
+      "type": "gist"  // Works on both (for spatial data)
     }
   ]
 }
 ```
 
-**Bit Mapping:**
-
-- Each enum value is assigned a power of 2
-- `man` = 1 (2^0), `woman` = 2 (2^1), `non_binary` = 4 (2^2)
-- Combine values using bitwise OR: `1 | 2 | 4 = 7` (all values)
-- Check values using bitwise AND: `(value & flag) > 0`
-
-**Querying with bitwise operations:**
-
-```typescript
-import { and, sql } from 'drizzle-orm';
-
-// Find profiles matching gender preferences (bidirectional)
-const genderBits = { 'man': 1, 'woman': 2, 'non_binary': 4 };
-const myGenderBit = genderBits[currentProfile.gender];
-
-const matches = await tx
-  .select()
-  .from(profileTable)
-  .where(
-    and(
-      // Their preference includes my gender
-      sql`(${profileTable.genderPreference} & ${myGenderBit}) > 0`,
-      // My preference includes their gender
-      sql`(${currentProfile.genderPreference} & 
-        CASE ${profileTable.gender}
-          WHEN 'man' THEN 1
-          WHEN 'woman' THEN 2
-          WHEN 'non_binary' THEN 4
-        END) > 0`,
-    ),
-  );
-```
-
-**Use cases for bitwise enums:**
-
-- User preferences (dating apps, content filtering)
-- Permission systems (read, write, execute flags)
-- Feature flags (multiple enabled features)
-- Multi-select filters
-
-**Benefits:**
-
-- Efficient storage: 4 bytes for up to 32 flags (or 8 bytes for 64 flags with bigint)
-- Fast queries: Bitwise operations are very performant
-- Index-friendly: Can create standard B-tree indexes on integer columns
-- Compact: No junction tables or array types needed
-
-**Limitations:**
-
-- Maximum 32 values with integer (64 with bigint)
-- Requires application-level bit mapping
-- Less readable than array types without helper constants
-
-#### Array of Enums (Alternative)
-
-For more readable multi-value enums when performance is less critical:
-
-```json
-{
-  "name": "genderPreferences",
-  "type": "enum",
-  "enumName": "Gender",
-  "array": true
-}
-```
-
-Generates:
-
-```typescript
-genderPreferences: genderEnum('gender_preferences').array();
-```
-
-This provides better readability and doesn't require bit mapping, but queries using array operators (`@>`, `&&`) are
-slower than bitwise operations.
-
-#### CockroachDB Compatibility
-
-**Index Type Support:**
-
-| Index Type | PostgreSQL | CockroachDB | Alternative |
-|------------|------------|-------------|-------------|
-| BTREE | ✅ Supported | ✅ Supported | Default |
-| GIN | ✅ Supported | ✅ Supported | For JSONB, arrays |
-| GIST | ✅ Supported | ✅ Supported | For spatial data |
-| HASH | ✅ Supported | ❌ Not Supported | Use BTREE |
-| SPGIST | ✅ Supported | ❌ Not Supported | Use BTREE/GIST |
-| BRIN | ✅ Supported | ❌ Not Supported | Use BTREE |
-
-**Enum Support:**
-
-- PostgreSQL-style enums are supported in **CockroachDB v22.2+** (released December 2022)
-- Earlier CockroachDB versions do NOT support enum types
-- For older versions, use `varchar` fields with `CHECK` constraints as an alternative
-
-**Bitwise Operations:**
-
-- Fully supported in all CockroachDB versions
-- Bitwise operators (`&`, `|`, `^`, `~`) work identically to PostgreSQL
-- Recommended approach for multi-value enums on CockroachDB
-
-**Spatial Data Types:**
+### Spatial Data Type Compatibility
 
 CockroachDB does NOT support the PostGIS `GEOGRAPHY` type:
 
 | Feature | PostgreSQL | CockroachDB | COG Behavior |
 |---------|------------|-------------|--------------|
-| GEOMETRY | ✅ Supported | ✅ Supported | Used as-is |
-| GEOGRAPHY | ✅ Supported | ❌ Not Supported | Auto-converted to GEOMETRY |
+| GEOMETRY | Supported | Supported | Used as-is |
+| GEOGRAPHY | Supported | Not Supported | Auto-converted to GEOMETRY |
 
 When `--dbType cockroachdb` is used, COG automatically converts:
 - `type: "geography"` → `GEOMETRY` column type
@@ -311,876 +472,103 @@ When `--dbType cockroachdb` is used, COG automatically converts:
 
 This conversion is transparent - your model definitions remain database-agnostic.
 
-**Numeric Precision Limitation:**
+### Enum Support
 
-COG has a limitation on numeric default values due to JavaScript/JSON constraints:
+**PostgreSQL Enums:**
+- Supported in all PostgreSQL versions
+- Generated as `pgEnum()` in Drizzle schemas
 
-- Maximum safe default value: `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991)
-- Applies to both PostgreSQL and CockroachDB
-- Larger values lose precision during JSON parsing
-- **Workaround**: Omit default values for large bigint fields and set them at runtime
-- This limitation only affects **default values** in model JSON - runtime values can exceed this limit
+**CockroachDB Enums:**
+- Supported in CockroachDB v22.2+ (December 2022)
+- Earlier versions do NOT support enum types
+- Alternative: Use `varchar` with `CHECK` constraints for older versions
 
-**Generated Code:** When generating for CockroachDB (`--dbType cockroachdb`), schemas include comments noting the v22.2+
-requirement for enum types.
+**Bitwise Integer Operations:**
+- Fully supported in all CockroachDB versions
+- Bitwise operators (`&`, `|`, `^`, `~`) work identically to PostgreSQL
+- Recommended approach for multi-value enums on CockroachDB
 
-## Relationships
+### Best Practices for Multi-Database Support
 
-COG handles all standard relationship patterns:
+If you need to support both PostgreSQL and CockroachDB:
 
-### One-to-Many / Many-to-One
+1. **Use compatible index types** - Stick to BTREE, GIN, and GIST
+2. **Test on target database** - Run `deno task db:init` against your target database early
+3. **Avoid HASH indexes** - While faster for equality comparisons in PostgreSQL, not supported in CockroachDB
+4. **Check enum support** - Ensure CockroachDB v22.2+ if using enum types
+5. **Keep defaults reasonable** - Use numeric defaults within JavaScript's safe integer range
 
-Parent-child relationships like User -> Posts. Foreign key in child table.
+---
 
-### Many-to-Many
+## CLI Reference
 
-Requires junction table. Automatically generates the junction schema.
-
-### One-to-One
-
-Direct relationship with foreign key in either table.
-
-### Self-Referential
-
-Models can reference themselves (e.g., Location with parent/children).
-
-## Input Validation
-
-COG integrates [Zod](https://zod.dev) validation using [drizzle-zod](https://orm.drizzle.team/docs/zod) for automatic
-input validation on all CRUD operations.
-
-### Automatic Schema Generation
-
-For each model, three Zod schemas are automatically generated from Drizzle table definitions:
-
-```typescript
-// In generated/schema/user.schema.ts
-
-// For create operations - validates all required fields
-export const userInsertSchema = createInsertSchema(userTable);
-
-// For update operations - all fields are optional (partial updates)
-export const userUpdateSchema = createUpdateSchema(userTable);
-
-// For select operations - validates query results
-export const userSelectSchema = createSelectSchema(userTable);
-```
-
-### Validation Execution Flow
-
-Validation happens at two critical points in every create and update operation:
-
-```
-1. Initial Input Validation
-   ↓ (Zod schema validation)
-2. Pre-hook receives validated input
-   ↓ (Pre-hook can modify input)
-3. Pre-hook Output Validation  
-   ↓ (Zod schema validation again)
-4. Database operation with validated data
-```
-
-This dual-validation approach ensures:
-
-- Invalid data is rejected immediately
-- Hooks receive only valid input
-- Hooks cannot emit malformed data to database operations
-- Data integrity is maintained throughout the operation
-
-### Implementation in Domain API
-
-**Create Operation:**
-
-```typescript
-async create(input: NewUser, tx: DbTransaction, context?: HookContext): Promise<User> {
-  // 1. Validate input before pre-hook
-  const validatedInput = userInsertSchema.parse(input);
-
-  // 2. Pre-create hook (within transaction)
-  let processedInput = validatedInput;
-  if (this.hooks.preCreate) {
-    const preResult = await this.hooks.preCreate(validatedInput, tx, context);
-    // 3. Validate pre-hook output to ensure it didn't emit malformed data
-    processedInput = userInsertSchema.parse(preResult.data);
-    context = { ...context, ...preResult.context };
-  }
-
-  // 4. Perform create operation with validated data
-  const [created] = await tx
-    .insert(userTable)
-    .values(processedInput)
-    .returning();
-
-  // ... post-hook and after-hook logic
-}
-```
-
-**Update Operation:**
-
-```typescript
-async update(id: string, input: Partial<NewUser>, tx: DbTransaction, context?: HookContext): Promise<User> {
-  // 1. Validate input before pre-hook (partial update)
-  const validatedInput = userUpdateSchema.parse(input);
-
-  // 2. Pre-update hook
-  let processedInput = validatedInput;
-  if (this.hooks.preUpdate) {
-    const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
-    // 3. Validate pre-hook output to ensure it didn't emit malformed data
-    processedInput = userUpdateSchema.parse(preResult.data);
-    context = { ...context, ...preResult.context };
-  }
-
-  // 4. Perform update operation with validated data
-  const [updated] = await tx
-    .update(userTable)
-    .set({
-      ...processedInput,
-      updatedAt: new Date(),
-    })
-    .where(eq(userTable.id, id))
-    .returning();
-
-  // ... post-hook and after-hook logic
-}
-```
-
-### Error Handling
-
-When validation fails, Zod throws a `ZodError` with detailed field-level information:
-
-```typescript
-import { ZodError } from 'zod';
-
-try {
-  await userDomain.create({
-    email: 'invalid-email',
-    username: 'user',
-    // Missing required field: fullName
-  }, tx);
-} catch (error) {
-  if (error instanceof ZodError) {
-    // Access detailed validation errors
-    error.errors.forEach((err) => {
-      console.log(`${err.path.join('.')}: ${err.message}`);
-    });
-    // Output:
-    // fullName: Required
-    // passwordHash: Required
-  }
-}
-```
-
-### Benefits
-
-**Single Source of Truth**
-
-- Validation rules derived directly from Drizzle table definitions
-- No manual Zod schema creation needed
-- Schema changes automatically update validation
-
-**Type Safety**
-
-- Runtime validation matches TypeScript types
-- Compile-time and runtime type checking
-- Catch invalid data before it reaches the database
-
-**Hook Safety**
-
-- Pre-hooks receive validated input
-- Pre-hook output validated before database operations
-- Prevents hooks from corrupting data
-
-**Developer Experience**
-
-- Automatic - no configuration required
-- Clear, detailed error messages
-- Works seamlessly with existing code
-
-## The Hook System
-
-COG provides two types of hooks that operate at different architectural layers, allowing you to customize behavior at both the HTTP and domain levels.
-
-### Two-Layer Hook Architecture
-
-**Domain Hooks** (`DomainHooks`)
-- Run at the domain layer within database transactions
-- Have access to database transaction for queries and modifications
-- Perfect for: data validation, business rules, database-dependent logic
-- Execute within transaction boundary
-- Configured via `domainHooks` parameter
-
-**REST Hooks** (`RestHooks`)
-- Run at the REST/HTTP layer outside of transactions
-- Have access to full Hono context (request, response, headers)
-- Perfect for: HTTP-specific logic, authorization, logging, rate limiting
-- Execute outside transaction boundary
-- Configured via `restHooks` parameter
-
-### Execution Flow
-
-```
-HTTP Request
-  → REST Pre-hook (HTTP layer, no transaction)
-    → Begin Transaction
-      → Input Validation (Zod)
-      → Domain Pre-hook (within transaction)
-      → Domain Pre-hook Output Validation (Zod)
-      → Main Operation (database)
-      → Domain Post-hook (within transaction)
-    → Commit Transaction
-  → REST Post-hook (HTTP layer, no transaction)
-  → Domain After-hook (async side effects, no transaction)
-→ HTTP Response
-```
-
-### Domain Hook Types
-
-**Pre-operation hooks**
-
-- Execute before the main database operation
-- Receive validated input (Zod validation already applied)
-- Can modify input data
-- Output is validated before main operation
-- Run within transaction
-- Receive `tx: DbTransaction` parameter
-
-**Post-operation hooks**
-
-- Execute after successful database operation
-- Can modify response data
-- Can perform additional database operations
-- Run within same transaction
-- Receive `tx: DbTransaction` parameter
-
-**After-operation hooks**
-
-- Execute after transaction commits
-- Cannot modify response
-- Perfect for notifications, logging, external API calls
-- Run asynchronously outside transaction
-- Do NOT receive transaction parameter
-
-### REST Hook Types
-
-**Pre-operation hooks**
-
-- Execute before domain operation
-- Can access and modify request data
-- Can check authorization, rate limits
-- Can throw HTTPException to abort request
-- Run outside transaction
-- Receive `c: Context` (Hono context) parameter
-
-**Post-operation hooks**
-
-- Execute after domain operation completes
-- Can modify response data
-- Can set response headers
-- Can sanitize output (remove sensitive fields)
-- Run outside transaction
-- Receive `c: Context` (Hono context) parameter
-
-### Hook Context
-
-Both hook types receive a context object that flows through the operation:
-
-- `requestId` - Unique request identifier
-- `userId` - Current user (from authentication)
-- `metadata` - Custom data passed between hooks
-- Additional custom fields from your Hono context variables
-
-**Domain hooks** also receive:
-- `transaction` - Active database transaction
-
-**REST hooks** also receive:
-- `c` - Full Hono context (request, response, headers, etc.)
-
-## Advanced Features
-
-### Transaction Management
-
-Every REST write endpoint (POST, PUT, PATCH, DELETE) automatically wraps domain operations in a transaction:
-
-1. Execute REST pre-hooks (outside transaction)
-2. Begin transaction
-3. Execute domain pre-hooks (within transaction)
-4. Execute main database operation
-5. Execute domain post-hooks (within transaction)
-6. Commit or rollback on error
-7. Execute REST post-hooks (outside transaction)
-8. Execute domain after-hooks if successful (outside transaction, async)
-
-### Query Capabilities
-
-The domain layer supports rich queries:
-
-- Complex WHERE conditions using SQL expressions
-- Pagination with limit/offset
-- Sorting by any field
-- Including related data
-- Partial updates
-- Batch operations
-
-### Database Flexibility
-
-**PostgreSQL Support**
-
-- Full feature set
-- PostGIS extension
-- JSON/JSONB operations
-- Array types
-- Custom types
-
-**CockroachDB Support**
-
-- Distributed SQL
-- Geo-partitioning
-- Built-in spatial types
-- PostgreSQL compatibility
-
-### Model Features
-
-**Timestamps** Automatic `createdAt` and `updatedAt` fields with proper timezone handling.
-
-**Indexes** Composite indexes, unique indexes, partial indexes, and spatial indexes (GIST, GIN).
-
-**Input Validation** Automatic Zod validation for all CRUD operations (always enabled, cannot be disabled). Schemas are
-generated from Drizzle table definitions and validate both initial input and pre-hook output. Includes field-level
-constraints: required, unique, length, precision, scale, and type checking.
-
-**OpenAPI Documentation** Automatic OpenAPI 3.1.0 specification generation for all CRUD endpoints. Generated spec (`generatedOpenAPISpec`) can be exposed at any URL you choose, merged with custom endpoints, and used with any documentation UI (Scalar, Swagger UI, Redoc). Includes complete request/response schemas and TypeScript types.
-
-## OpenAPI Specification Generation
-
-COG automatically generates a complete OpenAPI 3.1.0 specification for all generated CRUD endpoints.
-
-> **Philosophy:** COG generates OpenAPI specifications but **does not automatically expose** documentation endpoints. This gives you full control over where and how to expose your API documentation.
-
-> **Configuration:** Documentation generation can be disabled with `--no-documentation` at generation time. See [Command-Line Usage](#command-line-usage) for details.
-
-### Generated Files
-
-**`generated/rest/openapi.ts`**
-
-- TypeScript module with the complete OpenAPI specification
-- Exports `generatedOpenAPISpec` constant for programmatic access
-- Includes TypeScript types from `openapi-types` package
-- Ready to use with any OpenAPI-compatible tools
-
-**`generated/rest/openapi.json`**
-
-- Static JSON file with the OpenAPI specification
-- Can be served directly or used with API documentation tools
-
-### Manual Documentation Exposure
-
-COG does not automatically register documentation endpoints. You have full control over:
-
-- **URL structure** - Choose your own documentation paths
-- **Security** - Expose docs only in specific environments
-- **Customization** - Merge with custom endpoint documentation before exposing
-- **UI choice** - Use Scalar, Swagger UI, Redoc, or any other tool
-
-**Basic Example:**
-
-```typescript
-import { Hono } from '@hono/hono';
-import { initializeGenerated } from './generated/index.ts';
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
-import { Scalar } from '@scalar/hono-api-reference';
-
-const app = new Hono();
-
-await initializeGenerated({
-  database: { connectionString: 'postgresql://...' },
-  app,
-});
-
-// Expose OpenAPI spec at your chosen URL
-app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
-
-// Expose interactive documentation with Scalar
-app.get('/api/docs', Scalar({
-  url: '/api/openapi.json',
-  theme: 'purple',
-}) as any);
-
-Deno.serve({ port: 3000 }, app.fetch);
-
-// Documentation available at:
-// - http://localhost:3000/api/openapi.json
-// - http://localhost:3000/api/docs
-```
-
-**Environment-Specific Exposure:**
-
-```typescript
-const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
-
-if (isDevelopment) {
-  app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
-  app.get('/docs', Scalar({
-    url: '/docs/openapi.json',
-  }) as any);
-}
-```
-
-**Disable Documentation at Generation Time:**
-
-```bash
-deno run -A src/cli.ts --modelsPath ./models --no-documentation
-# No openapi.ts or openapi.json files generated
-```
-
-### What's Included
-
-**Paths**
-
-- All CRUD endpoints (list, create, get, update, delete)
-- Relationship endpoints (one-to-many, many-to-many)
-- Query parameters for pagination, filtering, and sorting
-- Path parameters for resource IDs
-
-**Schemas**
-
-- Model schemas with all fields and their types
-- Input schemas for create operations
-- Update schemas for partial updates
-- Response schemas matching domain types
-
-**Components**
-
-- Reusable parameters (limit, offset, orderBy, etc.)
-- Common responses (NotFound, ValidationError, ServerError)
-- Field constraints (maxLength, format, nullable, etc.)
-
-**Metadata**
-
-- Operation IDs for each endpoint
-- Tags for grouping by model
-- Descriptions for endpoints and parameters
-- HTTP status codes and response types
-
-### Merging with Custom Endpoints
-
-Combine generated CRUD endpoints with your custom authentication, analytics, or business logic endpoints:
-
-```typescript
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
-import type { OpenAPIV3_1 } from 'openapi-types';
-
-// Define your custom endpoints
-const customPaths: OpenAPIV3_1.PathsObject = {
-  '/auth/login': {
-    post: {
-      tags: ['Authentication'],
-      summary: 'User login',
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              properties: {
-                email: { type: 'string', format: 'email' },
-                password: { type: 'string' },
-              },
-              required: ['email', 'password'],
-            },
-          },
-        },
-      },
-      responses: {
-        '200': {
-          description: 'Login successful',
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                properties: {
-                  token: { type: 'string' },
-                  user: { $ref: '#/components/schemas/User' },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-};
-
-// Merge specs
-const completeSpec: OpenAPIV3_1.Document = {
-  ...generatedOpenAPISpec,
-  info: {
-    ...generatedOpenAPISpec.info,
-    title: 'My Complete API',
-    description: 'Generated CRUD + Custom Endpoints',
-  },
-  paths: {
-    ...generatedOpenAPISpec.paths,
-    ...customPaths,
-  },
-  components: {
-    ...generatedOpenAPISpec.components,
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
-    },
-  },
-  security: [{ bearerAuth: [] }],
-};
-
-// Expose the merged specification
-app.get('/api/openapi.json', (c) => c.json(completeSpec));
-app.get('/api/docs', Scalar({
-  url: '/api/openapi.json',
-}) as any);
-```
-
-### Documentation UI Options
-
-COG-generated OpenAPI specs work with any documentation UI:
-
-**Scalar (Recommended):**
-
-```typescript
-import { Scalar } from '@scalar/hono-api-reference';
-
-app.get('/docs', Scalar({
-  url: '/api/openapi.json', // Point to your OpenAPI spec URL
-  theme: 'purple', // Options: 'alternate', 'default', 'moon', 'purple', 'solarized'
-}) as any);
-```
-
-**Swagger UI:**
-
-```typescript
-import { swaggerUI } from '@hono/swagger-ui';
-
-app.get('/docs/*', swaggerUI({ url: '/api/openapi.json' }));
-```
-
-### Advanced OpenAPI Customization
-
-For more complex scenarios, you can modify the spec structure:
-
-```typescript
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
-
-const customSpec = {
-  info: {
-    title: 'My Complete API',
-    version: '2.0.0',
-    description: 'Generated CRUD operations plus custom endpoints',
-    contact: {
-      name: 'API Support',
-      email: 'support@example.com',
-    },
-  },
-  servers: [
-    {
-      url: 'https://api.example.com',
-      description: 'Production server',
-    },
-    {
-      url: 'https://staging.api.example.com',
-      description: 'Staging server',
-    },
-  ],
-  paths: {
-    '/auth/login': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'User login',
-        operationId: 'loginUser',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                properties: {
-                  email: { type: 'string', format: 'email' },
-                  password: { type: 'string' },
-                },
-                required: ['email', 'password'],
-              },
-            },
-          },
-        },
-        responses: {
-          '200': {
-            description: 'Login successful',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    token: { type: 'string' },
-                    user: { $ref: '#/components/schemas/User' },
-                  },
-                },
-              },
-            },
-          },
-          '401': {
-            description: 'Invalid credentials',
-          },
-        },
-      },
-    },
-  },
-  components: {
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
-    },
-  },
-  security: [{ bearerAuth: [] }],
-};
-
-const completeSpec = mergeOpenAPISpec(customSpec);
-
-// Serve the customized specification
-app.get('/docs/openapi.json', (c) => c.json(completeSpec));
-```
-
-### Schema Type Mapping
-
-COG maps model field types to OpenAPI schema types:
-
-| Model Type     | OpenAPI Type | Format      |
-| -------------- | ------------ | ----------- |
-| `text`         | `string`     | -           |
-| `string`       | `string`     | -           |
-| `integer`      | `integer`    | `int32`     |
-| `bigint`       | `integer`    | `int64`     |
-| `decimal`      | `number`     | `double`    |
-| `boolean`      | `boolean`    | -           |
-| `date`         | `string`     | `date-time` |
-| `uuid`         | `string`     | `uuid`      |
-| `json`/`jsonb` | `object`     | -           |
-| PostGIS types  | `object`     | (GeoJSON)   |
-
-### Benefits
-
-**Automatic Synchronization**
-
-- OpenAPI spec is always in sync with your models
-- Changes to models automatically update the documentation
-- No manual documentation maintenance required
-
-**Development Tools**
-
-- Generate client SDKs with OpenAPI Generator
-- Beautiful API documentation with Scalar
-- Import into Postman or Insomnia
-- Validate requests/responses
-
-**API Discovery**
-
-- Self-documenting API
-- Clear endpoint structure
-- Type definitions for all operations
-- Example values and constraints
-
-## File Organization
-
-### Generator Structure
-
-```
-src/
-├── cli.ts                    # Command-line interface
-├── mod.ts                    # Main module exports
-├── parser/
-│   └── model-parser.ts       # JSON model validation
-├── generators/
-│   ├── database-init.generator.ts
-│   ├── domain-api.generator.ts
-│   ├── drizzle-schema.generator.ts
-│   ├── rest-api.generator.ts
-│   └── openapi.generator.ts  # OpenAPI 3.1.0 spec generation
-└── types/
-    └── model.types.ts        # TypeScript definitions
-```
-
-### Generated Code Structure
-
-```
-generated/
-├── index.ts                  # Main entry point
-├── db/
-│   ├── database.ts          # Connection management
-│   └── initialize-database.ts
-├── schema/
-│   ├── [model].schema.ts    # Drizzle table definitions
-│   ├── relations.ts         # Relationship definitions
-│   └── index.ts
-├── domain/
-│   ├── [model].domain.ts    # Business logic
-│   ├── hooks.types.ts
-│   └── index.ts
-└── rest/
-    ├── [model].rest.ts      # HTTP endpoints
-    ├── middleware.ts
-    ├── types.ts
-    ├── openapi.ts           # OpenAPI specification (TypeScript)
-    ├── openapi.json         # OpenAPI specification (JSON)
-    └── index.ts
-```
-
-## Command-Line Usage
-
-### Basic Generation
+### Basic Command
 
 ```bash
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 ```
 
-### Configuration Options
+### All CLI Options
 
-#### Required Options
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--modelsPath <path>` | Path to JSON model files | `./models` |
+| `--outputPath <path>` | Where to generate code | `./generated` |
+| `--dbType <type>` | `postgresql` or `cockroachdb` | `postgresql` |
+| `--schema <name>` | Database schema name | (default) |
+| `--no-postgis` | Disable PostGIS support | enabled |
+| `--no-timestamps` | Disable timestamps globally | enabled |
+| `--no-documentation` | Disable OpenAPI generation | enabled |
+| `--verbose` | Show generated file paths | false |
+| `--help` | Show help message | - |
 
-- `--modelsPath <path>` - Location of JSON model files (default: `./models`)
-- `--outputPath <path>` - Where to generate code (default: `./generated`)
+**IMPORTANT**: CLI flags OVERRIDE model-level settings. If you use `--no-timestamps`, ALL models will be generated without timestamps, even if `"timestamps": true` in JSON.
 
-#### Database Options
-
-- `--dbType <type>` - Database type: `postgresql` or `cockroachdb` (default: `postgresql`)
-- `--schema <name>` - Database schema name (optional, uses default schema if not specified)
-- `--no-postgis` - Disable PostGIS spatial extension support (default: enabled)
-
-#### Feature Options
-
-- `--no-timestamps` - Disable automatic timestamps globally for all models (default: enabled)
-
-#### Documentation Options
-
-- `--no-documentation` - Disable OpenAPI documentation generation (default: enabled)
-
-#### Output Options
-
-- `--verbose` - Show generated file paths during generation (default: false)
-- `--help` - Display help message with all available options
-
-### Global Feature Override Flags
-
-The `--no-*` flags provide **global overrides** that apply to all models, superseding individual model-level settings:
+### Global Feature Flags
 
 #### `--no-timestamps`
 
-When specified, this flag disables automatic timestamp management across **all models**, regardless of their individual
-`"timestamps"` configuration:
+Disables automatic timestamp fields for **all models**, regardless of model-level `"timestamps"` settings:
 
-**Effect:**
-
-- Removes `createdAt: timestamp('created_at')` field from all tables
-- Removes `updatedAt: timestamp('updated_at')` field from all tables
-- No automatic timestamp updates on create or update operations
-
-**Example:**
+- Removes `createdAt` and `updatedAt` fields from all tables
+- No automatic timestamp management on create/update operations
 
 ```bash
-# All models will be generated without automatic timestamps
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-timestamps
 ```
 
-**Use Case:** When you want to manage timestamps manually or don't need audit trails.
-
 #### `--no-postgis`
 
-Disables PostGIS extension support:
+Disables PostGIS spatial data type support:
 
-- Spatial field types (point, linestring, polygon, etc.) fall back to JSONB storage
-- GIST indexes are automatically converted to GIN indexes for JSONB compatibility
-- Useful when deploying to databases without PostGIS extension
-
-**Effect:**
-
-- All spatial types (`point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`,
-  `geography`) are generated as `jsonb()` fields instead of PostGIS custom types
-- Spatial data must be stored as GeoJSON format in JSONB columns
-- GIST indexes on spatial fields are converted to GIN indexes (JSONB-compatible)
-- Database initialization does not attempt to enable PostGIS extension
-
-**Example:**
+- Spatial field types (point, polygon, etc.) fall back to JSONB
+- GIST indexes are converted to GIN indexes for JSONB compatibility
+- Spatial data stored as GeoJSON in JSONB columns
+- Database initialization skips PostGIS extension setup
 
 ```bash
-# Generate without PostGIS - spatial types become JSONB
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postgis
 ```
-
-**Use Case:** When your database doesn't have the PostGIS extension installed or you don't need spatial query
-capabilities.
 
 #### `--no-documentation`
 
 Disables OpenAPI documentation generation entirely:
 
-**Effect:**
-
-- No `openapi.ts` or `openapi.json` files generated in the `rest/` directory
-- No documentation endpoints registered
-- No Scalar API reference UI included
-- Reduces generated code size and eliminates documentation dependencies
-
-**Example:**
+- No `openapi.ts` or `openapi.json` files generated
+- Reduces generated code size
+- Useful when you don't need API documentation
 
 ```bash
-# Generate without documentation
 deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
 ```
 
-**Use Case:** Production builds where you don't want to expose API documentation, or when you have a custom
-documentation solution.
+**Note:** By default, OpenAPI specs are generated but not automatically exposed. See the Generated Code Usage section for how to expose documentation.
 
-**Note:** The documentation base path is now runtime-configurable via `InitializationConfig.docs.basePath` (default: `/docs`). You can enable/disable docs and customize the path when calling `initializeGenerated()`.
+---
 
-#### Priority Rules
+## Generated Code Usage
 
-#### Priority Rules
-
-**Important:** CLI flags have **higher priority** than model-level settings:
-
-```json
-// user.json - Model definition
-{
-  "name": "User",
-  "timestamps": true // ← Model says: enable timestamps
-}
-```
-
-```bash
-# CLI override - disables timestamps for ALL models
-deno run -A src/cli.ts --modelsPath ./models --no-timestamps
-```
-
-**Result:** The generated User model will have no timestamp fields, regardless of the JSON configuration.
-
-### Important Note on Validation
-
-**Zod validation is always enabled and cannot be disabled.** COG automatically generates Zod schemas from Drizzle table
-definitions and applies validation at two critical points:
-
-1. **Initial Input Validation** - Before pre-hooks execute
-2. **Pre-hook Output Validation** - Before database operations
-
-This dual-validation approach ensures data integrity and prevents hooks from emitting malformed data. All CRUD
-operations (create, update) automatically validate input against the generated Zod schemas, providing runtime type
-safety that matches your TypeScript types.
-
-## Integration Example
-
-After generation, integrate the code into your Hono application:
+### Basic Setup
 
 ```typescript
 import { Hono } from '@hono/hono';
@@ -1190,43 +578,71 @@ const app = new Hono();
 
 await initializeGenerated({
   database: {
-    connectionString: 'postgresql://...',
-    ssl: { ca: '...' },
+    connectionString: 'postgresql://user:pass@localhost:5432/mydb',
   },
   app,
-  // Domain hooks - run within database transaction
+});
+
+Deno.serve({ port: 3000 }, app.fetch);
+```
+
+### With Hooks
+
+```typescript
+import { Hono } from '@hono/hono';
+import { initializeGenerated } from './generated/index.ts';
+
+const app = new Hono();
+
+await initializeGenerated({
+  database: {
+    connectionString: 'postgresql://user:pass@localhost:5432/mydb',
+    ssl: { ca: '...' }, // Optional
+  },
+  app,
+  api: {
+    basePath: '/api/v1',  // Optional (default: '/api')
+  },
+  // Domain hooks (within transaction)
   domainHooks: {
     user: {
       async preCreate(input, tx, context) {
-        // Validate or modify input at domain layer
-        // Can perform database queries within transaction
-        return { data: input, context };
+        // Hash password at domain layer (within transaction)
+        const hashedPassword = await hashPassword(input.password);
+        return { data: { ...input, password: hashedPassword }, context };
       },
       async postCreate(input, result, tx, context) {
-        // Enrich response with additional data
+        // Enrich response with related data
         return { data: result, context };
       },
       async afterCreate(result, context) {
-        // Send notification (async, outside transaction)
-        console.log('User created:', result.id);
+        // Send welcome email (async, outside transaction)
+        await sendWelcomeEmail(result.email);
       },
     },
   },
-  // REST hooks - run at HTTP layer, no transaction
+  // REST hooks (HTTP layer, no transaction)
   restHooks: {
     user: {
       async preCreate(input, c, context) {
-        // HTTP-layer validation, authorization, rate limiting
-        const auth = c.req.header('authorization');
-        if (!auth) {
+        // Log HTTP request at REST layer
+        console.log('Create user request from:', c.req.header('user-agent'));
+
+        // Check authorization
+        const token = c.req.header('authorization');
+        if (!token) {
           throw new HTTPException(401, { message: 'Unauthorized' });
         }
+
         return { data: input, context };
       },
       async postCreate(input, result, c, context) {
-        // Set response headers, sanitize output
+        // Set custom response headers
         c.header('X-Resource-Id', result.id);
-        const { passwordHash, ...safeResult } = result;
+
+        // Remove sensitive fields from response
+        const { password, ...safeResult } = result as any;
+
         return { data: safeResult, context };
       },
     },
@@ -1236,135 +652,275 @@ await initializeGenerated({
 Deno.serve({ port: 3000 }, app.fetch);
 ```
 
-## Design Decisions
+### Generated REST Endpoints
 
-### Why Deno?
+For each model, COG generates these endpoints:
 
-- Built-in TypeScript support without configuration
-- Secure by default with explicit permissions
-- Modern JavaScript features and APIs
-- Simplified dependency management
+```
+GET    /api/{model}                   # List (paginated)
+POST   /api/{model}                   # Create
+GET    /api/{model}/:id               # Get by ID
+PUT    /api/{model}/:id               # Update
+DELETE /api/{model}/:id               # Delete
+GET    /api/{model}/:id/{relation}List  # Get related (oneToMany, manyToMany)
+```
 
-### Why Drizzle ORM?
+**Query Parameters:**
+- `limit` - Pagination limit
+- `offset` - Pagination offset
+- `orderBy` - Sort field
+- `order` - Sort direction (asc/desc)
 
-- Type-safe SQL with TypeScript
-- Lightweight with minimal abstraction
-- Excellent PostgreSQL support
-- Migration-free schema definition
+### Exposing API Documentation
 
-### Why Hono?
+COG generates OpenAPI specs but does NOT automatically expose documentation endpoints. You control where and how to expose them:
 
-- Ultra-fast web framework
-- Small bundle size
-- Excellent TypeScript support
-- Works seamlessly with Deno
+```typescript
+import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { Scalar } from '@scalar/hono-api-reference';
 
-### Why Separate Domain and REST?
+// Expose OpenAPI spec at your chosen URL
+app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
 
-- Domain logic remains pure and reusable
-- Easy to add GraphQL or gRPC later
-- Better testability
-- Clear separation of concerns
+// Expose interactive API documentation with Scalar
+app.get('/api/docs', Scalar({
+  url: '/api/openapi.json',
+}) as any);
+```
 
-## Performance Considerations
+**Why Manual Exposure?**
+- Full control over documentation URLs
+- Merge generated docs with custom endpoints
+- Choose whether to expose in production or development only
+- Use any documentation UI (Scalar, Swagger UI, Redoc)
 
-### Connection Pooling
+---
 
-Database connections are pooled and reused to minimize overhead.
+## Common Development Patterns
 
-### Transaction Batching
+### Adding a New Data Type
 
-Multiple operations within a request share the same transaction.
+1. Update `PrimitiveType` or `PostGISType` in `src/types/model.types.ts`
+2. Update `model-parser.ts` validation
+3. Update `database-init.generator.ts` to map type to SQL column type
+4. Update `drizzle-schema.generator.ts` to map type to Drizzle column
+5. Update `openapi.generator.ts` to map type to OpenAPI schema
+6. Test with example model
 
-### Lazy Loading
+### Adding a New Generator
 
-Relationships are loaded on-demand unless explicitly included.
+1. Create new generator in `src/generators/[name].generator.ts`
+2. Implement generation logic (input: `ModelDefinition[]`, output: `Map<string, string>`)
+3. Import and call in `src/mod.ts` `generateFromModels()`
+4. Add files to output map
 
-### Index Optimization
+### Modifying Generated Code Structure
 
-Generated indexes based on unique constraints and foreign keys.
+Edit the specific generator:
+- **Schema structure**: `drizzle-schema.generator.ts`
+- **Domain API**: `domain-api.generator.ts`
+- **REST endpoints**: `rest-api.generator.ts`
+- **OpenAPI spec**: `openapi.generator.ts`
+- **Main index**: `mod.ts` → `generateMainIndex()`
 
-## Security Features
+### Testing Changes
 
-### SQL Injection Prevention
+```bash
+# Generate example code
+cd example
+deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated
 
-All queries use parameterized statements through Drizzle ORM.
+# Run example server
+deno run -A src/main.ts
 
-### Transaction Isolation
+# Test endpoints
+curl http://localhost:3000/api/employee
+curl http://localhost:3000/docs/openapi.json
+```
 
-Each request gets its own transaction with proper isolation.
+---
 
-### Error Sanitization
+## File Naming Conventions
 
-Internal errors are caught and sanitized before sending to clients.
+| Type | Pattern | Example |
+|------|---------|---------|
+| Models | `[name].json` | `user.json` |
+| Schemas | `[name].schema.ts` | `user.schema.ts` |
+| Domain | `[name].domain.ts` | `user.domain.ts` |
+| REST | `[name].rest.ts` | `user.rest.ts` |
+| Tables | `[tableName]` (snake_case, singular) | `user`, `user_role` |
+| Columns | `snake_case` | `created_at`, `user_id` |
+| Model names | `PascalCase` | `User`, `UserProfile` |
+| Field names | `camelCase` | `userId`, `createdAt` |
+| Relationship names | `camelCase` with `List` suffix | `postList`, `skillList` |
 
-## Extensibility
+**Important**: Table names should be **singular** (e.g., `user`, not `users`). Relationship endpoints automatically add the "List" suffix for collections.
 
-### Custom Generators
+---
 
-The generator architecture allows adding new code generators by implementing the generator interface.
+## Critical Gotchas & Edge Cases
 
-### Hook System
+### 1. CLI Flag Priority
 
-Any operation can be extended with custom logic through the two-layer hook system:
-- **Domain Hooks**: Extend database operations with business logic within transactions
-- **REST Hooks**: Extend HTTP endpoints with request/response transformations and HTTP-specific logic
+CLI flags OVERRIDE model settings:
+```json
+// user.json
+{ "timestamps": true }  // ← Ignored if --no-timestamps used
+```
 
-### Middleware Support
+### 2. Junction Table Naming
 
-The REST layer supports standard Hono middleware for cross-cutting concerns.
+Many-to-many relationships require `through` field with explicit junction table name:
+```json
+{
+  "type": "manyToMany",
+  "name": "roleList",
+  "target": "Role",
+  "through": "user_role",        // ← REQUIRED
+  "foreignKey": "user_id",
+  "targetForeignKey": "role_id"
+}
+```
 
-### Custom Types
+### 3. Self-Referential Relationships
 
-Support for custom database types through Drizzle's customType API.
+Model can reference itself:
+```json
+{
+  "name": "Employee",
+  "relationships": [
+    {
+      "type": "manyToOne",
+      "name": "mentor",
+      "target": "Employee",
+      "foreignKey": "mentorId"
+    },
+    {
+      "type": "oneToMany",
+      "name": "menteeList",
+      "target": "Employee",
+      "foreignKey": "mentorId"
+    }
+  ]
+}
+```
 
-## Limitations
+### 4. Foreign Key References
 
-### Current Constraints
+When using `references` in fields, ensure target model exists:
+```json
+{
+  "name": "authorId",
+  "type": "uuid",
+  "required": true,
+  "references": {
+    "model": "User",           // ← Must match existing model name
+    "field": "id",             // ← Must match field in User model
+    "onDelete": "CASCADE"      // ← Optional: CASCADE, SET NULL, RESTRICT, NO ACTION
+  }
+}
+```
 
-- PostgreSQL/CockroachDB only (no MySQL/SQLite yet)
-- REST API only (no GraphQL generation)
-- No migration generation (schema-first approach)
-- No built-in authentication/authorization
+**Supported Foreign Key Actions:**
+- `CASCADE` - Delete/update child records when parent is deleted/updated
+- `SET NULL` - Set foreign key to NULL when parent is deleted/updated
+- `RESTRICT` - Prevent deletion/update of parent if children exist
+- `NO ACTION` - Similar to RESTRICT but checked at end of transaction
 
-### Design Boundaries
+### 5. PostGIS SRID
 
-- Focuses on CRUD operations, not complex business workflows
-- Generates code, not a runtime framework
-- Requires manual integration with existing codebases
+For spatial fields, optionally specify SRID:
+```json
+{
+  "name": "location",
+  "type": "point",
+  "srid": 4326,        // ← WGS 84 (GPS coordinates)
+  "required": true
+}
+```
 
-## Future Enhancements
+Common SRIDs:
+- `4326` - WGS 84 (GPS coordinates, lat/long)
+- `3857` - Web Mercator (used by Google Maps, OpenStreetMap)
 
-Potential areas for expansion:
+### 6. Index Types and Database Compatibility
 
-- GraphQL API generation
-- Migration file generation
-- Built-in authentication patterns
-- Real-time subscriptions support
-- More database engine support
-- WebSocket support for real-time features
-- Batch operation endpoints
+GIST indexes only work with PostGIS:
+```json
+{
+  "indexes": [
+    {
+      "fields": ["location"],
+      "type": "gist"        // ← Requires --postgis (default)
+    }
+  ]
+}
+```
 
-## Contributing
+If using `--no-postgis`, GIST indexes are automatically converted to GIN.
 
-COG is designed to be hackable. The codebase is organized for clarity:
+For CockroachDB: HASH, SPGIST, and BRIN index types are not supported. Use BTREE instead.
 
-- Parsers handle input validation
-- Generators produce code strings
-- Types define the contract
-- CLI orchestrates the pipeline
+### 7. Numeric Default Values
 
-To add a new feature:
+**Maximum safe default value**: `Number.MAX_SAFE_INTEGER` (9007199254740991)
 
-1. Update types in `model.types.ts`
-2. Extend parser in `model-parser.ts`
-3. Modify relevant generators
-4. Test with example models
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9007199254740991  // ✓ Maximum safe value
+}
+```
 
-## License
+```json
+{
+  "name": "bigintField",
+  "type": "bigint",
+  "defaultValue": 9223372036854775807  // ✗ Too large - will lose precision
+}
+```
 
-MIT License - see LICENSE file for details.
+**Workaround**: Omit default values for large bigint fields and set them at runtime.
 
-## Authors
+---
 
-See AUTHORS file for contributors.
+## Dependencies
+
+### COG Generator Dependencies (dev)
+
+- Deno runtime (no external packages needed for generation)
+
+### Generated Code Dependencies (runtime)
+
+Projects using generated code need these in `deno.json`:
+
+```json
+{
+  "imports": {
+    "drizzle-orm": "npm:drizzle-orm@^0.44.5",
+    "drizzle-zod": "npm:drizzle-zod@^0.8.0",
+    "@hono/hono": "jsr:@hono/hono@^4.6.0",
+    "postgres": "npm:postgres@^3.4.7",
+    "zod": "npm:zod@^3.23.0",
+    "@scalar/hono-api-reference": "npm:@scalar/hono-api-reference@^0.5.0"
+  }
+}
+```
+
+---
+
+## Related Documentation
+
+- [README.md](./README.md) - User-facing documentation with visual guides
+- [CLAUDE.md](./CLAUDE.md) - Brief reference (points to this document)
+- [example/README.md](./example/README.md) - Example project walkthrough
+- [src/types/model.types.ts](./src/types/model.types.ts) - TypeScript type definitions with comments
+
+---
+
+## Last Updated
+
+Generated: 2025-11-21
+
+**NOTE**: This file should be updated whenever major architectural changes, new features, or important patterns are added to the codebase.

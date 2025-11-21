@@ -21,8 +21,7 @@
         "--modelsPath",
         "./models",
         "--outputPath",
-        "./generated",
-        "--no-softDeletes"
+        "./generated"
       ],
       "attachSimplePort": 9229
     },
