@@ -14,9 +14,10 @@
     "strict": true
   },
   "tasks": {
-    "cog:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
-    "db:init": "deno run -A example-init.ts",
-    "run": "deno run -A ./example.ts"
+    "cog:crdb:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType cockroachdb",
+    "cog:psql:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType postgresql",
+    "db:init": "deno run -A ./db-init.ts",
+    "run": "deno run -A ./src/main.ts"
   },
   "fmt": {
     "useTabs": false,
