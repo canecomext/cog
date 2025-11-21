@@ -134,29 +134,19 @@ DELETE /api/user/:id   # Delete user
 
 ```mermaid
 erDiagram
-    Department ||--o{ Employee : "oneToMany"
-    Employee }o--|| Department : "manyToOne"
-
-    Employee ||--|| IDCard : "oneToOne"
-
-    Employee ||--o{ Assignment : "oneToMany"
-    Assignment }o--|| Employee : "manyToOne"
-
-    Project ||--o{ Assignment : "oneToMany"
-    Assignment }o--|| Project : "manyToOne"
-
-    Employee }o--o{ Skill : "manyToMany (via employee_skill)"
-
-    Employee }o--o{ Employee : "self-referential manyToMany (mentors/mentees)"
+    User ||--o{ Post : "oneToMany"
+    Post }o--|| User : "manyToOne"
+    User }o--o{ Role : "manyToMany"
+    User ||--|| Profile : "oneToOne"
 ```
 
 | Type | Description | Example |
 |------|-------------|---------|
-| **oneToMany** | Parent → Children | Department → Employees, Project → Assignments |
-| **manyToOne** | Child → Parent | Employee → Department, Assignment → Project |
-| **manyToMany** | Junction table | Employee ↔ Skills (via employee_skill) |
-| **oneToOne** | Direct link | Employee → IDCard |
-| **Self-referential** | Model → Self | Employee ↔ Employee (mentors/mentees) |
+| **oneToMany** | Parent → Children | User → Posts |
+| **manyToOne** | Child → Parent | Post → User |
+| **manyToMany** | Junction table | User ↔ Roles |
+| **oneToOne** | Direct link | User → Profile |
+| **Self-referential** | Model → Self | Employee → Mentors |
 
 ### Hook System
 
