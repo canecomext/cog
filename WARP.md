@@ -397,11 +397,11 @@ Control which CRUD endpoints are generated using the `endpoints` property:
   "name": "User",
   "fields": [...],
   "endpoints": {
-    "create": true,   // POST /api/user (default: true)
-    "read": true,     // GET /api/user/:id (default: true)
-    "list": true,     // GET /api/user (default: true)
-    "update": false,  // PUT /api/user/:id (disabled)
-    "delete": false   // DELETE /api/user/:id (disabled)
+    "create": true,    // POST /api/user (default: true)
+    "readOne": true,   // GET /api/user/:id (default: true)
+    "readMany": true,  // GET /api/user (default: true)
+    "update": false,   // PUT /api/user/:id (disabled)
+    "delete": false    // DELETE /api/user/:id (disabled)
   }
 }
 ```
@@ -421,7 +421,7 @@ Control which many-to-many relationship endpoints are generated:
   "target": "Skill",
   "through": "employee_skill",
   "endpoints": {
-    "read": true,     // GET /api/employee/:id/skillList (default: true)
+    "get": true,      // GET /api/employee/:id/skillList (default: true)
     "add": true,      // POST /api/employee/:id/skillList (default: true)
     "remove": true,   // DELETE /api/employee/:id/skillList (default: true)
     "replace": false  // PUT /api/employee/:id/skillList (disabled)

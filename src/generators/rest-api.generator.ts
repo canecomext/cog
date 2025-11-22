@@ -90,7 +90,7 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
 
   private registerRoutes() {
 ${
-      model.endpoints?.list !== false
+      model.endpoints?.readMany !== false
         ? `    /**
      * GET /${modelNameLower}
      * List all ${modelNameLower} with pagination
@@ -128,7 +128,7 @@ ${
         : ''
     }
 ${
-      model.endpoints?.read !== false
+      model.endpoints?.readOne !== false
         ? `    /**
      * GET /${modelNameLower}/:id
      * Get a single ${modelName} by ID
@@ -295,7 +295,7 @@ export type DefaultEnv = {
         const SingularRelName = this.capitalize(singularRelName);
 
         // GET relationship list
-        if (rel.endpoints?.read !== false) {
+        if (rel.endpoints?.get !== false) {
           endpoints.push(`
     /**
      * GET /${modelNameLower}/:id/${relName}

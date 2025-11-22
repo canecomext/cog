@@ -344,8 +344,8 @@ Control which endpoints are generated for each model:
   "fields": [...],
   "endpoints": {
     "create": true,
-    "read": true,
-    "list": true,
+    "readOne": true,
+    "readMany": true,
     "update": false,
     "delete": false
   }
