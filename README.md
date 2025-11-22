@@ -8,7 +8,8 @@
 
 **Transform JSON models into production-ready TypeScript backends**
 
-COG is a code generator that creates complete CRUD backends from simple JSON model definitions. Define your data model, generate everything else.
+COG is a code generator that creates complete CRUD backends from simple JSON model definitions. Define your data model,
+generate everything else.
 
 ```
 JSON Models → COG → REST API + Domain Logic + Database Schema + OpenAPI Docs
@@ -126,14 +127,15 @@ DELETE /api/department/:id   # Delete department
 
 ### Comprehensive Type Support
 
-| Category | Types |
-|----------|-------|
-| **Primitives** | `string`, `text`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid` |
-| **Structured** | `json`, `jsonb`, `enum` |
-| **Spatial** | `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography` (uses GeoJSON in API, WKT in DB) |
-| **Arrays** | Any type with `"array": true` |
+| Category       | Types                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Primitives** | `string`, `text`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid`                                            |
+| **Structured** | `json`, `jsonb`, `enum`                                                                                                                     |
+| **Spatial**    | `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography` (uses GeoJSON in API, WKT in DB) |
+| **Arrays**     | Any type with `"array": true`                                                                                                               |
 
-**Note:** `date` fields are stored as EPOCH millisecond integers (`bigint`) in the database. The API accepts and returns numeric timestamps. Use `Date.getTime()` in JavaScript/TypeScript.
+**Note:** `date` fields are stored as EPOCH millisecond integers (`bigint`) in the database. The API accepts and returns
+numeric timestamps. Use `Date.getTime()` in JavaScript/TypeScript.
 
 ### Relationship Support
 
@@ -155,13 +157,13 @@ erDiagram
     Employee }o--o{ Employee : "self-referential manyToMany (mentors/mentees)"
 ```
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **oneToMany** | Parent → Children | Department → Employees, Project → Assignments |
-| **manyToOne** | Child → Parent | Employee → Department, Assignment → Project |
-| **manyToMany** | Junction table | Employee ↔ Skills (via employee_skill) |
-| **oneToOne** | Direct link | Employee → IDCard |
-| **Self-referential** | Model → Self | Employee ↔ Employee (mentors/mentees) |
+| Type                 | Description       | Example                                       |
+| -------------------- | ----------------- | --------------------------------------------- |
+| **oneToMany**        | Parent → Children | Department → Employees, Project → Assignments |
+| **manyToOne**        | Child → Parent    | Employee → Department, Assignment → Project   |
+| **manyToMany**       | Junction table    | Employee ↔ Skills (via employee_skill)        |
+| **oneToOne**         | Direct link       | Employee → IDCard                             |
+| **Self-referential** | Model → Self      | Employee ↔ Employee (mentors/mentees)         |
 
 ### Hook System
 
@@ -169,36 +171,31 @@ Extend generated code without modification:
 
 ```
 HTTP Request
-  → REST Pre-hook (HTTP layer)
-    → Transaction Start
-      → Domain Pre-hook (business logic)
-      → Database Operation
-      → Domain Post-hook (transform output)
-    → Transaction Commit
-  → REST Post-hook (set headers)
+  → Transaction Start
+    → Domain Pre-hook (business logic)
+    → Database Operation
+    → Domain Post-hook (transform output)
+  → Transaction Commit
   → Domain After-hook (async side effects)
 → HTTP Response
 ```
 
-**Two Hook Types:**
+**Domain Hooks:** All hooks run within database transactions for data validation and transformation.
 
-| Hook Type | Layer | Transaction | Use Case |
-|-----------|-------|-------------|----------|
-| **Domain Hooks** | Business Logic | Yes | Data validation, transformation |
-| **REST Hooks** | HTTP | No | Authorization, headers, logging |
+**HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead.
 
 ### Database Compatibility
 
-| Feature | PostgreSQL | CockroachDB |
-|---------|:----------:|:-----------:|
-| **Index Types** |
-| BTREE, GIN, GIST | ✓ | ✓ |
-| HASH, SPGIST, BRIN | ✓ | Use BTREE |
-| **Data Types** |
-| Enums | ✓ | ✓ (v22.2+) |
-| GEOMETRY | ✓ | ✓ |
-| GEOGRAPHY | ✓ | Auto-converted |
-| JSONB, Arrays | ✓ | ✓ |
+| Feature            | PostgreSQL |  CockroachDB   |
+| ------------------ | :--------: | :------------: |
+| **Index Types**    |            |                |
+| BTREE, GIN, GIST   |     ✓      |       ✓        |
+| HASH, SPGIST, BRIN |     ✓      |   Use BTREE    |
+| **Data Types**     |            |                |
+| Enums              |     ✓      |   ✓ (v22.2+)   |
+| GEOMETRY           |     ✓      |       ✓        |
+| GEOGRAPHY          |     ✓      | Auto-converted |
+| JSONB, Arrays      |     ✓      |       ✓        |
 
 ---
 
@@ -208,16 +205,16 @@ HTTP Request
 deno run -A src/cli.ts [options]
 ```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--modelsPath <path>` | Path to JSON models | `./models` |
-| `--outputPath <path>` | Output directory | `./generated` |
-| `--dbType <type>` | `postgresql` or `cockroachdb` | `postgresql` |
-| `--schema <name>` | Database schema | (default) |
-| `--no-postgis` | Disable PostGIS | enabled |
-| `--no-timestamps` | Disable timestamps | enabled |
-| `--no-documentation` | Disable OpenAPI | enabled |
-| `--verbose` | Show file paths | false |
+| Option                | Description                   | Default       |
+| --------------------- | ----------------------------- | ------------- |
+| `--modelsPath <path>` | Path to JSON models           | `./models`    |
+| `--outputPath <path>` | Output directory              | `./generated` |
+| `--dbType <type>`     | `postgresql` or `cockroachdb` | `postgresql`  |
+| `--schema <name>`     | Database schema               | (default)     |
+| `--no-postgis`        | Disable PostGIS               | enabled       |
+| `--no-timestamps`     | Disable timestamps            | enabled       |
+| `--no-documentation`  | Disable OpenAPI               | enabled       |
+| `--verbose`           | Show file paths               | false         |
 
 ---
 
@@ -231,10 +228,23 @@ POST   /api/{model}                    # Create
 GET    /api/{model}/:id                # Get by ID
 PUT    /api/{model}/:id                # Update
 DELETE /api/{model}/:id                # Delete
-GET    /api/{model}/:id/{relation}List # Get related
 ```
 
+**Many-to-Many Relationships Only:**
+
+```
+GET    /api/{model}/:id/{relation}List      # Get related
+POST   /api/{model}/:id/{relation}List      # Add multiple
+POST   /api/{model}/:id/{relation}          # Add single
+PUT    /api/{model}/:id/{relation}List      # Replace all
+DELETE /api/{model}/:id/{relation}List      # Remove multiple
+DELETE /api/{model}/:id/{relation}/:targetId # Remove single
+```
+
+**Note:** oneToMany/manyToOne do NOT generate dedicated endpoints.
+
 **Query Parameters:**
+
 - `limit` - Pagination limit
 - `offset` - Pagination offset
 - `orderBy` - Sort field
@@ -323,6 +333,43 @@ Generates: `CHECK (num_nonnulls(field1, field2, field3) >= 2)`
 ```
 
 **Actions:** `CASCADE`, `SET NULL`, `RESTRICT`, `NO ACTION`
+
+### Endpoint Configuration
+
+Control which endpoints are generated for each model:
+
+```json
+{
+  "name": "User",
+  "fields": [...],
+  "endpoints": {
+    "create": true,
+    "read": true,
+    "list": true,
+    "update": false,
+    "delete": false
+  }
+}
+```
+
+Control which many-to-many relationship endpoints are generated:
+
+```json
+{
+  "type": "manyToMany",
+  "name": "roleList",
+  "target": "Role",
+  "through": "user_role",
+  "endpoints": {
+    "get": true,
+    "add": true,
+    "replace": false,
+    "remove": false
+  }
+}
+```
+
+**Default:** All endpoints enabled if not specified.
 
 ---
 

@@ -61,12 +61,12 @@ This will safely delete all test data in the correct order to avoid foreign key 
 - ✅ Delete operations (via cleanup script)
 
 ### Relationships
-- ✅ One-to-Many (Department → Employees)
-- ✅ Many-to-One (Employee → Department)
-- ✅ One-to-One (Employee → IDCard)
-- ✅ Many-to-Many (Employee ↔ Skills)
-- ✅ Self-Referential (Employee mentors/mentees)
-- ✅ Junction Tables (Employee-Project Assignments)
+- ✅ One-to-Many (Department → Employees) - tested via parent/child model endpoints
+- ✅ Many-to-One (Employee → Department) - tested via parent/child model endpoints
+- ✅ One-to-One (Employee → IDCard) - tested via model endpoints
+- ✅ Many-to-Many (Employee ↔ Skills) - **generates dedicated relationship endpoints**
+- ✅ Self-Referential Many-to-Many (Employee mentors/mentees) - **generates dedicated relationship endpoints**
+- ✅ Junction-like Models (Employee-Project Assignments) - tested as regular model
 
 ### Query Features
 - ✅ Include related data (`?include=department,skillList`)

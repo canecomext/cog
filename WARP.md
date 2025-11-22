@@ -272,13 +272,18 @@ COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INT
 
 **Relationship Endpoint URL Patterns:**
 
-COG uses a consistent "List" suffix for collection endpoints:
+COG only generates endpoints for many-to-many relationships (junction tables are hidden from direct access):
 
-| Relationship Type | URL Pattern | Body | Example |
-|-------------------|-------------|------|---------|
-| oneToMany | `/:id/{target}List` | N/A | `/employee/:id/assignmentList` |
-| manyToMany (plural) | `/:id/{relationName}` | `{ ids: [...] }` | `POST /employee/:id/skillList` |
-| manyToMany (singular) | `/:id/{singularRelName}` | `{ id: "..." }` | `POST /employee/:id/skill` |
+| Operation | URL Pattern | Body | Example |
+|-----------|-------------|------|---------|
+| GET (list) | `GET /:id/{relationName}List` | N/A | `GET /employee/:id/skillList` |
+| POST (add multiple) | `POST /:id/{relationName}List` | `{ ids: [...] }` | `POST /employee/:id/skillList` |
+| POST (add single) | `POST /:id/{singularRelName}` | `{ id: "..." }` | `POST /employee/:id/skill` |
+| PUT (replace all) | `PUT /:id/{relationName}List` | `{ ids: [...] }` | `PUT /employee/:id/skillList` |
+| DELETE (remove multiple) | `DELETE /:id/{relationName}List` | `{ ids: [...] }` | `DELETE /employee/:id/skillList` |
+| DELETE (remove single) | `DELETE /:id/{singularRelName}` | `{ id: "..." }` | `DELETE /employee/:id/skill` |
+
+**Note:** oneToMany and manyToOne relationships do NOT generate dedicated endpoints. Use generic CRUD endpoints with foreign keys or query parameters with `?include` instead.
 
 ### Hook System
 
@@ -306,53 +311,24 @@ Commit Transaction
 - `requestId` - Unique request identifier
 - `userId` - Current user from authentication
 - `metadata` - Custom data passed between hooks
-- `transaction` - Active database transaction (domain hooks only)
+- `transaction` - Active database transaction
 
-#### Domain Hooks vs REST Hooks
+#### Domain Hooks
 
-COG provides TWO types of hooks that run at different layers:
+All hooks run at the domain layer within database transactions, providing:
+- Access to database transaction (`tx: DbTransaction`)
+- Transaction safety for all operations
+- Data validation and transformation capabilities
+- Business logic execution
 
-**Domain Hooks** (within transactions):
-- Run at the domain layer
-- Have access to database transaction
-- Execute within transaction boundary
-- For database-related logic, validation, data transformation
-- Signature includes `tx: DbTransaction` parameter
-
-**REST Hooks** (at HTTP layer):
-- Run at the REST layer BEFORE/AFTER domain operations
-- NO access to database transaction
-- Have access to full Hono context (`c: Context`)
-- For HTTP-specific operations: request/response transformation, authorization, logging
-- Execute outside transaction boundary
-
-**Execution Flow with Both Hooks:**
-```
-HTTP Request
-  → REST Pre-hook (no transaction)
-    → Begin Transaction
-      → Domain Pre-hook (within transaction)
-      → Main Operation
-      → Domain Post-hook (within transaction)
-    → Commit Transaction
-  → REST Post-hook (no transaction)
-  → Domain After-hook (async, no transaction)
-→ HTTP Response
-```
-
-**Use Domain Hooks when:**
+**Use Domain Hooks for:**
 - Modifying data before/after database operations
 - Validating business rules that require DB queries
 - Enriching data with related records from database
 - Any operation that needs transaction safety
+- Audit logging within the same transaction
 
-**Use REST Hooks when:**
-- Transforming HTTP request/response formats
-- HTTP-specific authorization checks
-- Logging HTTP requests/responses
-- Setting HTTP headers
-- Rate limiting
-- Request/response sanitization at HTTP level
+**HTTP-Layer Concerns (auth, logging, headers):** Use Hono middleware instead of hooks for HTTP-specific operations
 
 ### Validation System (Always Enabled)
 
@@ -407,6 +383,53 @@ CHECK (num_nonnulls(optional_field1, optional_field2, optional_field3) >= 2)
 ```
 
 **Use Case**: Require at least N fields to be filled out from a group of optional fields.
+
+### Endpoint Configuration
+
+COG allows fine-grained control over which endpoints are generated for each model and relationship.
+
+#### Model Endpoint Configuration
+
+Control which CRUD endpoints are generated using the `endpoints` property:
+
+```json
+{
+  "name": "User",
+  "fields": [...],
+  "endpoints": {
+    "create": true,   // POST /api/user (default: true)
+    "read": true,     // GET /api/user/:id (default: true)
+    "list": true,     // GET /api/user (default: true)
+    "update": false,  // PUT /api/user/:id (disabled)
+    "delete": false   // DELETE /api/user/:id (disabled)
+  }
+}
+```
+
+**Default Behavior:** All endpoints are enabled by default. Set to `false` to disable specific endpoints.
+
+**Security Approach:** 404 (don't generate) - Disabled endpoints are not generated at all, providing "security by absence".
+
+#### Relationship Endpoint Configuration
+
+Control which many-to-many relationship endpoints are generated:
+
+```json
+{
+  "type": "manyToMany",
+  "name": "skillList",
+  "target": "Skill",
+  "through": "employee_skill",
+  "endpoints": {
+    "read": true,     // GET /api/employee/:id/skillList (default: true)
+    "add": true,      // POST /api/employee/:id/skillList (default: true)
+    "remove": true,   // DELETE /api/employee/:id/skillList (default: true)
+    "replace": false  // PUT /api/employee/:id/skillList (disabled)
+  }
+}
+```
+
+**Note:** Endpoint configuration only applies to many-to-many relationships. oneToMany/manyToOne relationships do not generate dedicated endpoints.
 
 ---
 
@@ -640,32 +663,13 @@ await initializeGenerated({
       },
     },
   },
-  // REST hooks (HTTP layer, no transaction)
-  restHooks: {
-    user: {
-      async preCreate(input, c, context) {
-        // Log HTTP request at REST layer
-        console.log('Create user request from:', c.req.header('user-agent'));
+});
 
-        // Check authorization
-        const token = c.req.header('authorization');
-        if (!token) {
-          throw new HTTPException(401, { message: 'Unauthorized' });
-        }
-
-        return { data: input, context };
-      },
-      async postCreate(input, result, c, context) {
-        // Set custom response headers
-        c.header('X-Resource-Id', result.id);
-
-        // Remove sensitive fields from response
-        const { password, ...safeResult } = result as any;
-
-        return { data: safeResult, context };
-      },
-    },
-  },
+// For HTTP-layer concerns (auth, logging, headers), use Hono middleware:
+app.use('*', async (c, next) => {
+  console.log('Request from:', c.req.header('user-agent'));
+  await next();
+  c.header('X-Powered-By', 'COG');
 });
 
 Deno.serve({ port: 3000 }, app.fetch);
@@ -673,7 +677,7 @@ Deno.serve({ port: 3000 }, app.fetch);
 
 ### Generated REST Endpoints
 
-For each model, COG generates these endpoints:
+For each model, COG generates these CRUD endpoints:
 
 ```
 GET    /api/{model}                   # List (paginated)
@@ -681,8 +685,20 @@ POST   /api/{model}                   # Create
 GET    /api/{model}/:id               # Get by ID
 PUT    /api/{model}/:id               # Update
 DELETE /api/{model}/:id               # Delete
-GET    /api/{model}/:id/{relation}List  # Get related (oneToMany, manyToMany)
 ```
+
+**Many-to-Many Relationship Endpoints** (junction tables only):
+
+```
+GET    /api/{model}/:id/{relation}List      # Get related items
+POST   /api/{model}/:id/{relation}List      # Add multiple items
+POST   /api/{model}/:id/{relation}          # Add single item
+PUT    /api/{model}/:id/{relation}List      # Replace all items
+DELETE /api/{model}/:id/{relation}List      # Remove multiple items
+DELETE /api/{model}/:id/{relation}/:targetId # Remove single item
+```
+
+**Note:** oneToMany/manyToOne relationships do NOT generate dedicated endpoints. Use query parameters or includes instead.
 
 **Query Parameters:**
 - `limit` - Pagination limit

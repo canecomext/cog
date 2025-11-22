@@ -72,8 +72,8 @@ AdvancedDemo ──[oneToMany]──→ AdvancedDemo (children)
 **Hooks System:**
 
 - **Domain Hooks** - Employee model (all CRUD operations, within transaction)
-- **REST Hooks** - Department model (HTTP layer, no transaction)
 - **Junction Hooks** - Employee.skillList (many-to-many operations)
+- **HTTP-layer concerns:** Use Hono middleware (see example/src/main.ts)
 
 **Advanced Features:**
 
@@ -265,10 +265,24 @@ POST   /api/employee                    # Create employee
 GET    /api/employee/:id                # Get employee by ID
 PUT    /api/employee/:id                # Update employee
 DELETE /api/employee/:id                # Delete employee
-GET    /api/employee/:id/assignmentList # Get employee's assignments
+
+# Many-to-Many: Skills
 GET    /api/employee/:id/skillList      # Get employee's skills
+POST   /api/employee/:id/skillList      # Add skills to employee
+PUT    /api/employee/:id/skillList      # Replace employee's skills
+DELETE /api/employee/:id/skillList      # Remove skills from employee
+
+# Many-to-Many: Mentees
 GET    /api/employee/:id/menteeList     # Get employee's mentees
+POST   /api/employee/:id/menteeList     # Add mentees to employee
+PUT    /api/employee/:id/menteeList     # Replace employee's mentees
+DELETE /api/employee/:id/menteeList     # Remove mentees from employee
+
+# Many-to-Many: Mentors
 GET    /api/employee/:id/mentorList     # Get employee's mentors
+POST   /api/employee/:id/mentorList     # Add mentors to employee
+PUT    /api/employee/:id/mentorList     # Replace employee's mentors
+DELETE /api/employee/:id/mentorList     # Remove mentors from employee
 ```
 
 ### Department Endpoints
@@ -279,7 +293,6 @@ POST   /api/department                  # Create department
 GET    /api/department/:id              # Get department by ID
 PUT    /api/department/:id              # Update department
 DELETE /api/department/:id              # Delete department
-GET    /api/department/:id/employeeList # Get department's employees
 ```
 
 ### Project Endpoints
@@ -290,7 +303,6 @@ POST   /api/project                     # Create project
 GET    /api/project/:id                 # Get project by ID
 PUT    /api/project/:id                 # Update project
 DELETE /api/project/:id                 # Delete project
-GET    /api/project/:id/assignmentList  # Get project's assignments
 ```
 
 **Similar patterns apply to all other models.**
@@ -431,7 +443,7 @@ The interactive docs (powered by Scalar) provide:
 
 ## Hook Implementations
 
-This example demonstrates both hook types:
+This example demonstrates domain hooks:
 
 ### Domain Hooks (Employee)
 
@@ -460,30 +472,7 @@ domainHooks: {
 - Enforcing business rules
 - Side effects within transaction
 
-### REST Hooks (Department)
-
-```typescript
-restHooks: {
-  department: {
-    // All CRUD operations at HTTP layer
-    preCreate: async (input, c, context) => {
-      console.log('Request from:', c.req.header('user-agent'));
-      return { data: input, context };
-    },
-    postCreate: async (input, result, c, context) => {
-      c.header('X-Resource-Id', result.id);
-      return { data: result, context };
-    }
-  }
-}
-```
-
-**Use REST hooks for:**
-
-- HTTP-specific operations (headers, logging)
-- Authorization checks
-- Request/response transformation
-- Rate limiting
+**For HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead (see example/src/main.ts)
 
 ### Custom Context Variables
 
@@ -503,11 +492,11 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Access in REST hooks
-preCreate: ((input, c, context) => {
-  const value = c.get('someString');
+// Access in domain hooks via context
+preCreate: async (input, tx, context) => {
+  const value = context.someString;
   // ...
-});
+};
 ```
 
 ---

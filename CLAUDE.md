@@ -1,7 +1,6 @@
 # CLAUDE.md - AI Assistant Reference
 
-> **Quick Reference for AI Assistants**
-> For complete technical documentation, see [WARP.md](./WARP.md)
+> **Quick Reference for AI Assistants** For complete technical documentation, see [WARP.md](./WARP.md)
 
 ---
 
@@ -15,7 +14,8 @@ This file serves as a quick-reference guide for AI assistants (like Claude) work
 
 ## What is COG?
 
-**COG (CRUD Operations Generator)** - TypeScript code generator that transforms JSON model definitions into production-ready backends.
+**COG (CRUD Operations Generator)** - TypeScript code generator that transforms JSON model definitions into
+production-ready backends.
 
 **Stack**: Deno + TypeScript + Drizzle ORM + Hono + Zod + PostgreSQL/CockroachDB
 
@@ -27,74 +27,78 @@ This file serves as a quick-reference guide for AI assistants (like Claude) work
 
 ### Supported Data Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `string`, `text` | Text fields | `"type": "string", "maxLength": 100` |
-| `integer` | 32-bit integer | `"type": "integer"` |
-| `bigint` | 64-bit integer | `"type": "bigint"` (max default: 2^53-1) |
-| `decimal` | Fixed-point decimal | `"type": "decimal", "precision": 10, "scale": 2` |
-| `boolean` | True/false | `"type": "boolean"` |
-| `date` | EPOCH milliseconds (bigint) | `"type": "date"` (API uses numbers like `1704067200000`) |
-| `uuid` | UUID | `"type": "uuid"` |
-| `json`, `jsonb` | JSON data | `"type": "jsonb"` |
-| `enum` | Enumerated type | `"type": "enum", "enumName": "Status"` |
+| Type             | Description                 | Example                                                  |
+| ---------------- | --------------------------- | -------------------------------------------------------- |
+| `string`, `text` | Text fields                 | `"type": "string", "maxLength": 100`                     |
+| `integer`        | 32-bit integer              | `"type": "integer"`                                      |
+| `bigint`         | 64-bit integer              | `"type": "bigint"` (max default: 2^53-1)                 |
+| `decimal`        | Fixed-point decimal         | `"type": "decimal", "precision": 10, "scale": 2`         |
+| `boolean`        | True/false                  | `"type": "boolean"`                                      |
+| `date`           | EPOCH milliseconds (bigint) | `"type": "date"` (API uses numbers like `1704067200000`) |
+| `uuid`           | UUID                        | `"type": "uuid"`                                         |
+| `json`, `jsonb`  | JSON data                   | `"type": "jsonb"`                                        |
+| `enum`           | Enumerated type             | `"type": "enum", "enumName": "Status"`                   |
 
-**Date Fields**: Stored as EPOCH millisecond integers. Use `Date.getTime()` in JavaScript/TypeScript to convert to/from Date objects.
+**Date Fields**: Stored as EPOCH millisecond integers. Use `Date.getTime()` in JavaScript/TypeScript to convert to/from
+Date objects.
 
-**PostGIS Spatial Types**: `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography`
+**PostGIS Spatial Types**: `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`,
+`geometry`, `geography`
 
-**PostGIS GeoJSON**: COG automatically converts between GeoJSON (API) and WKT (database). Use standard GeoJSON objects in REST requests/responses.
+**PostGIS GeoJSON**: COG automatically converts between GeoJSON (API) and WKT (database). Use standard GeoJSON objects
+in REST requests/responses.
 
 **See**: [WARP.md - Supported Data Types](./WARP.md#supported-data-types)
 
 ### Relationship Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `oneToMany` | Parent → Children | User → PostList |
-| `manyToOne` | Child → Parent | Post → User |
-| `manyToMany` | Bidirectional with junction | User ↔ RoleList via user_role |
-| `oneToOne` | Direct 1:1 | User → Profile |
-| Self-referential | Model → Self | Employee → mentorList/menteeList |
+| Type             | Description                 | Example                          |
+| ---------------- | --------------------------- | -------------------------------- |
+| `oneToMany`      | Parent → Children           | User → PostList                  |
+| `manyToOne`      | Child → Parent              | Post → User                      |
+| `manyToMany`     | Bidirectional with junction | User ↔ RoleList via user_role    |
+| `oneToOne`       | Direct 1:1                  | User → Profile                   |
+| Self-referential | Model → Self                | Employee → mentorList/menteeList |
 
 **See**: [WARP.md - Relationship Types](./WARP.md#relationship-types)
 
 ### CLI Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--modelsPath <path>` | Path to JSON models | `./models` |
-| `--outputPath <path>` | Where to generate code | `./generated` |
-| `--dbType <type>` | `postgresql` or `cockroachdb` | `postgresql` |
-| `--schema <name>` | Database schema name | (default) |
-| `--no-postgis` | Disable PostGIS support | enabled |
-| `--no-timestamps` | Disable timestamps globally | enabled |
-| `--no-documentation` | Disable OpenAPI generation | enabled |
-| `--verbose` | Show generated file paths | false |
-| `--help` | Show help message | - |
+| Flag                  | Description                   | Default       |
+| --------------------- | ----------------------------- | ------------- |
+| `--modelsPath <path>` | Path to JSON models           | `./models`    |
+| `--outputPath <path>` | Where to generate code        | `./generated` |
+| `--dbType <type>`     | `postgresql` or `cockroachdb` | `postgresql`  |
+| `--schema <name>`     | Database schema name          | (default)     |
+| `--no-postgis`        | Disable PostGIS support       | enabled       |
+| `--no-timestamps`     | Disable timestamps globally   | enabled       |
+| `--no-documentation`  | Disable OpenAPI generation    | enabled       |
+| `--verbose`           | Show generated file paths     | false         |
+| `--help`              | Show help message             | -             |
 
 **See**: [WARP.md - CLI Reference](./WARP.md#cli-reference)
 
 ### Database Compatibility Matrix
 
-| Feature | PostgreSQL | CockroachDB |
-|---------|------------|-------------|
-| BTREE, GIN, GIST indexes | ✓ | ✓ |
-| HASH, SPGIST, BRIN indexes | ✓ | ✗ (use BTREE) |
-| GEOMETRY type | ✓ | ✓ |
-| GEOGRAPHY type | ✓ | ✗ (auto-converted to GEOMETRY) |
-| Enums | ✓ | ✓ (v22.2+) |
-| Numeric defaults | 2^53-1 max | 2^53-1 max |
+| Feature                    | PostgreSQL | CockroachDB                    |
+| -------------------------- | ---------- | ------------------------------ |
+| BTREE, GIN, GIST indexes   | ✓          | ✓                              |
+| HASH, SPGIST, BRIN indexes | ✓          | ✗ (use BTREE)                  |
+| GEOMETRY type              | ✓          | ✓                              |
+| GEOGRAPHY type             | ✓          | ✗ (auto-converted to GEOMETRY) |
+| Enums                      | ✓          | ✓ (v22.2+)                     |
+| Numeric defaults           | 2^53-1 max | 2^53-1 max                     |
 
 **See**: [WARP.md - Database Compatibility](./WARP.md#database-compatibility)
 
 ### Hook Types
 
-| Hook Type | Layer | Transaction | Use Case |
-|-----------|-------|-------------|----------|
-| Domain Pre/Post/After | Domain | ✓ Yes (Pre/Post only) | Data transformation, validation |
-| REST Pre/Post | REST/HTTP | ✗ No | HTTP auth, headers, logging |
-| Junction Pre/Post/After | Domain | ✓ Yes (Pre/Post only) | Many-to-many operations |
+| Hook Type               | Layer  | Transaction           | Use Case                        |
+| ----------------------- | ------ | --------------------- | ------------------------------- |
+| Domain Pre/Post/After   | Domain | ✓ Yes (Pre/Post only) | Data transformation, validation |
+| Junction Pre/Post/After | Domain | ✓ Yes (Pre/Post only) | Many-to-many operations         |
+
+**HTTP-layer concerns (auth, logging, headers):** Use Hono middleware instead.
 
 **See**: [WARP.md - Hook System](./WARP.md#hook-system)
 
@@ -146,8 +150,20 @@ POST   /api/{model}                      # Create
 GET    /api/{model}/:id                  # Get by ID
 PUT    /api/{model}/:id                  # Update
 DELETE /api/{model}/:id                  # Delete
-GET    /api/{model}/:id/{relation}List   # Get related
 ```
+
+**Many-to-Many Relationships Only:**
+
+```
+GET    /api/{model}/:id/{relation}List      # Get related
+POST   /api/{model}/:id/{relation}List      # Add multiple
+POST   /api/{model}/:id/{relation}          # Add single
+PUT    /api/{model}/:id/{relation}List      # Replace all
+DELETE /api/{model}/:id/{relation}List      # Remove multiple
+DELETE /api/{model}/:id/{relation}/:targetId # Remove single
+```
+
+**Note:** oneToMany/manyToOne relationships do NOT generate dedicated endpoints.
 
 **See**: [WARP.md - Generated REST Endpoints](./WARP.md#generated-rest-endpoints)
 
@@ -210,6 +226,7 @@ REST Layer (HTTP) → Domain Layer (Business Logic) → Schema Layer (Types) →
 ### 3. Validation is Always Enabled
 
 Zod validation is MANDATORY and runs twice:
+
 1. Before pre-hook
 2. After pre-hook, before database operation
 
