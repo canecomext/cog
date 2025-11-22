@@ -394,23 +394,23 @@ async function main() {
     logSuccess(`Found ${allProjects.data.length} projects`);
 
     // ========================================
-    // 13. RELATIONSHIP QUERIES
+    // 13. MANY-TO-MANY RELATIONSHIP QUERIES
     // ========================================
-    logSection('13. Querying Relationship Endpoints');
+    logSection('13. Querying Many-to-Many Relationship Endpoints');
 
-    logStep("Getting John's assignments");
-    const johnAssignments = await GET<unknown[]>(`/api/employee/${john.id}/assignmentList`);
+    logStep("Getting John's skills via many-to-many endpoint");
+    const johnSkillsViaEndpoint = await GET<unknown[]>(`/api/employee/${john.id}/skillList`);
 
-    assertArray(johnAssignments, 'johnAssignments');
-    assert(johnAssignments.length >= 1, 'John should have at least 1 assignment');
-    logSuccess(`Found ${johnAssignments.length} assignments for John`);
+    assertArray(johnSkillsViaEndpoint, 'johnSkillsViaEndpoint');
+    assertEqual(johnSkillsViaEndpoint.length, 2, 'John should have 2 skills');
+    logSuccess(`Found ${johnSkillsViaEndpoint.length} skills for John via many-to-many endpoint`);
 
-    logStep('Getting Mobile App project assignments');
-    const mobileAppAssignments = await GET<unknown[]>(`/api/project/${mobileApp.id}/assignmentList`);
+    logStep("Getting John's mentees via self-referential many-to-many endpoint");
+    const johnMenteesViaEndpoint = await GET<unknown[]>(`/api/employee/${john.id}/menteeList`);
 
-    assertArray(mobileAppAssignments, 'mobileAppAssignments');
-    assert(mobileAppAssignments.length >= 2, 'Mobile App should have at least 2 assignments');
-    logSuccess(`Found ${mobileAppAssignments.length} assignments for Mobile App`);
+    assertArray(johnMenteesViaEndpoint, 'johnMenteesViaEndpoint');
+    assertEqual(johnMenteesViaEndpoint.length, 1, 'John should have 1 mentee');
+    logSuccess(`Found ${johnMenteesViaEndpoint.length} mentees for John via many-to-many endpoint`);
 
     // ========================================
     // SUCCESS

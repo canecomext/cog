@@ -161,9 +161,6 @@ export interface InitializationConfig<Env extends { Variables: Record<string, un
   domainHooks?: {
     [modelName: string]: unknown;
   };
-  restHooks?: {
-    [modelName: string]: unknown;
-  };
 }
 
 /**
@@ -192,21 +189,7 @@ export async function initializeGenerated<Env extends { Variables: Record<string
   }
   }
 
-  // Initialize REST routes with hooks if provided
-  if (config.restHooks) {
-    ${
-    models
-      .map(
-        (m) => `
-    if (config.restHooks.${m.name.toLowerCase()}) {
-      initialize${m.name}RestRoutes(config.restHooks.${m.name.toLowerCase()});
-    }`,
-      )
-      .join('')
-  }
-  }
-
-  // Register REST routes after hooks initialization
+  // Register REST routes
   registerRestRoutes(config.app, config.api?.basePath);
 
   return {

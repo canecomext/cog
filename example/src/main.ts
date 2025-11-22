@@ -6,8 +6,7 @@ import { join } from '@std/path';
 import { crypto } from '@std/crypto';
 import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated } from '../generated/index.ts';
 import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } from '../generated/domain/hooks.types.ts';
-import type { RestHookContext, RestPostHookResult, RestPreHookResult } from '../generated/rest/hooks.types.ts';
-import type { Department, Employee, NewDepartment, NewEmployee } from '../generated/schema/index.ts';
+import type { Employee, NewEmployee } from '../generated/schema/index.ts';
 import { generatedOpenAPISpec } from '../generated/rest/openapi.ts';
 import type { ExampleEnv } from './context.ts';
 
@@ -215,111 +214,6 @@ await initializeGenerated({
           console.log('Employee.skillList.afterRemoveJunction - async side effect');
           return Promise.resolve();
         },
-      },
-    },
-  },
-
-  // REST HOOKS - Run at HTTP layer, NO transaction access
-  restHooks: {
-    department: {
-      // CREATE hooks with full signatures
-      preCreate: (
-        input: NewDepartment,
-        c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPreHookResult<NewDepartment, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.preCreate - accessing Env:', c.get('someString'));
-        return Promise.resolve({ data: input, context });
-      },
-
-      postCreate: (
-        _input: NewDepartment,
-        result: Department,
-        c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.postCreate');
-        c.header('X-Resource-Id', result.id);
-        return Promise.resolve({ data: result, context });
-      },
-
-      // UPDATE hooks with full signatures
-      preUpdate: (
-        _id: string,
-        input: Partial<NewDepartment>,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPreHookResult<Partial<NewDepartment>, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.preUpdate');
-        return Promise.resolve({ data: input, context });
-      },
-
-      postUpdate: (
-        _id: string,
-        _input: Partial<NewDepartment>,
-        result: Department,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.postUpdate');
-        return Promise.resolve({ data: result, context });
-      },
-
-      // DELETE hooks with full signatures
-      preDelete: (
-        _id: string,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.preDelete');
-        return Promise.resolve({ data: { id: _id }, context });
-      },
-
-      postDelete: (
-        _id: string,
-        result: Department,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPostHookResult<Department, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.postDelete');
-        return Promise.resolve({ data: result, context });
-      },
-
-      // FIND hooks with full signatures
-      preFindById: (
-        _id: string,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.preFindById');
-        return Promise.resolve({ data: { id: _id }, context });
-      },
-
-      postFindById: (
-        _id: string,
-        result: Department | null,
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPostHookResult<Department | null, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.postFindById');
-        return Promise.resolve({ data: result, context });
-      },
-
-      preFindMany: (
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPreHookResult<Record<string, never>, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.preFindMany');
-        return Promise.resolve({ data: {}, context });
-      },
-
-      postFindMany: (
-        results: { data: Department[]; total: number },
-        _c: Context<ExampleEnv>,
-        context?: RestHookContext<ExampleEnv['Variables']>,
-      ): Promise<RestPostHookResult<{ data: Department[]; total: number }, ExampleEnv['Variables']>> => {
-        console.log('Department.REST.postFindMany');
-        return Promise.resolve({ data: results, context });
       },
     },
   },

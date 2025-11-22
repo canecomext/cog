@@ -766,22 +766,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     const methods: string[] = [];
 
     for (const rel of model.relationships) {
-      if (rel.type === 'oneToMany') {
-        const targetName = rel.target;
-        methods.push(`
-  /**
-   * Get ${rel.name} for ${model.name}
-   */
-  async get${targetName}List(id: string, tx?: DbTransaction): Promise<unknown[]> {
-    // Use provided transaction or get database instance
-    const db = tx || withoutTransaction();
-
-    return await db
-      .select()
-      .from(${rel.target.toLowerCase()}Table)
-      .where(eq(${rel.target.toLowerCase()}Table.${rel.foreignKey || model.name.toLowerCase() + 'Id'}, id));
-  }`);
-      } else if (rel.type === 'manyToMany' && rel.through) {
+      if (rel.type === 'manyToMany' && rel.through) {
         // Generate manyToMany methods
         const targetName = rel.target;
         const targetNameLower = targetName.toLowerCase();

@@ -65,6 +65,23 @@ export interface FieldDefinition {
 // Relationship types
 export type RelationshipType = 'oneToMany' | 'manyToOne' | 'manyToMany' | 'oneToOne';
 
+// Model endpoint configuration for CRUD operations
+export interface ModelEndpointConfig {
+  create?: boolean; // POST /api/{model} (default: true)
+  read?: boolean; // GET /api/{model}/:id (default: true)
+  list?: boolean; // GET /api/{model} (default: true)
+  update?: boolean; // PUT /api/{model}/:id (default: true)
+  delete?: boolean; // DELETE /api/{model}/:id (default: true)
+}
+
+// Relationship endpoint configuration (many-to-many only)
+export interface RelationshipEndpointConfig {
+  read?: boolean; // GET /api/{model}/:id/{relation}List (default: true)
+  add?: boolean; // POST /api/{model}/:id/{relation}List (default: true)
+  remove?: boolean; // DELETE /api/{model}/:id/{relation}List/:relatedId (default: true)
+  replace?: boolean; // PUT /api/{model}/:id/{relation}List (default: true)
+}
+
 // Relationship definition
 export interface RelationshipDefinition {
   type: RelationshipType;
@@ -77,6 +94,7 @@ export interface RelationshipDefinition {
   onUpdate?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION';
   eager?: boolean; // Whether to eagerly load this relationship
   nullable?: boolean;
+  endpoints?: RelationshipEndpointConfig; // Control which relationship endpoints are generated (many-to-many only)
 }
 
 // Index definition
@@ -113,6 +131,7 @@ export interface ModelDefinition {
     updatedAt?: string | boolean;
   };
   description?: string;
+  endpoints?: ModelEndpointConfig; // Control which CRUD endpoints are generated
   hooks?: {
     // Hook definitions at the model level
     beforeCreate?: boolean;

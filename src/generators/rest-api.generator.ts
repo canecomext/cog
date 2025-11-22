@@ -24,9 +24,6 @@ export class RestAPIGenerator {
     // Generate shared types
     files.set('rest/types.ts', this.generateSharedTypes());
 
-    // Generate REST hooks types
-    files.set('rest/hooks.types.ts', this.generateRestHooksTypes());
-
     // Generate individual REST endpoints
     for (const model of this.models) {
       const restAPI = this.generateModelRestAPI(model);
@@ -50,7 +47,6 @@ export class RestAPIGenerator {
 import { HTTPException } from '@hono/hono/http-exception';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import { RestHooks } from './hooks.types.ts';
 import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
 
@@ -82,39 +78,32 @@ function convertBigIntToNumber<T>(obj: T): T {
 
 /**
  * ${modelName} REST Routes
- * Handles HTTP endpoints with optional pre/post hooks at the REST layer
+ * Handles HTTP endpoints (thin routing layer)
  */
 class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   public routes: Hono<{ Variables: RestEnvVars }>;
-  private hooks: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>;
 
-  constructor(hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>) {
+  constructor() {
     this.routes = new Hono<{ Variables: RestEnvVars }>();
-    this.hooks = hooks || {};
     this.registerRoutes();
   }
 
   private registerRoutes() {
-    /**
+${
+      model.endpoints?.list !== false
+        ? `    /**
      * GET /${modelNameLower}
      * List all ${modelNameLower} with pagination
      */
     this.routes.get('/', async (c) => {
-      let context = c.var as RestEnvVars;
-
-      // Pre-hook (REST layer)
-      if (this.hooks.preFindMany) {
-        const preResult = await this.hooks.preFindMany(c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        context = { ...context, ...preResult.context };
-      }
-
+      const context = c.var as RestEnvVars;
       const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
 
       // Parse include parameter
       const includeArray = include ? include.split(',') : undefined;
 
       // No transaction needed for read operations
-      let result = await ${modelNameLower}Domain.findMany(
+      const result = await ${modelNameLower}Domain.findMany(
         undefined, // No transaction
         includeArray ? { include: includeArray } : undefined, // Filter with include
         {
@@ -126,13 +115,6 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         context // Pass all context variables to domain hooks
       );
 
-      // Post-hook (REST layer)
-      if (this.hooks.postFindMany) {
-        const postResult = await this.hooks.postFindMany(result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
       return c.json({
         data: convertBigIntToNumber(result.data),
         pagination: {
@@ -142,26 +124,22 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         }
       });
     });
-
-    /**
+`
+        : ''
+    }
+${
+      model.endpoints?.read !== false
+        ? `    /**
      * GET /${modelNameLower}/:id
      * Get a single ${modelName} by ID
      */
     this.routes.get('/:id', async (c) => {
-      let id = c.req.param('id');
-      let context = c.var as RestEnvVars;
-
-      // Pre-hook (REST layer)
-      if (this.hooks.preFindById) {
-        const preResult = await this.hooks.preFindById(id, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        id = preResult.data.id;
-        context = { ...context, ...preResult.context };
-      }
-
+      const id = c.req.param('id');
+      const context = c.var as RestEnvVars;
       const include = c.req.query('include')?.split(',');
 
       // No transaction needed for read operations
-      let result = await ${modelNameLower}Domain.findById(
+      const result = await ${modelNameLower}Domain.findById(
         id,
         undefined, // No transaction
         { include },
@@ -172,32 +150,22 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         throw new HTTPException(404, { message: '${modelName} not found' });
       }
 
-      // Post-hook (REST layer)
-      if (this.hooks.postFindById) {
-        const postResult = await this.hooks.postFindById(id, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
       return c.json({ data: convertBigIntToNumber(result) });
     });
-
-    /**
+`
+        : ''
+    }
+${
+      model.endpoints?.create !== false
+        ? `    /**
      * POST /${modelNameLower}
      * Create a new ${modelName}
      */
     this.routes.post('/', async (c) => {
-      let body = await c.req.json();
-      let context = c.var as RestEnvVars;
+      const body = await c.req.json();
+      const context = c.var as RestEnvVars;
 
-      // Pre-hook (REST layer)
-      if (this.hooks.preCreate) {
-        const preResult = await this.hooks.preCreate(body, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        body = preResult.data;
-        context = { ...context, ...preResult.context };
-      }
-
-      let result = await withTransaction(async (tx) => {
+      const result = await withTransaction(async (tx) => {
         return await ${modelNameLower}Domain.create(
           body,
           tx,
@@ -205,33 +173,23 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         );
       });
 
-      // Post-hook (REST layer)
-      if (this.hooks.postCreate) {
-        const postResult = await this.hooks.postCreate(body, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
       return c.json({ data: convertBigIntToNumber(result) }, 201);
     });
-
-    /**
+`
+        : ''
+    }
+${
+      model.endpoints?.update !== false
+        ? `    /**
      * PUT /${modelNameLower}/:id
      * Update a ${modelName}
      */
     this.routes.put('/:id', async (c) => {
       const id = c.req.param('id');
-      let body = await c.req.json();
-      let context = c.var as RestEnvVars;
+      const body = await c.req.json();
+      const context = c.var as RestEnvVars;
 
-      // Pre-hook (REST layer)
-      if (this.hooks.preUpdate) {
-        const preResult = await this.hooks.preUpdate(id, body, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        body = preResult.data;
-        context = { ...context, ...preResult.context };
-      }
-
-      let result = await withTransaction(async (tx) => {
+      const result = await withTransaction(async (tx) => {
         return await ${modelNameLower}Domain.update(
           id,
           body,
@@ -240,32 +198,22 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         );
       });
 
-      // Post-hook (REST layer)
-      if (this.hooks.postUpdate) {
-        const postResult = await this.hooks.postUpdate(id, body, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
       return c.json({ data: convertBigIntToNumber(result) });
     });
-
-    /**
+`
+        : ''
+    }
+${
+      model.endpoints?.delete !== false
+        ? `    /**
      * DELETE /${modelNameLower}/:id
      * Delete a ${modelName}
      */
     this.routes.delete('/:id', async (c) => {
-      let id = c.req.param('id');
-      let context = c.var as RestEnvVars;
+      const id = c.req.param('id');
+      const context = c.var as RestEnvVars;
 
-      // Pre-hook (REST layer)
-      if (this.hooks.preDelete) {
-        const preResult = await this.hooks.preDelete(id, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        id = preResult.data.id;
-        context = { ...context, ...preResult.context };
-      }
-
-      let result = await withTransaction(async (tx) => {
+      const result = await withTransaction(async (tx) => {
         return await ${modelNameLower}Domain.delete(
           id,
           tx,
@@ -273,87 +221,23 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
         );
       });
 
-      // Post-hook (REST layer)
-      if (this.hooks.postDelete) {
-        const postResult = await this.hooks.postDelete(id, result, c as unknown as Context<{ Variables: RestEnvVars }>, context);
-        result = postResult.data;
-        context = { ...context, ...postResult.context };
-      }
-
       return c.json({ data: convertBigIntToNumber(result) });
     });
-
+`
+        : ''
+    }
 ${this.generateRelationshipEndpointsWithHooks(model)}
   }
 }
 
-// Export singleton instance (will be re-initialized with hooks if provided)
+// Export singleton instance
 export let ${modelNameLower}Routes = new ${modelName}RestRoutes().routes;
 
-// Export function to initialize with hooks
-export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Record<string, unknown>>(
-  hooks?: RestHooks<${modelName}, New${modelName}, Partial<New${modelName}>, RestEnvVars>
-) {
-  const instance = new ${modelName}RestRoutes(hooks);
+// Export function to initialize routes
+export function initialize${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Record<string, unknown>>() {
+  const instance = new ${modelName}RestRoutes();
   ${modelNameLower}Routes = instance.routes as unknown as Hono<{ Variables: Record<string, unknown> }>;
   return instance.routes;
-}
-`;
-  }
-
-  /**
-   * Generate REST hooks types file
-   */
-  private generateRestHooksTypes(): string {
-    return `import { Context } from '@hono/hono';
-
-/**
- * REST hook context that receives all variables from the Hono context.
- * The generic RestEnvVars type will contain all custom variables defined
- * in your application's Env type.
- */
-export type RestHookContext<RestEnvVars extends Record<string, unknown> = Record<string, unknown>> = RestEnvVars;
-
-export interface RestPreHookResult<T, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
-  data: T;
-  context?: RestHookContext<RestEnvVars>;
-}
-
-export interface RestPostHookResult<T, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
-  data: T;
-  context?: RestHookContext<RestEnvVars>;
-}
-
-/**
- * REST layer hooks that run before/after domain operations.
- *
- * These hooks run at the REST layer, OUTSIDE of database transactions.
- * They have access to the full Hono context (request, response, etc).
- *
- * Use these hooks for:
- * - Request/response transformation at the HTTP layer
- * - HTTP-specific validation or authorization
- * - Logging HTTP requests/responses
- * - Response formatting
- * - HTTP header manipulation
- *
- * Note: These hooks do NOT receive database transactions.
- * For database operations, use domain hooks instead.
- */
-export interface RestHooks<T, CreateInput, UpdateInput, RestEnvVars extends Record<string, unknown> = Record<string, unknown>> {
-  // Pre-operation hooks (before domain operation, no transaction)
-  preCreate?: (input: CreateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<CreateInput, RestEnvVars>>;
-  preUpdate?: (id: string, input: UpdateInput, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<UpdateInput, RestEnvVars>>;
-  preDelete?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
-  preFindById?: (id: string, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<{ id: string }, RestEnvVars>>;
-  preFindMany?: (c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPreHookResult<Record<string, unknown>, RestEnvVars>>;
-
-  // Post-operation hooks (after domain operation, no transaction)
-  postCreate?: (input: CreateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
-  postDelete?: (id: string, result: T, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T, RestEnvVars>>;
-  postFindById?: (id: string, result: T | null, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<T | null, RestEnvVars>>;
-  postFindMany?: (results: { data: T[]; total: number }, c: Context<{ Variables: RestEnvVars }>, context?: RestHookContext<RestEnvVars>) => Promise<RestPostHookResult<{ data: T[]; total: number }, RestEnvVars>>;
 }
 `;
   }
@@ -389,7 +273,7 @@ export type DefaultEnv = {
   }
 
   /**
-   * Generate relationship endpoints with hooks support
+   * Generate many-to-many relationship endpoints
    */
   private generateRelationshipEndpointsWithHooks(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
@@ -400,23 +284,7 @@ export type DefaultEnv = {
     const modelNameLower = model.name.toLowerCase();
 
     for (const rel of model.relationships) {
-      if (rel.type === 'oneToMany') {
-        // Use "List" suffix for collection endpoints
-        const targetName = rel.target;
-        const targetNameLower = targetName.toLowerCase();
-        endpoints.push(`
-    /**
-     * GET /${modelNameLower}/:id/${targetNameLower}List
-     * Get ${targetName} list for a ${model.name}
-     */
-    this.routes.get('/:id/${targetNameLower}List', async (c) => {
-      const id = c.req.param('id');
-
-      const result = await ${modelNameLower}Domain.get${targetName}List(id);
-
-      return c.json({ data: convertBigIntToNumber(result) });
-    });`);
-      } else if (rel.type === 'manyToMany' && rel.through) {
+      if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
         const RelName = this.capitalize(relName);
         const targetNameLower = rel.target.toLowerCase();
@@ -426,7 +294,9 @@ export type DefaultEnv = {
         const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
         const SingularRelName = this.capitalize(singularRelName);
 
-        endpoints.push(`
+        // GET relationship list
+        if (rel.endpoints?.read !== false) {
+          endpoints.push(`
     /**
      * GET /${modelNameLower}/:id/${relName}
      * Get ${relName} for a ${model.name}
@@ -437,8 +307,12 @@ export type DefaultEnv = {
       const result = await ${modelNameLower}Domain.get${RelName}(id);
 
       return c.json({ data: convertBigIntToNumber(result) });
-    });
+    });`);
+        }
 
+        // POST bulk add
+        if (rel.endpoints?.add !== false) {
+          endpoints.push(`
     /**
      * POST /${modelNameLower}/:id/${relName}
      * Add multiple ${relName} to a ${model.name}
@@ -453,24 +327,10 @@ export type DefaultEnv = {
       });
 
       return c.json({ data: { message: '${relName} added successfully' } }, 201);
-    });
+    });`);
 
-    /**
-     * PUT /${modelNameLower}/:id/${relName}
-     * Replace all ${relName} for a ${model.name}
-     */
-    this.routes.put('/:id/${relName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const ids = body.ids || [];
-
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ids, tx);
-      });
-
-      return c.json({ data: { message: '${relName} updated successfully' } });
-    });
-
+          // POST single add
+          endpoints.push(`
     /**
      * POST /${modelNameLower}/:id/${singularRelName}
      * Add a specific ${singularRelName} to a ${model.name}
@@ -485,8 +345,32 @@ export type DefaultEnv = {
       });
 
       return c.json({ data: { message: '${singularRelName} added successfully' } }, 201);
-    });
+    });`);
+        }
 
+        // PUT replace all
+        if (rel.endpoints?.replace !== false) {
+          endpoints.push(`
+    /**
+     * PUT /${modelNameLower}/:id/${relName}
+     * Replace all ${relName} for a ${model.name}
+     */
+    this.routes.put('/:id/${relName}', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json();
+      const ids = body.ids || [];
+
+      await withTransaction(async (tx) => {
+        await ${modelNameLower}Domain.set${RelName}(id, ids, tx);
+      });
+
+      return c.json({ data: { message: '${relName} updated successfully' } });
+    });`);
+        }
+
+        // DELETE remove
+        if (rel.endpoints?.remove !== false) {
+          endpoints.push(`
     /**
      * DELETE /${modelNameLower}/:id/${singularRelName}
      * Remove a specific ${singularRelName} from a ${model.name}
@@ -501,8 +385,10 @@ export type DefaultEnv = {
       });
 
       return c.json({ data: { message: '${singularRelName} removed successfully' } });
-    });
+    });`);
 
+          // DELETE bulk remove
+          endpoints.push(`
     /**
      * DELETE /${modelNameLower}/:id/${relName}
      * Remove multiple ${relName} from a ${model.name}
@@ -518,6 +404,7 @@ export type DefaultEnv = {
 
       return c.json({ data: { message: '${relName} removed successfully' } });
     });`);
+        }
       }
     }
 
@@ -650,7 +537,6 @@ export function extractRoutes<E extends Env = Env>(app: Hono<E>): ExtractedRoute
 
     code += `\n// Re-export shared types\n`;
     code += `export type { DefaultEnv } from './types.ts';\n`;
-    code += `export type { RestHooks, RestHookContext } from './hooks.types.ts';\n`;
 
     return code;
   }
