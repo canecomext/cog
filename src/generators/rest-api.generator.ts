@@ -5,14 +5,9 @@ import { ModelDefinition } from '../types/model.types.ts';
  */
 export class RestAPIGenerator {
   private models: ModelDefinition[];
-  private docsEnabled: boolean;
 
-  constructor(
-    models: ModelDefinition[],
-    options: { docsEnabled?: boolean } = {},
-  ) {
+  constructor(models: ModelDefinition[]) {
     this.models = models;
-    this.docsEnabled = options.docsEnabled !== false;
   }
 
   /**

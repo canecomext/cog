@@ -37,9 +37,6 @@ export async function generateFromModels(
       timestamps: options.features?.timestamps !== false,
       hooks: true,
     },
-    documentation: {
-      enabled: options.documentation?.enabled !== false,
-    },
     naming: {
       tableNaming: 'snake_case',
       columnNaming: 'snake_case',
@@ -62,12 +59,8 @@ export async function generateFromModels(
     }
   }
 
-  // Apply global feature flag overrides to all models
+  // Apply global configuration to all models
   for (const model of models) {
-    // Override timestamps if explicitly disabled
-    if (config.features?.timestamps === false) {
-      model.timestamps = false;
-    }
     // Apply global schema if specified
     if (config.database.schema) {
       model.schema = config.database.schema;
@@ -107,18 +100,14 @@ export async function generateFromModels(
   domainFiles.forEach((content, path) => files.set(path, content));
 
   // Generate REST APIs
-  const restGenerator = new RestAPIGenerator(models, {
-    docsEnabled: config.documentation?.enabled,
-  });
+  const restGenerator = new RestAPIGenerator(models);
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
-  // Generate OpenAPI specification (only if docs are enabled)
-  if (config.documentation?.enabled !== false) {
-    const openAPIGenerator = new OpenAPIGenerator(models);
-    const openAPIFiles = openAPIGenerator.generateOpenAPI();
-    openAPIFiles.forEach((content, path) => files.set(path, content));
-  }
+  // Generate OpenAPI specification
+  const openAPIGenerator = new OpenAPIGenerator(models);
+  const openAPIFiles = openAPIGenerator.generateOpenAPI();
+  openAPIFiles.forEach((content, path) => files.set(path, content));
 
   // Generate main index file
   files.set('index.ts', generateMainIndex(models));

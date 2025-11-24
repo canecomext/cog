@@ -213,9 +213,6 @@ deno run -A src/cli.ts [options]
 | `--outputPath <path>` | Output directory              | `./generated` |
 | `--dbType <type>`     | `postgresql` or `cockroachdb` | `postgresql`  |
 | `--schema <name>`     | Database schema               | (default)     |
-| `--no-postgis`        | Disable PostGIS               | enabled       |
-| `--no-timestamps`     | Disable timestamps            | enabled       |
-| `--no-documentation`  | Disable OpenAPI               | enabled       |
 | `--verbose`           | Show file paths               | false         |
 
 ---
@@ -277,18 +274,26 @@ Documentation: http://localhost:3000/docs/reference
 
 ## OpenAPI Documentation
 
-COG generates complete OpenAPI 3.1.0 specifications but doesn't automatically expose them. You control where and how:
+COG generates an OpenAPI 3.1.0 specification builder that creates runtime specs with your API basePath. You control where and how to expose documentation:
 
 ```typescript
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { buildOpenAPISpec } from './generated/rest/openapi.ts';
 import { Scalar } from '@scalar/hono-api-reference';
 
+// Build OpenAPI spec with your API basePath (required)
+const openAPISpec = buildOpenAPISpec('/api');
+
 // Expose spec
-app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
+app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
 
 // Interactive docs
-app.get('/api/docs', Scalar({ url: '/api/openapi.json' }) as any);
+app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as any);
 ```
+
+**Key Features:**
+- `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
+- `basePath` parameter is required (throws `DomainException` if missing)
+- Merge with custom endpoints using `mergeOpenAPISpec(basePath, customSpec)`
 
 ---
 

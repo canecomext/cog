@@ -10,9 +10,6 @@ interface CliArgs {
   outputPath?: string;
   dbType?: 'postgresql' | 'cockroachdb' | string;
   schema?: string;
-  postgis?: boolean;
-  timestamps?: boolean;
-  documentation?: boolean;
   verbose?: boolean;
   help?: boolean;
 }
@@ -34,14 +31,8 @@ async function main() {
   await generateFromModels(modelsPath, outputPath, {
     database: {
       type: dbType,
-      postgis: args.postgis !== false,
+      postgis: true,
       schema: args.schema,
-    },
-    features: {
-      timestamps: args.timestamps !== false,
-    },
-    documentation: {
-      enabled: args.documentation !== false,
     },
     verbose,
   });
@@ -94,9 +85,6 @@ Options:
   --outputPath <path>    Path to output directory (default: ./generated)
   --dbType <type>        Database type: postgresql or cockroachdb (default: postgresql)
   --schema <name>        Database schema name
-  --no-postgis           Disable PostGIS support
-  --no-timestamps        Disable timestamps
-  --no-documentation     Disable OpenAPI documentation generation
   --verbose              Output the relative paths of generated files
   --help                 Show this help message
 

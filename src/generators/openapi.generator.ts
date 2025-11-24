@@ -19,9 +19,6 @@ export class OpenAPIGenerator {
     // Generate the main OpenAPI spec file
     files.set('rest/openapi.ts', this.generateOpenAPISpec());
 
-    // Generate OpenAPI JSON (for static serving)
-    files.set('rest/openapi.json', this.generateOpenAPIJSON());
-
     return files;
   }
 
@@ -29,92 +26,116 @@ export class OpenAPIGenerator {
    * Generate OpenAPI specification as TypeScript module
    */
   private generateOpenAPISpec(): string {
+    // Pre-serialize the spec template (without basePath, which is runtime-determined)
+    const specTemplate = this.buildOpenAPISpecTemplate();
+
     return `/**
  * OpenAPI 3.1.0 Specification for generated API
- * 
- * This file contains the base OpenAPI specification for all generated CRUD endpoints.
- * It can be merged with custom OpenAPI specs for your application-specific endpoints.
+ *
+ * This file contains the runtime OpenAPI specification builder for all generated CRUD endpoints.
+ * The specification is generated at runtime with the provided basePath.
  */
 
 import type { OpenAPIV3_1 as OpenAPI } from 'openapi-types';
+import { DomainException } from '../domain/exceptions.ts';
 
 /**
- * Base OpenAPI specification for generated CRUD endpoints
+ * Build OpenAPI specification with the given basePath
+ *
+ * @param basePath - The API base path (e.g., '/api', '/api/v1')
+ * @returns Complete OpenAPI specification for the generated API
+ * @throws {DomainException} If basePath is not provided
  */
-export const generatedOpenAPISpec: OpenAPI.Document = ${JSON.stringify(this.buildOpenAPISpec(), null, 2)};
+export function buildOpenAPISpec(basePath: string): OpenAPI.Document {
+  if (!basePath) {
+    throw new DomainException('basePath is required to build OpenAPI specification');
+  }
+
+  const spec: Record<string, unknown> = ${JSON.stringify(specTemplate, null, 2)};
+
+  // Set the basePath in servers
+  spec.servers = [
+    {
+      url: basePath,
+      description: 'API base path',
+    },
+  ];
+
+  return spec as OpenAPI.Document;
+}
 
 /**
  * Merge custom OpenAPI specification with generated spec
- * 
+ *
+ * @param basePath - The API base path (e.g., '/api', '/api/v1')
  * @param customSpec - Your custom OpenAPI specification
  * @returns Complete OpenAPI specification including both generated and custom endpoints
  */
-export function mergeOpenAPISpec(customSpec: Partial<OpenAPI.Document>): OpenAPI.Document {
+export function mergeOpenAPISpec(basePath: string, customSpec: Partial<OpenAPI.Document>): OpenAPI.Document {
+  const generatedSpec = buildOpenAPISpec(basePath);
+
   return {
-    ...generatedOpenAPISpec,
+    ...generatedSpec,
     info: {
-      ...generatedOpenAPISpec.info,
+      ...generatedSpec.info,
       ...customSpec.info,
     },
     servers: [
-      ...(generatedOpenAPISpec.servers || []),
+      ...(generatedSpec.servers || []),
       ...(customSpec.servers || []),
     ],
     paths: {
-      ...generatedOpenAPISpec.paths,
+      ...generatedSpec.paths,
       ...customSpec.paths,
     },
     components: {
       schemas: {
-        ...generatedOpenAPISpec.components?.schemas,
+        ...generatedSpec.components?.schemas,
         ...customSpec.components?.schemas,
       },
       responses: {
-        ...generatedOpenAPISpec.components?.responses,
+        ...generatedSpec.components?.responses,
         ...customSpec.components?.responses,
       },
       parameters: {
-        ...generatedOpenAPISpec.components?.parameters,
+        ...generatedSpec.components?.parameters,
         ...customSpec.components?.parameters,
       },
       requestBodies: {
-        ...generatedOpenAPISpec.components?.requestBodies,
+        ...generatedSpec.components?.requestBodies,
         ...customSpec.components?.requestBodies,
       },
       securitySchemes: {
-        ...generatedOpenAPISpec.components?.securitySchemes,
+        ...generatedSpec.components?.securitySchemes,
         ...customSpec.components?.securitySchemes,
       },
     },
     tags: [
-      ...(generatedOpenAPISpec.tags || []),
+      ...(generatedSpec.tags || []),
       ...(customSpec.tags || []),
     ],
-    security: customSpec.security || generatedOpenAPISpec.security,
+    security: customSpec.security || generatedSpec.security,
   };
 }
 
 /**
  * Get OpenAPI specification as JSON string
+ *
+ * @param basePath - The API base path (e.g., '/api', '/api/v1')
+ * @param customSpec - Optional custom OpenAPI specification to merge
+ * @returns JSON string of the OpenAPI specification
  */
-export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
-  const spec = customSpec ? mergeOpenAPISpec(customSpec) : generatedOpenAPISpec;
+export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Document>): string {
+  const spec = customSpec ? mergeOpenAPISpec(basePath, customSpec) : buildOpenAPISpec(basePath);
   return JSON.stringify(spec, null, 2);
 }
 `;
   }
 
   /**
-   * Generate static OpenAPI JSON file
+   * Build the OpenAPI specification template (without basePath)
    */
-  private generateOpenAPIJSON(): string {
-    return JSON.stringify(this.buildOpenAPISpec(), null, 2);
-  }
-
-  /**
-   * Build the complete OpenAPI specification object
-   */
-  private buildOpenAPISpec(): Record<string, unknown> {
+  private buildOpenAPISpecTemplate(): Record<string, unknown> {
     const spec: Record<string, unknown> = {
       openapi: '3.1.0',
       info: {
@@ -123,12 +144,6 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
         description:
           'Auto-generated REST API for CRUD operations. This specification can be extended with custom endpoints.',
       },
-      servers: [
-        {
-          url: '/api',
-          description: 'API base path',
-        },
-      ],
       paths: {},
       components: {
         schemas: {},

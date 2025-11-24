@@ -7,7 +7,7 @@ import { crypto } from '@std/crypto';
 import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated } from '../generated/index.ts';
 import type { DomainHookContext } from '../generated/domain/hooks.types.ts';
 import type { Employee, NewEmployee } from '../generated/schema/index.ts';
-import { generatedOpenAPISpec } from '../generated/rest/openapi.ts';
+import { buildOpenAPISpec } from '../generated/rest/openapi.ts';
 import type { ExampleEnv } from './context.ts';
 
 const app = new Hono<ExampleEnv>();
@@ -231,8 +231,11 @@ await initializeGenerated({
   },
 });
 
+// Build OpenAPI specification with basePath
+const openAPISpec = buildOpenAPISpec('/api');
+
 // Documentation endpoints
-app.get('/docs/openapi.json', (c) => c.json(generatedOpenAPISpec));
+app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
 app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as unknown as (c: Context<ExampleEnv>) => Response);
 
 // Error handling

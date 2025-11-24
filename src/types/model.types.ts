@@ -158,9 +158,6 @@ export interface GeneratorConfig {
     timestamps?: boolean;
     hooks?: boolean;
   };
-  documentation?: {
-    enabled?: boolean; // Enable/disable documentation generation (default: true)
-  };
   naming?: {
     tableNaming?: 'snake_case' | 'camelCase' | 'PascalCase';
     columnNaming?: 'snake_case' | 'camelCase';

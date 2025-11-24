@@ -118,8 +118,8 @@ generated/
 │   └── index.ts
 └── rest/
     ├── [model].rest.ts         # Hono REST endpoints
-    ├── openapi.ts              # OpenAPI specification (TypeScript)
-    ├── openapi.json            # OpenAPI specification (JSON)
+    ├── openapi.ts              # OpenAPI specification builder
+    ├── helpers.ts              # Shared REST helper functions
     ├── middleware.ts
     ├── types.ts
     └── index.ts
@@ -808,53 +808,8 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 | `--outputPath <path>` | Where to generate code | `./generated` |
 | `--dbType <type>` | `postgresql` or `cockroachdb` | `postgresql` |
 | `--schema <name>` | Database schema name | (default) |
-| `--no-postgis` | Disable PostGIS support | enabled |
-| `--no-timestamps` | Disable timestamps globally | enabled |
-| `--no-documentation` | Disable OpenAPI generation | enabled |
 | `--verbose` | Show generated file paths | false |
 | `--help` | Show help message | - |
-
-**IMPORTANT**: CLI flags OVERRIDE model-level settings. If you use `--no-timestamps`, ALL models will be generated without timestamps, even if `"timestamps": true` in JSON.
-
-### Global Feature Flags
-
-#### `--no-timestamps`
-
-Disables automatic timestamp fields for **all models**, regardless of model-level `"timestamps"` settings:
-
-- Removes `createdAt` and `updatedAt` fields from all tables
-- No automatic timestamp management on create/update operations
-
-```bash
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-timestamps
-```
-
-#### `--no-postgis`
-
-Disables PostGIS spatial data type support:
-
-- Spatial field types (point, polygon, etc.) fall back to JSONB
-- GIST indexes are converted to GIN indexes for JSONB compatibility
-- Spatial data stored as GeoJSON in JSONB columns
-- Database initialization skips PostGIS extension setup
-
-```bash
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-postgis
-```
-
-#### `--no-documentation`
-
-Disables OpenAPI documentation generation entirely:
-
-- No `openapi.ts` or `openapi.json` files generated
-- Reduces generated code size
-- Useful when you don't need API documentation
-
-```bash
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated --no-documentation
-```
-
-**Note:** By default, OpenAPI specs are generated but not automatically exposed. See the Generated Code Usage section for how to expose documentation.
 
 ---
 
@@ -958,24 +913,29 @@ DELETE /api/{model}/:id/{relation}/:targetId # Remove single item
 
 ### Exposing API Documentation
 
-COG generates OpenAPI specs but does NOT automatically expose documentation endpoints. You control where and how to expose them:
+COG generates an OpenAPI specification builder that creates runtime specs with your basePath. You control where and how to expose documentation:
 
 ```typescript
-import { generatedOpenAPISpec } from './generated/rest/openapi.ts';
+import { buildOpenAPISpec } from './generated/rest/openapi.ts';
 import { Scalar } from '@scalar/hono-api-reference';
 
+// Build OpenAPI spec with your API basePath (required)
+const openAPISpec = buildOpenAPISpec('/api');
+
 // Expose OpenAPI spec at your chosen URL
-app.get('/api/openapi.json', (c) => c.json(generatedOpenAPISpec));
+app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
 
 // Expose interactive API documentation with Scalar
-app.get('/api/docs', Scalar({
-  url: '/api/openapi.json',
+app.get('/docs/reference', Scalar({
+  url: '/docs/openapi.json',
 }) as any);
 ```
 
-**Why Manual Exposure?**
+**Key Features:**
+- `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
+- `basePath` parameter is required (throws `DomainException` if missing)
 - Full control over documentation URLs
-- Merge generated docs with custom endpoints
+- Merge generated docs with custom endpoints using `mergeOpenAPISpec(basePath, customSpec)`
 - Choose whether to expose in production or development only
 - Use any documentation UI (Scalar, Swagger UI, Redoc)
 
@@ -1045,15 +1005,7 @@ curl http://localhost:3000/docs/openapi.json
 
 ## Critical Gotchas & Edge Cases
 
-### 1. CLI Flag Priority
-
-CLI flags OVERRIDE model settings:
-```json
-// user.json
-{ "timestamps": true }  // ← Ignored if --no-timestamps used
-```
-
-### 2. Junction Table Naming
+### 1. Junction Table Naming
 
 Many-to-many relationships require `through` field with explicit junction table name:
 ```json
@@ -1130,19 +1082,17 @@ Common SRIDs:
 
 ### 6. Index Types and Database Compatibility
 
-GIST indexes only work with PostGIS:
+GIST indexes work with PostGIS spatial types:
 ```json
 {
   "indexes": [
     {
       "fields": ["location"],
-      "type": "gist"        // ← Requires --postgis (default)
+      "type": "gist"        // ← For spatial fields
     }
   ]
 }
 ```
-
-If using `--no-postgis`, GIST indexes are automatically converted to GIN.
 
 For CockroachDB: HASH, SPGIST, and BRIN index types are not supported. Use BTREE instead.
 

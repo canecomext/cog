@@ -70,9 +70,6 @@ in REST requests/responses.
 | `--outputPath <path>` | Where to generate code        | `./generated` |
 | `--dbType <type>`     | `postgresql` or `cockroachdb` | `postgresql`  |
 | `--schema <name>`     | Database schema name          | (default)     |
-| `--no-postgis`        | Disable PostGIS support       | enabled       |
-| `--no-timestamps`     | Disable timestamps globally   | enabled       |
-| `--no-documentation`  | Disable OpenAPI generation    | enabled       |
 | `--verbose`           | Show generated file paths     | false         |
 | `--help`              | Show help message             | -             |
 
@@ -297,17 +294,16 @@ Converts to HTTP responses (404, 500, etc.)
 ## Important Reminders
 
 1. **Table names are SINGULAR** - Use `user` not `users`, `employee` not `employees`
-2. **CLI flags OVERRIDE model settings** - `--no-timestamps` affects all models
-3. **Numeric defaults limited** - Max safe value: `9007199254740991` (Number.MAX_SAFE_INTEGER)
-4. **CockroachDB differences**:
+2. **Numeric defaults limited** - Max safe value: `9007199254740991` (Number.MAX_SAFE_INTEGER)
+3. **CockroachDB differences**:
    - No HASH/SPGIST/BRIN indexes
    - No GEOGRAPHY type (auto-converted to GEOMETRY)
    - Enums require v22.2+
-5. **Validation cannot be disabled** - Zod validation is always on
-6. **Junction tables need `through` field** - Explicit table name required for many-to-many
-7. **PostGIS requires `--postgis` flag** - Enabled by default, use `--no-postgis` to disable
-8. **Domain layer uses transport-agnostic exceptions** - Never use `HTTPException` in domain code, only `DomainException` or `NotFoundException`
-9. **REST layer handles exception conversion** - All domain exceptions converted to HTTP responses via `handleDomainException()`
+4. **Validation cannot be disabled** - Zod validation is always on
+5. **Junction tables need `through` field** - Explicit table name required for many-to-many
+6. **PostGIS is always enabled** - Spatial types and GIST indexes work out of the box
+7. **Domain layer uses transport-agnostic exceptions** - Never use `HTTPException` in domain code, only `DomainException` or `NotFoundException`
+8. **REST layer handles exception conversion** - All domain exceptions converted to HTTP responses via `handleDomainException()`
 
 **See**: [WARP.md - Critical Gotchas & Edge Cases](./WARP.md#critical-gotchas--edge-cases)
 
