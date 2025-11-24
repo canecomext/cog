@@ -1,0 +1,27 @@
+{
+  "name": "RestrictedEntity",
+  "tableName": "restricted_entity",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    }
+  ],
+  "endpoints": {
+    "create": false,
+    "readOne": false,
+    "readMany": false,
+    "update": false,
+    "delete": false
+  },
+  "timestamps": true
+}

@@ -460,6 +460,55 @@ async function main() {
     logSuccess(`Found ${johnMenteesViaEndpoint.length} mentees for John via many-to-many endpoint`);
 
     // ========================================
+    // 12. ENDPOINT CONFIGURATION TESTS
+    // ========================================
+    logSection('12. Testing Endpoint Configuration (RestrictedEntity)');
+
+    logStep('Testing that all RestrictedEntity endpoints are disabled');
+
+    // Test readMany endpoint (GET /api/restrictedentity)
+    logStep('Attempting to list RestrictedEntity (should return 404)');
+    const listResponse = await REQUEST('GET', '/api/restrictedentity');
+    assertEqual(listResponse.status, 404, 'GET /api/restrictedentity should return HTTP 404');
+    assertEqual(listResponse.ok, false, 'Response should not be ok');
+    logSuccess('✓ List endpoint correctly returns 404 (disabled)');
+
+    // Test create endpoint (POST /api/restrictedentity)
+    logStep('Attempting to create RestrictedEntity (should return 404)');
+    const createResponse = await REQUEST('POST', '/api/restrictedentity', {
+      name: 'Test Entity',
+    });
+    assertEqual(createResponse.status, 404, 'POST /api/restrictedentity should return HTTP 404');
+    assertEqual(createResponse.ok, false, 'Response should not be ok');
+    logSuccess('✓ Create endpoint correctly returns 404 (disabled)');
+
+    // Test readOne endpoint (GET /api/restrictedentity/:id)
+    logStep('Attempting to get RestrictedEntity by ID (should return 404)');
+    const testId = crypto.randomUUID();
+    const getOneResponse = await REQUEST('GET', `/api/restrictedentity/${testId}`);
+    assertEqual(getOneResponse.status, 404, 'GET /api/restrictedentity/:id should return HTTP 404');
+    assertEqual(getOneResponse.ok, false, 'Response should not be ok');
+    logSuccess('✓ Get-by-ID endpoint correctly returns 404 (disabled)');
+
+    // Test update endpoint (PUT /api/restrictedentity/:id)
+    logStep('Attempting to update RestrictedEntity (should return 404)');
+    const updateRestrictedResponse = await REQUEST('PUT', `/api/restrictedentity/${testId}`, {
+      name: 'Updated Name',
+    });
+    assertEqual(updateRestrictedResponse.status, 404, 'PUT /api/restrictedentity/:id should return HTTP 404');
+    assertEqual(updateRestrictedResponse.ok, false, 'Response should not be ok');
+    logSuccess('✓ Update endpoint correctly returns 404 (disabled)');
+
+    // Test delete endpoint (DELETE /api/restrictedentity/:id)
+    logStep('Attempting to delete RestrictedEntity (should return 404)');
+    const deleteRestrictedResponse = await REQUEST('DELETE', `/api/restrictedentity/${testId}`);
+    assertEqual(deleteRestrictedResponse.status, 404, 'DELETE /api/restrictedentity/:id should return HTTP 404');
+    assertEqual(deleteRestrictedResponse.ok, false, 'Response should not be ok');
+    logSuccess('✓ Delete endpoint correctly returns 404 (disabled)');
+
+    logSuccess('All endpoint configuration tests passed!');
+
+    // ========================================
     // SUCCESS
     // ========================================
     logSection('All Tests Passed!');

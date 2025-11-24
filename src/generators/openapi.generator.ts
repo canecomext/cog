@@ -159,8 +159,15 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
         .generateModelSchema(model, true, true);
 
       // Generate CRUD paths (using singular model names)
-      (spec.paths as Record<string, unknown>)[`/${modelNameLower}`] = this.generateListAndCreatePaths(model);
-      (spec.paths as Record<string, unknown>)[`/${modelNameLower}/{id}`] = this.generateDetailPaths(model);
+      const listAndCreatePaths = this.generateListAndCreatePaths(model);
+      if (Object.keys(listAndCreatePaths).length > 0) {
+        (spec.paths as Record<string, unknown>)[`/${modelNameLower}`] = listAndCreatePaths;
+      }
+
+      const detailPaths = this.generateDetailPaths(model);
+      if (Object.keys(detailPaths).length > 0) {
+        (spec.paths as Record<string, unknown>)[`/${modelNameLower}/{id}`] = detailPaths;
+      }
 
       // Generate relationship paths
       if (model.relationships) {
@@ -514,8 +521,11 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
    * Generate paths for list and create operations
    */
   private generateListAndCreatePaths(model: ModelDefinition): Record<string, unknown> {
-    return {
-      get: {
+    const paths: Record<string, unknown> = {};
+
+    // Only add GET if readMany is not explicitly disabled
+    if (model.endpoints?.readMany !== false) {
+      paths.get = {
         tags: [model.name],
         summary: `List ${model.name} records`,
         description: `Retrieve a paginated list of ${model.name} records`,
@@ -553,8 +563,12 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           },
           '500': { $ref: '#/components/responses/ServerError' },
         },
-      },
-      post: {
+      };
+    }
+
+    // Only add POST if create is not explicitly disabled
+    if (model.endpoints?.create !== false) {
+      paths.post = {
         tags: [model.name],
         summary: `Create a ${model.name}`,
         description: `Create a new ${model.name}`,
@@ -579,16 +593,21 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           '400': { $ref: '#/components/responses/ValidationError' },
           '500': { $ref: '#/components/responses/ServerError' },
         },
-      },
-    };
+      };
+    }
+
+    return paths;
   }
 
   /**
    * Generate paths for get, update, and delete operations
    */
   private generateDetailPaths(model: ModelDefinition): Record<string, unknown> {
-    return {
-      get: {
+    const paths: Record<string, unknown> = {};
+
+    // Only add GET if readOne is not explicitly disabled
+    if (model.endpoints?.readOne !== false) {
+      paths.get = {
         tags: [model.name],
         summary: `Get ${model.name} by ID`,
         description: `Retrieve a single ${model.name} by its ID`,
@@ -614,8 +633,12 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           '404': { $ref: '#/components/responses/NotFound' },
           '500': { $ref: '#/components/responses/ServerError' },
         },
-      },
-      put: {
+      };
+    }
+
+    // Only add PUT if update is not explicitly disabled
+    if (model.endpoints?.update !== false) {
+      paths.put = {
         tags: [model.name],
         summary: `Update ${model.name}`,
         description: `Update an existing ${model.name}`,
@@ -642,8 +665,12 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           '404': { $ref: '#/components/responses/NotFound' },
           '500': { $ref: '#/components/responses/ServerError' },
         },
-      },
-      delete: {
+      };
+    }
+
+    // Only add DELETE if delete is not explicitly disabled
+    if (model.endpoints?.delete !== false) {
+      paths.delete = {
         tags: [model.name],
         summary: `Delete ${model.name}`,
         description: `Delete a ${model.name}`,
@@ -666,8 +693,10 @@ export function getOpenAPIJSON(customSpec?: Partial<OpenAPI.Document>): string {
           '404': { $ref: '#/components/responses/NotFound' },
           '500': { $ref: '#/components/responses/ServerError' },
         },
-      },
-    };
+      };
+    }
+
+    return paths;
   }
 
   /**

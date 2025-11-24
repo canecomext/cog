@@ -161,7 +161,8 @@ export class ModelParser {
       check: modelData.check as ModelDefinition['check'],
       timestamps: modelData.timestamps as boolean | undefined,
       description: modelData.description as string | undefined,
-      hooks: modelData.hooks as ModelDefinition['hooks']
+      hooks: modelData.hooks as ModelDefinition['hooks'],
+      endpoints: modelData.endpoints as ModelDefinition['endpoints']
     };
 
     return model;
