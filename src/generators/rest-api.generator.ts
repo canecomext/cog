@@ -24,6 +24,9 @@ export class RestAPIGenerator {
     // Generate shared types
     files.set('rest/types.ts', this.generateSharedTypes());
 
+    // Generate shared helper functions
+    files.set('rest/helpers.ts', this.generateRestHelpers());
+
     // Generate individual REST endpoints
     for (const model of this.models) {
       const restAPI = this.generateModelRestAPI(model);
@@ -50,46 +53,7 @@ import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
-
-/**
- * Converts BigInt values to numbers for JSON serialization
- * Dates are stored as EPOCH milliseconds (bigint) and need conversion for JSON
- */
-function convertBigIntToNumber<T>(obj: T): T {
-  if (obj === null || obj === undefined) return obj;
-
-  if (typeof obj === 'bigint') {
-    return Number(obj) as unknown as T;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertBigIntToNumber(item)) as unknown as T;
-  }
-
-  if (typeof obj === 'object') {
-    const converted: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      converted[key] = convertBigIntToNumber(value);
-    }
-    return converted as T;
-  }
-
-  return obj;
-}
-
-/**
- * Converts domain exceptions to HTTP exceptions
- * Handles centralized error conversion from domain layer
- */
-function handleDomainException(error: unknown): never {
-  if (error instanceof NotFoundException) {
-    throw new HTTPException(404, { message: error.message });
-  }
-  if (error instanceof DomainException) {
-    throw new HTTPException(500, { message: error.message });
-  }
-  throw error; // Re-throw unknown errors
-}
+import { convertBigIntToNumber, handleDomainException } from './helpers.ts';
 
 /**
  * ${modelName} REST Routes
@@ -303,6 +267,55 @@ export type DefaultEnv = {
   Variables: {
     [key: string]: unknown;
   }
+}
+`;
+  }
+
+  /**
+   * Generate shared helper functions for REST API
+   */
+  private generateRestHelpers(): string {
+    return `import { HTTPException } from '@hono/hono/http-exception';
+import { NotFoundException, DomainException } from '../domain/exceptions.ts';
+
+/**
+ * Converts BigInt values to numbers for JSON serialization
+ * Dates are stored as EPOCH milliseconds (bigint) and need conversion for JSON
+ */
+export function convertBigIntToNumber<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+
+  if (typeof obj === 'bigint') {
+    return Number(obj) as unknown as T;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertBigIntToNumber(item)) as unknown as T;
+  }
+
+  if (typeof obj === 'object') {
+    const converted: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertBigIntToNumber(value);
+    }
+    return converted as T;
+  }
+
+  return obj;
+}
+
+/**
+ * Converts domain exceptions to HTTP exceptions
+ * Handles centralized error conversion from domain layer
+ */
+export function handleDomainException(error: unknown): never {
+  if (error instanceof NotFoundException) {
+    throw new HTTPException(404, { message: error.message });
+  }
+  if (error instanceof DomainException) {
+    throw new HTTPException(500, { message: error.message });
+  }
+  throw error; // Re-throw unknown errors
 }
 `;
   }
