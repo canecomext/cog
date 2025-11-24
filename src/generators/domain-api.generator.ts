@@ -86,22 +86,23 @@ export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends 
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
   // Note: context contains all variables from your Env type
-  preCreate?: (input: CreateInput, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<CreateInput, DomainEnvVars>>;
-  preUpdate?: (id: string, input: UpdateInput, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<UpdateInput, DomainEnvVars>>;
+  // Note: rawInput contains the original unvalidated request body (use with caution)
+  preCreate?: (input: CreateInput, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<CreateInput, DomainEnvVars>>;
+  preUpdate?: (id: string, input: UpdateInput, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<UpdateInput, DomainEnvVars>>;
   preDelete?: (id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ id: string }, DomainEnvVars>>;
   preFindById?: (id: string, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ id: string }, DomainEnvVars>>;
   preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<FilterOptions, DomainEnvVars>>;
 
   // Post-operation hooks (within transaction)
-  postCreate?: (input: CreateInput, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
-  postUpdate?: (id: string, input: UpdateInput, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
+  postCreate?: (input: CreateInput, result: T, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
+  postUpdate?: (id: string, input: UpdateInput, result: T, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
   postDelete?: (id: string, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T, DomainEnvVars>>;
   postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T | null, DomainEnvVars>>;
   postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<T[], DomainEnvVars>>;
 
   // After-operation hooks (outside transaction, async)
-  afterCreate?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
-  afterUpdate?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterCreate?: (result: T, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterUpdate?: (result: T, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   afterDelete?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   afterFindById?: (result: T | null, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   afterFindMany?: (results: T[], context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
@@ -128,16 +129,17 @@ export interface PaginationOptions {
  */
 export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   // Pre-operation hooks (within transaction)
-  preAddJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
-  preRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
+  // Note: rawInput contains the original unvalidated request body (e.g., { ids: [...], metadata: {...} })
+  preAddJunction?: (ids: Record<string, string>, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
+  preRemoveJunction?: (ids: Record<string, string>, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPreHookResult<{ ids: Record<string, string> }, DomainEnvVars>>;
 
   // Post-operation hooks (within transaction)
-  postAddJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
-  postRemoveJunction?: (ids: Record<string, string>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postAddJunction?: (ids: Record<string, string>, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
+  postRemoveJunction?: (ids: Record<string, string>, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<DomainPostHookResult<void, DomainEnvVars>>;
 
   // After-operation hooks (outside transaction, async)
-  afterAddJunction?: (ids: Record<string, string>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
-  afterRemoveJunction?: (ids: Record<string, string>, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterAddJunction?: (ids: Record<string, string>, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  afterRemoveJunction?: (ids: Record<string, string>, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
 }
 `;
   }
@@ -195,7 +197,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // Pre-create hook (within transaction)
     let processedInput = validatedInput;
     if (this.hooks.preCreate) {
-      const preResult = await this.hooks.preCreate(validatedInput, tx, context);
+      const preResult = await this.hooks.preCreate(validatedInput, input, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}InsertSchema.parse(preResult.data) as New${modelName};
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
@@ -214,7 +216,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // Post-create hook (within transaction)
     let result = created;
     if (this.hooks.postCreate) {
-      const postResult = await this.hooks.postCreate(processedInput, created, tx, context);
+      const postResult = await this.hooks.postCreate(processedInput, created, input, tx, context);
       result = postResult.data;
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
@@ -223,7 +225,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     if (this.hooks.afterCreate) {
       // Schedule asynchronously to not block the response
       setTimeout(() => {
-        this.hooks.afterCreate!(result, context).catch(console.error);
+        this.hooks.afterCreate!(result, input, context).catch(console.error);
       }, 0);
     }
 
@@ -371,7 +373,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // Pre-update hook
     let processedInput = validatedInput;
     if (this.hooks.preUpdate) {
-      const preResult = await this.hooks.preUpdate(id, validatedInput, tx, context);
+      const preResult = await this.hooks.preUpdate(id, validatedInput, input, tx, context);
       // Validate pre-hook output to ensure it didn't emit malformed data
       processedInput = ${modelNameLower}UpdateSchema.parse(preResult.data) as Partial<New${modelName}>;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
@@ -398,7 +400,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // Post-update hook
     let result = updated;
     if (this.hooks.postUpdate) {
-      const postResult = await this.hooks.postUpdate(id, processedInput, updated, tx, context);
+      const postResult = await this.hooks.postUpdate(id, processedInput, updated, input, tx, context);
       result = postResult.data;
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
@@ -406,7 +408,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     // After-update hook (outside transaction, after post-hook)
     if (this.hooks.afterUpdate) {
       setTimeout(() => {
-        this.hooks.afterUpdate!(result, context).catch(console.error);
+        this.hooks.afterUpdate!(result, input, context).catch(console.error);
       }, 0);
     }
 
@@ -800,11 +802,11 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Add ${singularRelName} to ${model.name}
    */
-  async add${SingularRelName}(id: string, ${targetNameLower}Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async add${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-add hook
     let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.preAddJunction) {
-      const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, tx, context);
+      const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, rawInput, tx, context);
       ids = preResult.data.ids as typeof ids;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
@@ -822,14 +824,14 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     // Post-add hook
     if (this.${relName}JunctionHooks.postAddJunction) {
-      const postResult = await this.${relName}JunctionHooks.postAddJunction(ids, tx, context);
+      const postResult = await this.${relName}JunctionHooks.postAddJunction(ids, rawInput, tx, context);
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-add hook (outside transaction, async)
     if (this.${relName}JunctionHooks.afterAddJunction) {
       setTimeout(() => {
-        this.${relName}JunctionHooks.afterAddJunction!(ids, context).catch(console.error);
+        this.${relName}JunctionHooks.afterAddJunction!(ids, rawInput, context).catch(console.error);
       }, 0);
     }
   }
@@ -837,23 +839,23 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Add multiple ${relName} to ${model.name}
    */
-  async add${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async add${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     if (${targetNameLower}Ids.length === 0) return;
 
     // Call singular add method for each item to trigger hooks
     for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
-      await this.add${SingularRelName}(id, ${targetNameLower}Id, tx, context);
+      await this.add${SingularRelName}(id, ${targetNameLower}Id, rawInput, tx, context);
     }
   }
 
   /**
    * Remove ${singularRelName} from ${model.name}
    */
-  async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Pre-remove hook
     let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.preRemoveJunction) {
-      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, tx, context);
+      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, rawInput, tx, context);
       ids = preResult.data.ids as typeof ids;
       context = { ...context, ...preResult.context } as DomainHookContext<DomainEnvVars>;
     }
@@ -869,14 +871,14 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     // Post-remove hook
     if (this.${relName}JunctionHooks.postRemoveJunction) {
-      const postResult = await this.${relName}JunctionHooks.postRemoveJunction(ids, tx, context);
+      const postResult = await this.${relName}JunctionHooks.postRemoveJunction(ids, rawInput, tx, context);
       context = { ...context, ...postResult.context } as DomainHookContext<DomainEnvVars>;
     }
 
     // After-remove hook (outside transaction, async)
     if (this.${relName}JunctionHooks.afterRemoveJunction) {
       setTimeout(() => {
-        this.${relName}JunctionHooks.afterRemoveJunction!(ids, context).catch(console.error);
+        this.${relName}JunctionHooks.afterRemoveJunction!(ids, rawInput, context).catch(console.error);
       }, 0);
     }
   }
@@ -884,26 +886,26 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   /**
    * Remove multiple ${relName} from ${model.name}
    */
-  async remove${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async remove${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     if (${targetNameLower}Ids.length === 0) return;
 
     // Call singular remove method for each item to trigger hooks
     for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
-      await this.remove${SingularRelName}(id, ${targetNameLower}Id, tx, context);
+      await this.remove${SingularRelName}(id, ${targetNameLower}Id, rawInput, tx, context);
     }
   }
 
   /**
    * Set ${relName} for ${model.name} (replace all)
    */
-  async set${RelName}(id: string, ${targetNameLower}Ids: string[], tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+  async set${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Delete all existing relationships
     await tx.delete(${junctionTable}Table)
       .where(eq(${junctionTable}Table.${sourceFK}, id));
 
     // Add new relationships (hooks will be called for each item)
     if (${targetNameLower}Ids.length > 0) {
-      await this.add${RelName}(id, ${targetNameLower}Ids, tx, context);
+      await this.add${RelName}(id, ${targetNameLower}Ids, rawInput, tx, context);
     }
   }
 

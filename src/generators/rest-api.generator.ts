@@ -323,7 +323,7 @@ export type DefaultEnv = {
       const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${RelName}(id, ids, tx);
+        await ${modelNameLower}Domain.add${RelName}(id, ids, body, tx);
       });
 
       return c.json({ data: { message: '${relName} added successfully' } }, 201);
@@ -341,7 +341,7 @@ export type DefaultEnv = {
       const relatedId = body.id;
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${SingularRelName}(id, relatedId, tx);
+        await ${modelNameLower}Domain.add${SingularRelName}(id, relatedId, body, tx);
       });
 
       return c.json({ data: { message: '${singularRelName} added successfully' } }, 201);
@@ -361,7 +361,7 @@ export type DefaultEnv = {
       const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ids, tx);
+        await ${modelNameLower}Domain.set${RelName}(id, ids, body, tx);
       });
 
       return c.json({ data: { message: '${relName} updated successfully' } });
@@ -381,7 +381,7 @@ export type DefaultEnv = {
       const relatedId = body.id;
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${SingularRelName}(id, relatedId, tx);
+        await ${modelNameLower}Domain.remove${SingularRelName}(id, relatedId, body, tx);
       });
 
       return c.json({ data: { message: '${singularRelName} removed successfully' } });
@@ -399,7 +399,7 @@ export type DefaultEnv = {
       const ids = body.ids || [];
 
       await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${RelName}(id, ids, tx);
+        await ${modelNameLower}Domain.remove${RelName}(id, ids, body, tx);
       });
 
       return c.json({ data: { message: '${relName} removed successfully' } });

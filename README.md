@@ -180,7 +180,9 @@ HTTP Request
 → HTTP Response
 ```
 
-**Domain Hooks:** All hooks run within database transactions for data validation and transformation.
+**Available Hooks:** preCreate, postCreate, afterCreate, preUpdate, postUpdate, afterUpdate, preDelete, postDelete, afterDelete, and junction hooks for many-to-many relationships.
+
+**Hook Parameters:** `input` (validated data), `rawInput` (original request body), `result` (database response), `tx` (transaction), `context` (shared state). See [WARP.md](./WARP.md#hook-signatures-reference) for complete signatures.
 
 **HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead.
 

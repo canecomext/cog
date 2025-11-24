@@ -313,6 +313,41 @@ Commit Transaction
 - `metadata` - Custom data passed between hooks
 - `transaction` - Active database transaction
 
+#### Hook Signatures Reference
+
+**Domain Hooks (CRUD Operations):**
+
+| Hook | Signature | When It Runs |
+|------|-----------|--------------|
+| **preCreate** | `(input, rawInput, tx, context?) => Promise<{ data, context }>` | Before creating entity |
+| **postCreate** | `(input, result, rawInput, tx, context?) => Promise<{ data, context }>` | After creating entity (in transaction) |
+| **afterCreate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **preUpdate** | `(id, input, rawInput, tx, context?) => Promise<{ data, context }>` | Before updating entity |
+| **postUpdate** | `(id, input, result, rawInput, tx, context?) => Promise<{ data, context }>` | After updating entity (in transaction) |
+| **afterUpdate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **preDelete** | `(id, tx, context?) => Promise<{ data, context }>` | Before deleting entity |
+| **postDelete** | `(id, result, tx, context?) => Promise<{ data, context }>` | After deleting entity (in transaction) |
+| **afterDelete** | `(result, context?) => Promise<void>` | After transaction commits (async) |
+
+**Junction Hooks (Many-to-Many):**
+
+| Hook | Signature | When It Runs |
+|------|-----------|--------------|
+| **preAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | Before adding relationship |
+| **postAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | After adding relationship (in transaction) |
+| **afterAddJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **preRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | Before removing relationship |
+| **postRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | After removing relationship (in transaction) |
+| **afterRemoveJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+
+**Hook Parameters:**
+- `input` - Validated input data (after Zod parsing)
+- `rawInput` - Original unvalidated request body (for nested creates or metadata). Only on create/update/junction operations, not delete.
+- `result` - Entity returned from database operation
+- `id`/`ids` - Entity identifier(s)
+- `tx` - Database transaction (use for operations that must be atomic)
+- `context` - Shared state (`requestId`, `userId`, `metadata`, custom variables from Hono middleware)
+
 #### Domain Hooks
 
 All hooks run at the domain layer within database transactions, providing:
@@ -648,16 +683,16 @@ await initializeGenerated({
   // Domain hooks (within transaction)
   domainHooks: {
     user: {
-      async preCreate(input, tx, context) {
+      async preCreate(input, rawInput, tx, context) {
         // Hash password at domain layer (within transaction)
         const hashedPassword = await hashPassword(input.password);
         return { data: { ...input, password: hashedPassword }, context };
       },
-      async postCreate(input, result, tx, context) {
+      async postCreate(input, result, rawInput, tx, context) {
         // Enrich response with related data
         return { data: result, context };
       },
-      async afterCreate(result, context) {
+      async afterCreate(result, rawInput, context) {
         // Send welcome email (async, outside transaction)
         await sendWelcomeEmail(result.email);
       },

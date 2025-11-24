@@ -100,7 +100,7 @@ in REST requests/responses.
 
 **HTTP-layer concerns (auth, logging, headers):** Use Hono middleware instead.
 
-**See**: [WARP.md - Hook System](./WARP.md#hook-system)
+**See**: [WARP.md - Hook System](./WARP.md#hook-system) for complete hook signatures and parameters
 
 ---
 

@@ -39,6 +39,7 @@ await initializeGenerated({
       // CREATE hooks with full signatures
       preCreate: (
         input: NewEmployee,
+        _rawInput: unknown,
         _tx: DbTransaction,
         context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<DomainPreHookResult<NewEmployee, ExampleEnv['Variables']>> => {
@@ -49,6 +50,7 @@ await initializeGenerated({
       postCreate: (
         _input: NewEmployee,
         result: Employee,
+        _rawInput: unknown,
         _tx: DbTransaction,
         context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
@@ -58,6 +60,7 @@ await initializeGenerated({
 
       afterCreate: (
         _result: Employee,
+        _rawInput: unknown,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<void> => {
         console.log('Employee.afterCreate - async side effect');
@@ -68,6 +71,7 @@ await initializeGenerated({
       preUpdate: (
         _id: string,
         input: Partial<NewEmployee>,
+        _rawInput: unknown,
         _tx: DbTransaction,
         context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<DomainPreHookResult<Partial<NewEmployee>, ExampleEnv['Variables']>> => {
@@ -79,6 +83,7 @@ await initializeGenerated({
         _id: string,
         _input: Partial<NewEmployee>,
         result: Employee,
+        _rawInput: unknown,
         _tx: DbTransaction,
         context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
@@ -88,6 +93,7 @@ await initializeGenerated({
 
       afterUpdate: (
         _result: Employee,
+        _rawInput: unknown,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
       ): Promise<void> => {
         console.log('Employee.afterUpdate - async side effect');
@@ -165,6 +171,7 @@ await initializeGenerated({
       skillListJunctionHooks: {
         preAddJunction: (
           ids: Record<string, string>,
+          _rawInput: unknown,
           _tx: DbTransaction,
           context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
@@ -174,6 +181,7 @@ await initializeGenerated({
 
         postAddJunction: (
           _ids: Record<string, string>,
+          _rawInput: unknown,
           _tx: DbTransaction,
           context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
@@ -183,6 +191,7 @@ await initializeGenerated({
 
         afterAddJunction: (
           _ids: Record<string, string>,
+          _rawInput: unknown,
           _context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<void> => {
           console.log('Employee.skillList.afterAddJunction - async side effect');
@@ -191,6 +200,7 @@ await initializeGenerated({
 
         preRemoveJunction: (
           ids: Record<string, string>,
+          _rawInput: unknown,
           _tx: DbTransaction,
           context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
@@ -200,6 +210,7 @@ await initializeGenerated({
 
         postRemoveJunction: (
           _ids: Record<string, string>,
+          _rawInput: unknown,
           _tx: DbTransaction,
           context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
@@ -209,6 +220,7 @@ await initializeGenerated({
 
         afterRemoveJunction: (
           _ids: Record<string, string>,
+          _rawInput: unknown,
           _context?: DomainHookContext<ExampleEnv['Variables']>,
         ): Promise<void> => {
           console.log('Employee.skillList.afterRemoveJunction - async side effect');
