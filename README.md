@@ -135,7 +135,7 @@ DELETE /api/department/:id   # Delete department
 | **Arrays**     | Any type with `"array": true`                                                                                                               |
 
 **Note:** `date` fields are stored as EPOCH millisecond integers (`bigint`) in the database. The API accepts and returns
-numeric timestamps. Use `Date.getTime()` in JavaScript/TypeScript.
+numeric timestamps (e.g., `1704067200000`). Use `Date.getTime()` in JavaScript/TypeScript. OpenAPI documents these as `type: integer, format: int64`.
 
 ### Relationship Support
 
@@ -387,8 +387,6 @@ Control which many-to-many relationship endpoints are generated:
 **Numeric Limits:** Default values limited to `Number.MAX_SAFE_INTEGER` (2^53-1)
 
 **Validation:** Zod validation is always enabled and cannot be disabled
-
-**CLI Flags Override:** `--no-timestamps` affects ALL models, regardless of JSON settings
 
 **CockroachDB:** GEOGRAPHY types auto-convert to GEOMETRY, HASH indexes to BTREE
 

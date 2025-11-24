@@ -40,7 +40,7 @@ production-ready backends.
 | `enum`           | Enumerated type             | `"type": "enum", "enumName": "Status"`                   |
 
 **Date Fields**: Stored as EPOCH millisecond integers. Use `Date.getTime()` in JavaScript/TypeScript to convert to/from
-Date objects.
+Date objects. OpenAPI documents date fields as `type: integer, format: int64` with "(EPOCH milliseconds)" description.
 
 **PostGIS Spatial Types**: `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`,
 `geometry`, `geography`

@@ -234,6 +234,7 @@ COG stores all `date` fields as EPOCH millisecond integers (`bigint`) in the dat
 - **JavaScript/TypeScript**: Use `Date.getTime()` to get timestamp, `new Date(timestamp)` to create Date object
 - **Example**: Send `1704067200000` (represents 2024-01-01) via REST API
 - **Timestamps**: `createdAt` and `updatedAt` automatically use SQL formula: `(extract(epoch from now()) * 1000)::bigint`
+- **OpenAPI**: Date fields documented as `type: integer, format: int64` with "(EPOCH milliseconds)" description
 - **Rationale**: Avoids timezone complexities, ISO string parsing issues, and provides universal compatibility
 
 **PostGIS Spatial Types:**
