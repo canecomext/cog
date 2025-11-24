@@ -5,7 +5,7 @@ import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import { crypto } from '@std/crypto';
 import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated } from '../generated/index.ts';
-import type { DomainHookContext, DomainPostHookResult, DomainPreHookResult } from '../generated/domain/hooks.types.ts';
+import type { DomainHookContext } from '../generated/domain/hooks.types.ts';
 import type { Employee, NewEmployee } from '../generated/schema/index.ts';
 import { generatedOpenAPISpec } from '../generated/rest/openapi.ts';
 import type { ExampleEnv } from './context.ts';
@@ -41,10 +41,10 @@ await initializeGenerated({
         input: NewEmployee,
         _rawInput: unknown,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPreHookResult<NewEmployee, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<NewEmployee> => {
         console.log('Employee.preCreate');
-        return Promise.resolve({ data: input, context });
+        return Promise.resolve(input);
       },
 
       postCreate: (
@@ -52,10 +52,10 @@ await initializeGenerated({
         result: Employee,
         _rawInput: unknown,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Employee> => {
         console.log('Employee.postCreate');
-        return Promise.resolve({ data: result, context });
+        return Promise.resolve(result);
       },
 
       afterCreate: (
@@ -73,10 +73,10 @@ await initializeGenerated({
         input: Partial<NewEmployee>,
         _rawInput: unknown,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPreHookResult<Partial<NewEmployee>, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Partial<NewEmployee>> => {
         console.log('Employee.preUpdate');
-        return Promise.resolve({ data: input, context });
+        return Promise.resolve(input);
       },
 
       postUpdate: (
@@ -85,10 +85,10 @@ await initializeGenerated({
         result: Employee,
         _rawInput: unknown,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Employee> => {
         console.log('Employee.postUpdate');
-        return Promise.resolve({ data: result, context });
+        return Promise.resolve(result);
       },
 
       afterUpdate: (
@@ -104,20 +104,20 @@ await initializeGenerated({
       preDelete: (
         _id: string,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<{ id: string }> => {
         console.log('Employee.preDelete');
-        return Promise.resolve({ data: { id: _id }, context });
+        return Promise.resolve({ id: _id });
       },
 
       postDelete: (
         _id: string,
         result: Employee,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPostHookResult<Employee, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Employee> => {
         console.log('Employee.postDelete');
-        return Promise.resolve({ data: result, context });
+        return Promise.resolve(result);
       },
 
       afterDelete: (
@@ -132,39 +132,39 @@ await initializeGenerated({
       preFindById: (
         _id: string,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPreHookResult<{ id: string }, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<{ id: string }> => {
         console.log('Employee.preFindById');
-        return Promise.resolve({ data: { id: _id }, context });
+        return Promise.resolve({ id: _id });
       },
 
       postFindById: (
         _id: string,
         result: Employee | null,
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPostHookResult<Employee | null, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Employee | null> => {
         console.log('Employee.postFindById');
-        return Promise.resolve({ data: result, context });
+        return Promise.resolve(result);
       },
 
       preFindMany: (
         _tx: DbTransaction,
         filter?: FilterOptions,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPreHookResult<FilterOptions, ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<FilterOptions> => {
         console.log('Employee.preFindMany');
-        return Promise.resolve({ data: filter || {}, context });
+        return Promise.resolve(filter || {});
       },
 
       postFindMany: (
         _filter: FilterOptions | undefined,
         results: Employee[],
         _tx: DbTransaction,
-        context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<DomainPostHookResult<Employee[], ExampleEnv['Variables']>> => {
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<Employee[]> => {
         console.log('Employee.postFindMany');
-        return Promise.resolve({ data: results, context });
+        return Promise.resolve(results);
       },
 
       // JUNCTION HOOKS - Full signatures for many-to-many relationships
@@ -173,20 +173,20 @@ await initializeGenerated({
           ids: Record<string, string>,
           _rawInput: unknown,
           _tx: DbTransaction,
-          context?: DomainHookContext<ExampleEnv['Variables']>,
-        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<{ ids: Record<string, string> }> => {
           console.log('Employee.skillList.preAddJunction');
-          return Promise.resolve({ data: { ids }, context });
+          return Promise.resolve({ ids });
         },
 
         postAddJunction: (
           _ids: Record<string, string>,
           _rawInput: unknown,
           _tx: DbTransaction,
-          context?: DomainHookContext<ExampleEnv['Variables']>,
-        ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<void> => {
           console.log('Employee.skillList.postAddJunction');
-          return Promise.resolve({ data: undefined, context });
+          return Promise.resolve();
         },
 
         afterAddJunction: (
@@ -202,20 +202,20 @@ await initializeGenerated({
           ids: Record<string, string>,
           _rawInput: unknown,
           _tx: DbTransaction,
-          context?: DomainHookContext<ExampleEnv['Variables']>,
-        ): Promise<DomainPreHookResult<{ ids: Record<string, string> }, ExampleEnv['Variables']>> => {
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<{ ids: Record<string, string> }> => {
           console.log('Employee.skillList.preRemoveJunction');
-          return Promise.resolve({ data: { ids }, context });
+          return Promise.resolve({ ids });
         },
 
         postRemoveJunction: (
           _ids: Record<string, string>,
           _rawInput: unknown,
           _tx: DbTransaction,
-          context?: DomainHookContext<ExampleEnv['Variables']>,
-        ): Promise<DomainPostHookResult<undefined, ExampleEnv['Variables']>> => {
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<void> => {
           console.log('Employee.skillList.postRemoveJunction');
-          return Promise.resolve({ data: undefined, context });
+          return Promise.resolve();
         },
 
         afterRemoveJunction: (

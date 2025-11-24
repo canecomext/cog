@@ -314,31 +314,33 @@ Commit Transaction
 - `metadata` - Custom data passed between hooks
 - `transaction` - Active database transaction
 
+**Note:** Hooks return data directly (not wrapped in `{data, context}`). Context is passed as a parameter for read access.
+
 #### Hook Signatures Reference
 
 **Domain Hooks (CRUD Operations):**
 
 | Hook | Signature | When It Runs |
 |------|-----------|--------------|
-| **preCreate** | `(input, rawInput, tx, context?) => Promise<{ data, context }>` | Before creating entity |
-| **postCreate** | `(input, result, rawInput, tx, context?) => Promise<{ data, context }>` | After creating entity (in transaction) |
+| **preCreate** | `(input, rawInput, tx, context?) => Promise<input>` | Before creating entity |
+| **postCreate** | `(input, result, rawInput, tx, context?) => Promise<result>` | After creating entity (in transaction) |
 | **afterCreate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **preUpdate** | `(id, input, rawInput, tx, context?) => Promise<{ data, context }>` | Before updating entity |
-| **postUpdate** | `(id, input, result, rawInput, tx, context?) => Promise<{ data, context }>` | After updating entity (in transaction) |
+| **preUpdate** | `(id, input, rawInput, tx, context?) => Promise<input>` | Before updating entity |
+| **postUpdate** | `(id, input, result, rawInput, tx, context?) => Promise<result>` | After updating entity (in transaction) |
 | **afterUpdate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **preDelete** | `(id, tx, context?) => Promise<{ data, context }>` | Before deleting entity |
-| **postDelete** | `(id, result, tx, context?) => Promise<{ data, context }>` | After deleting entity (in transaction) |
+| **preDelete** | `(id, tx, context?) => Promise<{id}>` | Before deleting entity |
+| **postDelete** | `(id, result, tx, context?) => Promise<result>` | After deleting entity (in transaction) |
 | **afterDelete** | `(result, context?) => Promise<void>` | After transaction commits (async) |
 
 **Junction Hooks (Many-to-Many):**
 
 | Hook | Signature | When It Runs |
 |------|-----------|--------------|
-| **preAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | Before adding relationship |
-| **postAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | After adding relationship (in transaction) |
+| **preAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before adding relationship |
+| **postAddJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After adding relationship (in transaction) |
 | **afterAddJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **preRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | Before removing relationship |
-| **postRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ data, context }>` | After removing relationship (in transaction) |
+| **preRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before removing relationship |
+| **postRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After removing relationship (in transaction) |
 | **afterRemoveJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
 
 **Hook Parameters:**
@@ -899,11 +901,11 @@ await initializeGenerated({
       async preCreate(input, rawInput, tx, context) {
         // Hash password at domain layer (within transaction)
         const hashedPassword = await hashPassword(input.password);
-        return { data: { ...input, password: hashedPassword }, context };
+        return { ...input, password: hashedPassword };
       },
       async postCreate(input, result, rawInput, tx, context) {
         // Enrich response with related data
-        return { data: result, context };
+        return result;
       },
       async afterCreate(result, rawInput, context) {
         // Send welcome email (async, outside transaction)
