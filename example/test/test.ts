@@ -27,6 +27,7 @@ import {
   logSuccess,
   POST,
   PUT,
+  REQUEST,
 } from './http-client.ts';
 
 // Extended types for responses with included relationships
@@ -351,6 +352,52 @@ async function main() {
 
     assertEqual(updatedAssignment.hours, 45, 'Hours should be updated');
     logSuccess('Assignment updated successfully');
+
+    // ========================================
+    // 10.5. ERROR HANDLING - 404 NOT FOUND
+    // ========================================
+    logSection('10.5. Testing 404 Error Handling');
+
+    // Test UPDATE with non-existent ID
+    logStep('Attempting to update non-existent employee (should return 404)');
+    const fakeEmployeeId = crypto.randomUUID();
+    const updateResponse = await REQUEST('PUT', `/api/employee/${fakeEmployeeId}`, {
+      firstName: 'Should',
+      lastName: 'Fail',
+    });
+
+    assertEqual(updateResponse.status, 404, 'Should return HTTP 404');
+    assertEqual(updateResponse.ok, false, 'Response should not be ok');
+    assertExists(updateResponse.error, 'Error message should exist');
+    assert(
+      updateResponse.error!.includes(fakeEmployeeId),
+      'Error message should include the entity ID',
+    );
+    logSuccess(`✓ UPDATE returned 404 for non-existent employee: ${updateResponse.error}`);
+
+    // Test DELETE with non-existent ID
+    logStep('Attempting to delete non-existent employee (should return 404)');
+    const deleteResponse = await REQUEST('DELETE', `/api/employee/${fakeEmployeeId}`);
+
+    assertEqual(deleteResponse.status, 404, 'Should return HTTP 404');
+    assertEqual(deleteResponse.ok, false, 'Response should not be ok');
+    assertExists(deleteResponse.error, 'Error message should exist');
+    assert(
+      deleteResponse.error!.includes(fakeEmployeeId),
+      'Error message should include the entity ID',
+    );
+    logSuccess(`✓ DELETE returned 404 for non-existent employee: ${deleteResponse.error}`);
+
+    // Test GET with non-existent ID (should also return 404)
+    logStep('Attempting to get non-existent employee (should return 404)');
+    const getResponse = await REQUEST('GET', `/api/employee/${fakeEmployeeId}`);
+
+    assertEqual(getResponse.status, 404, 'Should return HTTP 404');
+    assertEqual(getResponse.ok, false, 'Response should not be ok');
+    assertExists(getResponse.error, 'Error message should exist');
+    logSuccess(`✓ GET returned 404 for non-existent employee: ${getResponse.error}`);
+
+    logSuccess('All 404 error handling tests passed!');
 
     // ========================================
     // 11. PAGINATION AND ORDERING

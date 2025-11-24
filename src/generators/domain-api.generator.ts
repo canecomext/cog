@@ -168,7 +168,7 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     drizzleImports += " } from 'drizzle-orm';";
 
     return `${drizzleImports}
-import { HTTPException } from '@hono/hono/http-exception';
+import { NotFoundException } from './exceptions.ts';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
 import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
@@ -394,7 +394,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       .returning();
 
     if (!updated) {
-      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
+      throw new NotFoundException(\`${modelName} with id \${id} not found\`);
     }
 
     // Post-update hook
@@ -430,7 +430,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     ${this.generateHardDelete(model, 'tx')}
 
     if (!deleted) {
-      throw new HTTPException(404, { message: \`${modelName} with id \${id} not found\` });
+      throw new NotFoundException(\`${modelName} with id \${id} not found\`);
     }
 
     // Post-delete hook

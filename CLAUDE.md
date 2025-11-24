@@ -270,6 +270,28 @@ Supported actions: `CASCADE`, `SET NULL`, `RESTRICT`, `NO ACTION`
 
 **See**: [WARP.md - Foreign Key References](./WARP.md#4-foreign-key-references)
 
+### 6. Exception Handling
+
+| Exception Type | Thrown By | Caught By | Maps To | Use Case |
+|----------------|-----------|-----------|---------|----------|
+| `NotFoundException` | Domain | REST layer | HTTP 404 | Entity not found (update/delete missing record) |
+| `DomainException` | Domain | REST layer | HTTP 500 | General domain errors, business rule violations |
+
+**Architecture Pattern:**
+```
+Domain layer throws transport-agnostic exceptions
+    ↓
+REST layer catches via handleDomainException()
+    ↓
+Converts to HTTP responses (404, 500, etc.)
+```
+
+**Key Principle**: Domain layer NEVER uses `HTTPException`. All HTTP concerns handled at REST boundary.
+
+**Transaction Rollback**: Exceptions thrown within `withTransaction()` automatically rollback database changes.
+
+**See**: [WARP.md - Exception Handling](./WARP.md#exception-handling-domain-vs-rest) for complete details
+
 ---
 
 ## Important Reminders
@@ -284,6 +306,8 @@ Supported actions: `CASCADE`, `SET NULL`, `RESTRICT`, `NO ACTION`
 5. **Validation cannot be disabled** - Zod validation is always on
 6. **Junction tables need `through` field** - Explicit table name required for many-to-many
 7. **PostGIS requires `--postgis` flag** - Enabled by default, use `--no-postgis` to disable
+8. **Domain layer uses transport-agnostic exceptions** - Never use `HTTPException` in domain code, only `DomainException` or `NotFoundException`
+9. **REST layer handles exception conversion** - All domain exceptions converted to HTTP responses via `handleDomainException()`
 
 **See**: [WARP.md - Critical Gotchas & Edge Cases](./WARP.md#critical-gotchas--edge-cases)
 

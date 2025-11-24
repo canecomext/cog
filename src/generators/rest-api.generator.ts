@@ -45,6 +45,7 @@ export class RestAPIGenerator {
 
     return `import { Hono, type Context } from '@hono/hono';
 import { HTTPException } from '@hono/hono/http-exception';
+import { NotFoundException, DomainException } from '../domain/exceptions.ts';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
 import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
@@ -77,6 +78,20 @@ function convertBigIntToNumber<T>(obj: T): T {
 }
 
 /**
+ * Converts domain exceptions to HTTP exceptions
+ * Handles centralized error conversion from domain layer
+ */
+function handleDomainException(error: unknown): never {
+  if (error instanceof NotFoundException) {
+    throw new HTTPException(404, { message: error.message });
+  }
+  if (error instanceof DomainException) {
+    throw new HTTPException(500, { message: error.message });
+  }
+  throw error; // Re-throw unknown errors
+}
+
+/**
  * ${modelName} REST Routes
  * Handles HTTP endpoints (thin routing layer)
  */
@@ -96,33 +111,37 @@ ${
      * List all ${modelNameLower} with pagination
      */
     this.routes.get('/', async (c) => {
-      const context = c.var as RestEnvVars;
-      const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
+      try {
+        const context = c.var as RestEnvVars;
+        const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
 
-      // Parse include parameter
-      const includeArray = include ? include.split(',') : undefined;
+        // Parse include parameter
+        const includeArray = include ? include.split(',') : undefined;
 
-      // No transaction needed for read operations
-      const result = await ${modelNameLower}Domain.findMany(
-        undefined, // No transaction
-        includeArray ? { include: includeArray } : undefined, // Filter with include
-        {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          orderBy,
-          orderDirection: orderDirection as 'asc' | 'desc'
-        },
-        context // Pass all context variables to domain hooks
-      );
+        // No transaction needed for read operations
+        const result = await ${modelNameLower}Domain.findMany(
+          undefined, // No transaction
+          includeArray ? { include: includeArray } : undefined, // Filter with include
+          {
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            orderBy,
+            orderDirection: orderDirection as 'asc' | 'desc'
+          },
+          context // Pass all context variables to domain hooks
+        );
 
-      return c.json({
-        data: convertBigIntToNumber(result.data),
-        pagination: {
-          total: result.total,
-          limit: parseInt(limit),
-          offset: parseInt(offset)
-        }
-      });
+        return c.json({
+          data: convertBigIntToNumber(result.data),
+          pagination: {
+            total: result.total,
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+          }
+        });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });
 `
         : ''
@@ -134,23 +153,27 @@ ${
      * Get a single ${modelName} by ID
      */
     this.routes.get('/:id', async (c) => {
-      const id = c.req.param('id');
-      const context = c.var as RestEnvVars;
-      const include = c.req.query('include')?.split(',');
+      try {
+        const id = c.req.param('id');
+        const context = c.var as RestEnvVars;
+        const include = c.req.query('include')?.split(',');
 
-      // No transaction needed for read operations
-      const result = await ${modelNameLower}Domain.findById(
-        id,
-        undefined, // No transaction
-        { include },
-        context // Pass all context variables to domain hooks
-      );
+        // No transaction needed for read operations
+        const result = await ${modelNameLower}Domain.findById(
+          id,
+          undefined, // No transaction
+          { include },
+          context // Pass all context variables to domain hooks
+        );
 
-      if (!result) {
-        throw new HTTPException(404, { message: '${modelName} not found' });
+        if (!result) {
+          throw new HTTPException(404, { message: '${modelName} not found' });
+        }
+
+        return c.json({ data: convertBigIntToNumber(result) });
+      } catch (error) {
+        handleDomainException(error);
       }
-
-      return c.json({ data: convertBigIntToNumber(result) });
     });
 `
         : ''
@@ -162,18 +185,22 @@ ${
      * Create a new ${modelName}
      */
     this.routes.post('/', async (c) => {
-      const body = await c.req.json();
-      const context = c.var as RestEnvVars;
+      try {
+        const body = await c.req.json();
+        const context = c.var as RestEnvVars;
 
-      const result = await withTransaction(async (tx) => {
-        return await ${modelNameLower}Domain.create(
-          body,
-          tx,
-          context // Pass all context variables to domain hooks
-        );
-      });
+        const result = await withTransaction(async (tx) => {
+          return await ${modelNameLower}Domain.create(
+            body,
+            tx,
+            context // Pass all context variables to domain hooks
+          );
+        });
 
-      return c.json({ data: convertBigIntToNumber(result) }, 201);
+        return c.json({ data: convertBigIntToNumber(result) }, 201);
+      } catch (error) {
+        handleDomainException(error);
+      }
     });
 `
         : ''
@@ -185,20 +212,24 @@ ${
      * Update a ${modelName}
      */
     this.routes.put('/:id', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const context = c.var as RestEnvVars;
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const context = c.var as RestEnvVars;
 
-      const result = await withTransaction(async (tx) => {
-        return await ${modelNameLower}Domain.update(
-          id,
-          body,
-          tx,
-          context // Pass all context variables to domain hooks
-        );
-      });
+        const result = await withTransaction(async (tx) => {
+          return await ${modelNameLower}Domain.update(
+            id,
+            body,
+            tx,
+            context // Pass all context variables to domain hooks
+          );
+        });
 
-      return c.json({ data: convertBigIntToNumber(result) });
+        return c.json({ data: convertBigIntToNumber(result) });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });
 `
         : ''
@@ -210,18 +241,22 @@ ${
      * Delete a ${modelName}
      */
     this.routes.delete('/:id', async (c) => {
-      const id = c.req.param('id');
-      const context = c.var as RestEnvVars;
+      try {
+        const id = c.req.param('id');
+        const context = c.var as RestEnvVars;
 
-      const result = await withTransaction(async (tx) => {
-        return await ${modelNameLower}Domain.delete(
-          id,
-          tx,
-          context // Pass all context variables to domain hooks
-        );
-      });
+        const result = await withTransaction(async (tx) => {
+          return await ${modelNameLower}Domain.delete(
+            id,
+            tx,
+            context // Pass all context variables to domain hooks
+          );
+        });
 
-      return c.json({ data: convertBigIntToNumber(result) });
+        return c.json({ data: convertBigIntToNumber(result) });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });
 `
         : ''
@@ -302,11 +337,15 @@ export type DefaultEnv = {
      * Get ${relName} for a ${model.name}
      */
     this.routes.get('/:id/${relName}', async (c) => {
-      const id = c.req.param('id');
+      try {
+        const id = c.req.param('id');
 
-      const result = await ${modelNameLower}Domain.get${RelName}(id);
+        const result = await ${modelNameLower}Domain.get${RelName}(id);
 
-      return c.json({ data: convertBigIntToNumber(result) });
+        return c.json({ data: convertBigIntToNumber(result) });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
         }
 
@@ -318,15 +357,19 @@ export type DefaultEnv = {
      * Add multiple ${relName} to a ${model.name}
      */
     this.routes.post('/:id/${relName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const ids = body.ids || [];
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const ids = body.ids || [];
 
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${RelName}(id, ids, body, tx);
-      });
+        await withTransaction(async (tx) => {
+          await ${modelNameLower}Domain.add${RelName}(id, ids, body, tx);
+        });
 
-      return c.json({ data: { message: '${relName} added successfully' } }, 201);
+        return c.json({ data: { message: '${relName} added successfully' } }, 201);
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
 
           // POST single add
@@ -336,15 +379,19 @@ export type DefaultEnv = {
      * Add a specific ${singularRelName} to a ${model.name}
      */
     this.routes.post('/:id/${singularRelName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const relatedId = body.id;
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const relatedId = body.id;
 
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.add${SingularRelName}(id, relatedId, body, tx);
-      });
+        await withTransaction(async (tx) => {
+          await ${modelNameLower}Domain.add${SingularRelName}(id, relatedId, body, tx);
+        });
 
-      return c.json({ data: { message: '${singularRelName} added successfully' } }, 201);
+        return c.json({ data: { message: '${singularRelName} added successfully' } }, 201);
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
         }
 
@@ -356,15 +403,19 @@ export type DefaultEnv = {
      * Replace all ${relName} for a ${model.name}
      */
     this.routes.put('/:id/${relName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const ids = body.ids || [];
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const ids = body.ids || [];
 
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.set${RelName}(id, ids, body, tx);
-      });
+        await withTransaction(async (tx) => {
+          await ${modelNameLower}Domain.set${RelName}(id, ids, body, tx);
+        });
 
-      return c.json({ data: { message: '${relName} updated successfully' } });
+        return c.json({ data: { message: '${relName} updated successfully' } });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
         }
 
@@ -376,15 +427,19 @@ export type DefaultEnv = {
      * Remove a specific ${singularRelName} from a ${model.name}
      */
     this.routes.delete('/:id/${singularRelName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const relatedId = body.id;
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const relatedId = body.id;
 
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${SingularRelName}(id, relatedId, body, tx);
-      });
+        await withTransaction(async (tx) => {
+          await ${modelNameLower}Domain.remove${SingularRelName}(id, relatedId, body, tx);
+        });
 
-      return c.json({ data: { message: '${singularRelName} removed successfully' } });
+        return c.json({ data: { message: '${singularRelName} removed successfully' } });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
 
           // DELETE bulk remove
@@ -394,15 +449,19 @@ export type DefaultEnv = {
      * Remove multiple ${relName} from a ${model.name}
      */
     this.routes.delete('/:id/${relName}', async (c) => {
-      const id = c.req.param('id');
-      const body = await c.req.json();
-      const ids = body.ids || [];
+      try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const ids = body.ids || [];
 
-      await withTransaction(async (tx) => {
-        await ${modelNameLower}Domain.remove${RelName}(id, ids, body, tx);
-      });
+        await withTransaction(async (tx) => {
+          await ${modelNameLower}Domain.remove${RelName}(id, ids, body, tx);
+        });
 
-      return c.json({ data: { message: '${relName} removed successfully' } });
+        return c.json({ data: { message: '${relName} removed successfully' } });
+      } catch (error) {
+        handleDomainException(error);
+      }
     });`);
         }
       }

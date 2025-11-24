@@ -6,6 +6,7 @@ import { ModelParser } from './parser/model-parser.ts';
 import { DrizzleSchemaGenerator } from './generators/drizzle-schema.generator.ts';
 import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
 import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
+import { DomainExceptionsGenerator } from './generators/domain-exceptions.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
 import { OpenAPIGenerator } from './generators/openapi.generator.ts';
 import { GeneratorConfig, ModelDefinition } from './types/model.types.ts';
@@ -95,6 +96,10 @@ export async function generateFromModels(
     'db/initialize-database.ts',
     dbInitGenerator.generateDatabaseInitialization(),
   );
+
+  // Generate domain exceptions
+  const exceptionsGenerator = new DomainExceptionsGenerator();
+  files.set('domain/exceptions.ts', exceptionsGenerator.generate());
 
   // Generate domain APIs
   const domainGenerator = new DomainAPIGenerator(models);

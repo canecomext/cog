@@ -16,6 +16,7 @@
   - [Supported Data Types](#supported-data-types)
   - [Relationship Types](#relationship-types)
   - [Hook System](#hook-system)
+  - [Exception Handling (Domain vs REST)](#exception-handling-domain-vs-rest)
   - [Validation System](#validation-system)
   - [Check Constraints](#check-constraints)
 - [Database Compatibility](#database-compatibility)
@@ -364,6 +365,218 @@ All hooks run at the domain layer within database transactions, providing:
 - Audit logging within the same transaction
 
 **HTTP-Layer Concerns (auth, logging, headers):** Use Hono middleware instead of hooks for HTTP-specific operations
+
+### Exception Handling (Domain vs REST)
+
+COG implements a clean separation between domain-level exceptions and transport-specific error handling. This architecture ensures the domain layer remains transport-agnostic while the REST layer handles HTTP-specific error conversion.
+
+#### Architecture Overview
+
+```
+Domain Layer (Business Logic)
+    ↓ throws DomainException/NotFoundException
+REST Layer (HTTP Transport)
+    ↓ catches and converts via handleDomainException()
+HTTP Response (404, 500, etc.)
+```
+
+**Key Principle**: Domain layer never imports or uses `HTTPException`. All HTTP concerns are handled at the REST layer boundary.
+
+#### Domain Exception Classes
+
+COG generates two transport-agnostic exception classes in `generated/domain/exceptions.ts`:
+
+**1. DomainException (Base Class)**
+
+```typescript
+export class DomainException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DomainException';
+
+    // Maintains proper stack trace
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, DomainException);
+    }
+  }
+}
+```
+
+**Use When**: General domain-level errors (business rule violations, invalid operations)
+
+**2. NotFoundException (Extends DomainException)**
+
+```typescript
+export class NotFoundException extends DomainException {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundException';
+  }
+}
+```
+
+**Use When**: Requested entity doesn't exist (maps to HTTP 404)
+
+#### Domain Layer Usage
+
+Domain methods throw exceptions when operations fail:
+
+```typescript
+// generated/domain/user.domain.ts
+import { NotFoundException } from './exceptions.ts';
+
+class UserDomain {
+  async update(id: string, input: Partial<NewUser>, tx: DbTransaction) {
+    // ... validation and pre-hooks ...
+
+    const updated = await db.update(userTable)
+      .set(validatedInput)
+      .where(eq(userTable.id, id))
+      .returning();
+
+    if (!updated) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+
+    // ... post-hooks and return ...
+  }
+}
+```
+
+**IMPORTANT**: Domain layer NEVER imports `HTTPException` from Hono. It only uses transport-agnostic domain exceptions.
+
+#### REST Layer Exception Handling
+
+The REST layer provides centralized exception handling via `handleDomainException()`:
+
+```typescript
+// generated/rest/user.rest.ts
+import { HTTPException } from '@hono/hono/http-exception';
+import { NotFoundException, DomainException } from '../domain/exceptions.ts';
+
+/**
+ * Converts domain exceptions to HTTP exceptions
+ * Handles centralized error conversion from domain layer
+ */
+function handleDomainException(error: unknown): never {
+  if (error instanceof NotFoundException) {
+    throw new HTTPException(404, { message: error.message });
+  }
+  if (error instanceof DomainException) {
+    throw new HTTPException(500, { message: error.message });
+  }
+  throw error; // Re-throw unknown errors
+}
+```
+
+**All REST endpoints wrap domain calls in try-catch blocks:**
+
+```typescript
+// Update endpoint example
+this.routes.put('/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const context = c.var as RestEnvVars;
+
+    const result = await withTransaction(async (tx) => {
+      return await userDomain.update(id, body, tx, context);
+    });
+
+    return c.json({ data: result });
+  } catch (error) {
+    handleDomainException(error);  // Converts to HTTP response
+  }
+});
+```
+
+#### HTTP Status Code Mapping
+
+| Domain Exception | HTTP Status | Use Case |
+|------------------|-------------|----------|
+| `NotFoundException` | 404 Not Found | Entity not found (update/delete missing record) |
+| `DomainException` | 500 Internal Server Error | General domain errors, business rule violations |
+| Unknown errors | Re-thrown | Handled by Hono's global error handler |
+
+#### Transaction Rollback Behavior
+
+**Critical**: When exceptions are thrown within `withTransaction()` blocks:
+
+1. Domain operation throws exception (e.g., `NotFoundException`)
+2. Transaction automatically rolls back (no database changes persisted)
+3. Exception propagates to REST layer
+4. REST layer catches and converts to HTTP response
+5. Client receives appropriate HTTP status code
+
+**Example Flow:**
+```typescript
+// User attempts to update non-existent record
+PUT /api/user/invalid-id
+
+→ REST layer calls domain.update() within transaction
+→ Domain layer throws NotFoundException
+→ Transaction automatically rolls back
+→ REST layer catches NotFoundException
+→ Converts to HTTPException(404)
+→ Client receives: { error: "User with id invalid-id not found" }, status: 404
+```
+
+#### Custom Exception Patterns
+
+**Extending Domain Exceptions:**
+
+You can create custom domain exceptions for specific business rules:
+
+```typescript
+// In your application code (not generated)
+import { DomainException } from './generated/domain/exceptions.ts';
+
+export class InsufficientPermissionsException extends DomainException {
+  constructor(action: string) {
+    super(`Insufficient permissions to perform: ${action}`);
+    this.name = 'InsufficientPermissionsException';
+  }
+}
+```
+
+**Handling Custom Exceptions in REST Layer:**
+
+Extend the generated REST routes to handle custom exceptions:
+
+```typescript
+// In your application code
+import { InsufficientPermissionsException } from './your-exceptions.ts';
+
+// Wrap generated routes with custom error handling
+app.onError((err, c) => {
+  if (err instanceof InsufficientPermissionsException) {
+    return c.json({ error: err.message }, 403);
+  }
+  // Fall through to default handling
+});
+```
+
+#### Best Practices
+
+1. **Domain Layer**:
+   - Only throw `DomainException` or `NotFoundException`
+   - Never import or use `HTTPException`
+   - Keep exception messages descriptive but transport-agnostic
+
+2. **REST Layer**:
+   - All domain calls must be wrapped in try-catch
+   - Use `handleDomainException()` for conversion
+   - Custom HTTP error handling goes in Hono middleware
+
+3. **Hook Functions**:
+   - Can throw domain exceptions (will trigger transaction rollback)
+   - Exceptions in pre/post hooks abort the operation
+   - Exceptions in after hooks don't affect transactions (already committed)
+
+4. **Testing**:
+   - Test domain methods throw correct exception types
+   - Test REST endpoints return correct HTTP status codes
+   - Verify transaction rollback on exceptions
 
 ### Validation System (Always Enabled)
 

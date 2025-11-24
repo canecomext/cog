@@ -93,6 +93,38 @@ export async function DELETE<T>(path: string): Promise<T> {
 }
 
 /**
+ * Make a request that may fail and return full response info
+ * Used for testing error responses (404, 500, etc.)
+ */
+export async function REQUEST(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> {
+  const url = `${BASE_URL}${path}`;
+  const response = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (response.ok) {
+    const json = await response.json();
+    return { status: response.status, ok: true, data: json.data };
+  } else {
+    const errorText = await response.text();
+    let error = errorText;
+    try {
+      const errorJson = JSON.parse(errorText);
+      error = errorJson.error || errorText;
+    } catch {
+      // Keep errorText as-is if not JSON
+    }
+    return { status: response.status, ok: false, error };
+  }
+}
+
+/**
  * Validation helpers
  */
 
