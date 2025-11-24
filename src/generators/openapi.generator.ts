@@ -352,14 +352,14 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
     // Add timestamp fields if enabled (not in input schemas)
     if (!isInput && model.timestamps) {
       (schema.properties as Record<string, unknown>).createdAt = {
-        type: 'string',
-        format: 'date-time',
-        description: 'Creation timestamp',
+        type: 'integer',
+        format: 'int64',
+        description: 'Creation timestamp (EPOCH milliseconds)',
       };
       (schema.properties as Record<string, unknown>).updatedAt = {
-        type: 'string',
-        format: 'date-time',
-        description: 'Last update timestamp',
+        type: 'integer',
+        format: 'int64',
+        description: 'Last update timestamp (EPOCH milliseconds)',
       };
       (schema.required as string[]).push('createdAt', 'updatedAt');
     }
@@ -387,13 +387,18 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
     if (field.name) {
       // Generate description from field name if not provided
       const description = field.name.replace(/([A-Z])/g, ' $1').trim();
-      schema.description = description.charAt(0).toUpperCase() + description.slice(1);
+      let baseDescription = description.charAt(0).toUpperCase() + description.slice(1);
+
+      // Add EPOCH milliseconds note for date fields
+      if (field.type === 'date') {
+        baseDescription += ' (EPOCH milliseconds)';
+      }
+
+      schema.description = baseDescription;
     }
 
-    // Add format
-    if (field.type === 'date') {
-      schema.format = 'date-time';
-    } else if (field.type === 'uuid') {
+    // Add format for specific types (format already set in getBaseTypeSchema for date)
+    if (field.type === 'uuid') {
       schema.format = 'uuid';
     } else if (field.type === 'string' && field.name?.toLowerCase().includes('email')) {
       schema.format = 'email';
@@ -513,7 +518,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
       bigint: { type: 'integer', format: 'int64' },
       decimal: { type: 'number', format: 'double' },
       boolean: { type: 'boolean' },
-      date: { type: 'string', format: 'date-time' },
+      date: { type: 'integer', format: 'int64' },
       uuid: { type: 'string', format: 'uuid' },
       json: { type: 'object' },
       jsonb: { type: 'object' },
