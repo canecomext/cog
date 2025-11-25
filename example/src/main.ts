@@ -36,6 +36,16 @@ await initializeGenerated({
   // DOMAIN HOOKS - Run within database transaction
   domainHooks: {
     employee: {
+      // BEFORE hooks - Run OUTSIDE transaction, BEFORE validation
+      beforeCreate: (
+        rawInput: unknown,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<unknown> => {
+        console.log('Employee.beforeCreate - outside transaction, before validation');
+        // Can transform input, do auth checks, or throw to prevent operation
+        return Promise.resolve(rawInput);
+      },
+
       // CREATE hooks with full signatures
       preCreate: (
         input: NewEmployee,
@@ -68,6 +78,15 @@ await initializeGenerated({
       },
 
       // UPDATE hooks with full signatures
+      beforeUpdate: (
+        _id: string,
+        rawInput: unknown,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<unknown> => {
+        console.log('Employee.beforeUpdate - outside transaction, before validation');
+        return Promise.resolve(rawInput);
+      },
+
       preUpdate: (
         _id: string,
         input: Partial<NewEmployee>,
@@ -101,6 +120,14 @@ await initializeGenerated({
       },
 
       // DELETE hooks with full signatures
+      beforeDelete: (
+        _id: string,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<void> => {
+        console.log('Employee.beforeDelete - outside transaction, before validation');
+        return Promise.resolve();
+      },
+
       preDelete: (
         _id: string,
         _tx: DbTransaction,
@@ -129,6 +156,14 @@ await initializeGenerated({
       },
 
       // FIND hooks with full signatures
+      beforeFindById: (
+        id: string,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<string> => {
+        console.log('Employee.beforeFindById - outside transaction');
+        return Promise.resolve(id);
+      },
+
       preFindById: (
         _id: string,
         _tx: DbTransaction,
@@ -146,6 +181,14 @@ await initializeGenerated({
       ): Promise<Employee | null> => {
         console.log('Employee.postFindById');
         return Promise.resolve(result);
+      },
+
+      beforeFindMany: (
+        filter: unknown,
+        _context?: DomainHookContext<ExampleEnv['Variables']>,
+      ): Promise<unknown> => {
+        console.log('Employee.beforeFindMany - outside transaction');
+        return Promise.resolve(filter);
       },
 
       preFindMany: (
@@ -169,6 +212,15 @@ await initializeGenerated({
 
       // JUNCTION HOOKS - Full signatures for many-to-many relationships
       skillListJunctionHooks: {
+        beforeAddJunction: (
+          ids: Record<string, string>,
+          _rawInput: unknown,
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<Record<string, string>> => {
+          console.log('Employee.skillList.beforeAddJunction - outside transaction');
+          return Promise.resolve(ids);
+        },
+
         preAddJunction: (
           ids: Record<string, string>,
           _rawInput: unknown,
@@ -196,6 +248,15 @@ await initializeGenerated({
         ): Promise<void> => {
           console.log('Employee.skillList.afterAddJunction - async side effect');
           return Promise.resolve();
+        },
+
+        beforeRemoveJunction: (
+          ids: Record<string, string>,
+          _rawInput: unknown,
+          _context?: DomainHookContext<ExampleEnv['Variables']>,
+        ): Promise<Record<string, string>> => {
+          console.log('Employee.skillList.beforeRemoveJunction - outside transaction');
+          return Promise.resolve(ids);
         },
 
         preRemoveJunction: (

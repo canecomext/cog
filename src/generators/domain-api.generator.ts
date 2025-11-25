@@ -75,6 +75,17 @@ export interface FilterOptions {
  * Context is passed as a parameter for read access.
  */
 export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
+  // Before-operation hooks (outside transaction, before validation)
+  // Note: These run BEFORE any validation, receive raw input
+  // Note: Can transform input, perform auth checks, or reject requests
+  // Note: Throwing an exception prevents the operation (transaction never starts)
+  // Note: NO transaction parameter - runs outside transaction like after hooks
+  beforeCreate?: (rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<unknown>;
+  beforeUpdate?: (id: string, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<unknown>;
+  beforeDelete?: (id: string, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
+  beforeFindById?: (id: string, context?: DomainHookContext<DomainEnvVars>) => Promise<string>;
+  beforeFindMany?: (filter: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<unknown>;
+
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
   // Note: Output will be validated before the main operation
@@ -124,6 +135,13 @@ export interface PaginationOptions {
  * Context is passed as a parameter for read access.
  */
 export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
+  // Before-operation hooks (outside transaction, before validation)
+  // Note: These run BEFORE any validation, receive raw input
+  // Note: Throwing an exception prevents the operation (transaction never starts)
+  // Note: NO transaction parameter - runs outside transaction
+  beforeAddJunction?: (ids: Record<string, string>, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<Record<string, string>>;
+  beforeRemoveJunction?: (ids: Record<string, string>, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<Record<string, string>>;
+
   // Pre-operation hooks (within transaction)
   // Note: rawInput contains the original unvalidated request body (e.g., { ids: [...], metadata: {...} })
   preAddJunction?: (ids: Record<string, string>, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<{ ids: Record<string, string> }>;
@@ -187,8 +205,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Create a new ${modelName}
    */
   async create(input: New${modelName}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+    // Before-create hook (outside transaction, before validation)
+    let transformedInput: unknown = input;
+    if (this.hooks.beforeCreate) {
+      transformedInput = await this.hooks.beforeCreate(input, context);
+    }
+
     // Validate input before pre-hook
-    const validatedInput = ${modelNameLower}InsertSchema.parse(input) as New${modelName};
+    const validatedInput = ${modelNameLower}InsertSchema.parse(transformedInput) as New${modelName};
 
     // Pre-create hook (within transaction)
     let processedInput = validatedInput;
@@ -229,6 +253,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Find ${modelName} by ID
    */
   async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName} | null> {
+    // Before-find-by-id hook (outside transaction)
+    if (this.hooks.beforeFindById) {
+      id = await this.hooks.beforeFindById(id, context);
+    }
+
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
 
@@ -275,6 +304,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     pagination?: PaginationOptions,
     context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
+    // Before-find-many hook (outside transaction)
+    if (this.hooks.beforeFindMany) {
+      filter = await this.hooks.beforeFindMany(filter, context) as FilterOptions | undefined;
+    }
+
     // Use provided transaction or get database instance
     const db = tx || withoutTransaction();
 
@@ -349,8 +383,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Update ${modelName}
    */
   async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+    // Before-update hook (outside transaction, before validation)
+    let transformedInput: unknown = input;
+    if (this.hooks.beforeUpdate) {
+      transformedInput = await this.hooks.beforeUpdate(id, input, context);
+    }
+
     // Validate input before pre-hook (partial update)
-    const validatedInput = ${modelNameLower}UpdateSchema.parse(input) as Partial<New${modelName}>;
+    const validatedInput = ${modelNameLower}UpdateSchema.parse(transformedInput) as Partial<New${modelName}>;
 
     // Pre-update hook
     let processedInput = validatedInput;
@@ -398,6 +438,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Delete ${modelName}
    */
   async delete(id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+    // Before-delete hook (outside transaction)
+    if (this.hooks.beforeDelete) {
+      await this.hooks.beforeDelete(id, context);
+    }
+
     // Pre-delete hook
     if (this.hooks.preDelete) {
       const preResult = await this.hooks.preDelete(id, tx, context);
@@ -779,8 +824,13 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Add ${singularRelName} to ${model.name}
    */
   async add${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+    // Before-add hook (outside transaction, before validation)
+    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    if (this.${relName}JunctionHooks.beforeAddJunction) {
+      ids = await this.${relName}JunctionHooks.beforeAddJunction(ids, rawInput, context);
+    }
+
     // Pre-add hook
-    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.preAddJunction) {
       const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, rawInput, tx, context);
       ids = preResult.ids as typeof ids;
@@ -826,8 +876,13 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    * Remove ${singularRelName} from ${model.name}
    */
   async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
+    // Before-remove hook (outside transaction, before validation)
+    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    if (this.${relName}JunctionHooks.beforeRemoveJunction) {
+      ids = await this.${relName}JunctionHooks.beforeRemoveJunction(ids, rawInput, context);
+    }
+
     // Pre-remove hook
-    let ids = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.preRemoveJunction) {
       const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, rawInput, tx, context);
       ids = preResult.ids as typeof ids;

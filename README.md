@@ -171,6 +171,7 @@ Extend generated code without modification:
 
 ```
 HTTP Request
+  → Domain Before-hook (auth, input transformation - outside transaction)
   → Transaction Start
     → Domain Pre-hook (business logic)
     → Database Operation
@@ -180,7 +181,7 @@ HTTP Request
 → HTTP Response
 ```
 
-**Available Hooks:** preCreate, postCreate, afterCreate, preUpdate, postUpdate, afterUpdate, preDelete, postDelete, afterDelete, and junction hooks for many-to-many relationships.
+**Available Hooks:** beforeCreate, preCreate, postCreate, afterCreate, beforeUpdate, preUpdate, postUpdate, afterUpdate, beforeDelete, preDelete, postDelete, afterDelete, beforeFindById, beforeFindMany, and junction hooks for many-to-many relationships.
 
 **Hook Parameters:** `input` (validated data), `rawInput` (original request body), `result` (database response), `tx` (transaction), `context` (shared state). See [WARP.md](./WARP.md#hook-signatures-reference) for complete signatures.
 

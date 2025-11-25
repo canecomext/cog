@@ -294,8 +294,9 @@ Hooks provide extension points for custom logic without modifying generated code
 #### Hook Execution Flow
 
 ```
-Begin Transaction
+Before-hook (outside transaction, before validation)
   → Input Validation (Zod)
+Begin Transaction
   → Pre-hook (modify input, within transaction)
   → Pre-hook Output Validation (Zod)
   → Main Operation (database operation)
@@ -305,6 +306,7 @@ Commit Transaction
 ```
 
 **Hook Types:**
+- **Before-hooks** - Run before validation, outside transaction (can transform input, do auth checks, prevent operations by throwing)
 - **Pre-hooks** - Modify input before operation (validated twice: before and after hook)
 - **Post-hooks** - Modify output after operation (within transaction)
 - **After-hooks** - Side effects after commit (notifications, logging, external APIs)
@@ -323,23 +325,30 @@ Commit Transaction
 
 | Hook | Signature | When It Runs |
 |------|-----------|--------------|
+| **beforeCreate** | `(rawInput, context?) => Promise<unknown>` | Before validation, outside transaction |
 | **preCreate** | `(input, rawInput, tx, context?) => Promise<input>` | Before creating entity |
 | **postCreate** | `(input, result, rawInput, tx, context?) => Promise<result>` | After creating entity (in transaction) |
 | **afterCreate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **beforeUpdate** | `(id, rawInput, context?) => Promise<unknown>` | Before validation, outside transaction |
 | **preUpdate** | `(id, input, rawInput, tx, context?) => Promise<input>` | Before updating entity |
 | **postUpdate** | `(id, input, result, rawInput, tx, context?) => Promise<result>` | After updating entity (in transaction) |
 | **afterUpdate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **beforeDelete** | `(id, context?) => Promise<void>` | Before validation, outside transaction |
 | **preDelete** | `(id, tx, context?) => Promise<{id}>` | Before deleting entity |
 | **postDelete** | `(id, result, tx, context?) => Promise<result>` | After deleting entity (in transaction) |
 | **afterDelete** | `(result, context?) => Promise<void>` | After transaction commits (async) |
+| **beforeFindById** | `(id, context?) => Promise<string>` | Before find operation, outside transaction |
+| **beforeFindMany** | `(filter, context?) => Promise<unknown>` | Before find operation, outside transaction |
 
 **Junction Hooks (Many-to-Many):**
 
 | Hook | Signature | When It Runs |
 |------|-----------|--------------|
+| **beforeAddJunction** | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction |
 | **preAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before adding relationship |
 | **postAddJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After adding relationship (in transaction) |
 | **afterAddJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| **beforeRemoveJunction** | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction |
 | **preRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before removing relationship |
 | **postRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After removing relationship (in transaction) |
 | **afterRemoveJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |

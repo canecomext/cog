@@ -90,10 +90,16 @@ in REST requests/responses.
 
 ### Hook Types
 
-| Hook Type               | Layer  | Transaction           | Use Case                        |
-| ----------------------- | ------ | --------------------- | ------------------------------- |
-| Domain Pre/Post/After   | Domain | ✓ Yes (Pre/Post only) | Data transformation, validation |
-| Junction Pre/Post/After | Domain | ✓ Yes (Pre/Post only) | Many-to-many operations         |
+| Hook Type        | Layer  | Transaction | Use Case                                              |
+| ---------------- | ------ | ----------- | ----------------------------------------------------- |
+| Domain Before    | Domain | ✗ No        | Auth checks, input transformation (before validation) |
+| Domain Pre       | Domain | ✓ Yes       | Data transformation, validation (before operation)    |
+| Domain Post      | Domain | ✓ Yes       | Data transformation (after operation)                 |
+| Domain After     | Domain | ✗ No        | Async side effects (notifications, logging)           |
+| Junction Before  | Domain | ✗ No        | Auth checks (before validation)                       |
+| Junction Pre     | Domain | ✓ Yes       | Many-to-many validation (before operation)            |
+| Junction Post    | Domain | ✓ Yes       | Many-to-many operations (after operation)             |
+| Junction After   | Domain | ✗ No        | Async side effects for relationships                  |
 
 **HTTP-layer concerns (auth, logging, headers):** Use Hono middleware instead.
 

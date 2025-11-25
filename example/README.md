@@ -71,8 +71,10 @@ AdvancedDemo ──[oneToMany]──→ AdvancedDemo (children)
 
 **Hooks System:**
 
-- **Domain Hooks** - Employee model (all CRUD operations, within transaction)
-- **Junction Hooks** - Employee.skillList (many-to-many operations)
+- **Before Hooks** - Auth checks, input transformation (outside transaction, before validation)
+- **Pre/Post Hooks** - Employee model (all CRUD operations, within transaction)
+- **After Hooks** - Async side effects (outside transaction, after commit)
+- **Junction Hooks** - Employee.skillList (many-to-many operations, same hook types)
 - **HTTP-layer concerns:** Use Hono middleware (see example/src/main.ts)
 
 **Advanced Features:**
@@ -450,16 +452,24 @@ This example demonstrates domain hooks:
 ```typescript
 domainHooks: {
   employee: {
-    // All CRUD operations (pre/post/after)
-    preCreate: async (input, tx, context) => { /* ... */ },
-    postCreate: async (input, result, tx, context) => { /* ... */ },
-    afterCreate: async (result, context) => { /* ... */ },
+    // Before hooks (outside transaction, before validation)
+    beforeCreate: async (rawInput, context) => { /* ... */ },
+    beforeUpdate: async (id, rawInput, context) => { /* ... */ },
+    beforeDelete: async (id, context) => { /* ... */ },
+
+    // Pre/Post hooks (inside transaction)
+    preCreate: async (input, rawInput, tx, context) => { /* ... */ },
+    postCreate: async (input, result, rawInput, tx, context) => { /* ... */ },
+
+    // After hooks (outside transaction, async side effects)
+    afterCreate: async (result, rawInput, context) => { /* ... */ },
 
     // Junction table operations (many-to-many)
     skillListJunctionHooks: {
-      preAddJunction: async (ids, tx, context) => { /* ... */ },
-      postAddJunction: async (ids, tx, context) => { /* ... */ },
-      afterAddJunction: async (ids, context) => { /* ... */ },
+      beforeAddJunction: async (ids, rawInput, context) => { /* ... */ },
+      preAddJunction: async (ids, rawInput, tx, context) => { /* ... */ },
+      postAddJunction: async (ids, rawInput, tx, context) => { /* ... */ },
+      afterAddJunction: async (ids, rawInput, context) => { /* ... */ },
     }
   }
 }
@@ -467,10 +477,10 @@ domainHooks: {
 
 **Use domain hooks for:**
 
-- Data validation with database access
-- Enriching data with related records
-- Enforcing business rules
-- Side effects within transaction
+- **Before hooks**: Auth checks, input transformation (before validation, no transaction)
+- **Pre hooks**: Data validation with database access, enforcing business rules (within transaction)
+- **Post hooks**: Enriching data with related records (within transaction)
+- **After hooks**: Side effects after commit (notifications, logging, external APIs)
 
 **For HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead (see example/src/main.ts)
 
@@ -576,7 +586,7 @@ This example demonstrates:
 
 1. **Layered Architecture**: REST → Domain → Schema → Database
 2. **Type Safety**: Full TypeScript types generated from JSON models
-3. **Hook System**: Two types (Domain + REST) for different concerns
+3. **Hook System**: Four hook types (Before/Pre/Post/After) with transaction control
 4. **Spatial Data**: Complete PostGIS integration with multiple SRIDs
 5. **Relationships**: All types including self-referential and many-to-many
 6. **Validation**: Always-on Zod validation at every layer
