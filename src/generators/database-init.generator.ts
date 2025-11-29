@@ -675,9 +675,10 @@ export async function healthCheck(): Promise<boolean> {
         const methodClause = method ? `USING ${method}` : '';
         const indexName = `idx_${tableName}_${columnName}`;
 
+        const createType = field.unique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
         indexes.push({
           name: indexName,
-          sql: `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
+          sql: `${createType} IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
             `${methodClause} ("${columnName}")`,
         });
       }
@@ -699,9 +700,10 @@ export async function healthCheck(): Promise<boolean> {
 
         const methodClause = method ? `USING ${method}` : '';
 
+        const createType = idx.unique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
         indexes.push({
           name: indexName,
-          sql: `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
+          sql: `${createType} IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
             `${methodClause} (${columns})`,
         });
       }
