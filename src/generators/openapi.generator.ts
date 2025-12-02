@@ -383,14 +383,18 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
 
     const schema: Record<string, unknown> = this.getBaseTypeSchema(field.type);
 
-    // Add description if available
-    if (field.name) {
-      // Generate description from field name if not provided
-      const description = field.name.replace(/([A-Z])/g, ' $1').trim();
-      let baseDescription = description.charAt(0).toUpperCase() + description.slice(1);
+    // Add description - use custom description if provided, otherwise generate from field name
+    if (field.description || field.name) {
+      let baseDescription: string;
+      if (field.description) {
+        baseDescription = field.description;
+      } else {
+        const description = field.name.replace(/([A-Z])/g, ' $1').trim();
+        baseDescription = description.charAt(0).toUpperCase() + description.slice(1);
+      }
 
-      // Add EPOCH milliseconds note for date fields
-      if (field.type === 'date') {
+      // Add EPOCH milliseconds note for date fields (only if no custom description)
+      if (field.type === 'date' && !field.description) {
         baseDescription += ' (EPOCH milliseconds)';
       }
 
@@ -479,8 +483,10 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
       enum: enumValues,
     };
 
-    // Add description
-    if (field.name) {
+    // Add description - use custom description if provided, otherwise generate from field name
+    if (field.description) {
+      schema.description = field.description;
+    } else if (field.name) {
       const description = field.name.replace(/([A-Z])/g, ' $1').trim();
       schema.description = `${description.charAt(0).toUpperCase() + description.slice(1)}. Allowed values: ${
         enumValues.join(', ')

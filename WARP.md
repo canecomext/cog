@@ -255,6 +255,7 @@ COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (P
 - Array types: `"array": true` on any field
 - Foreign keys: `"references": { "model": "...", "field": "..." }`
 - Enums: Standard (single value) or bitwise (multiple values via integer flags)
+- Field descriptions: `"description": "Custom text"` for OpenAPI documentation
 
 **Numeric Precision Limitation:**
 

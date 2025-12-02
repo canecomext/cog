@@ -54,6 +54,7 @@ export interface FieldDefinition {
   geometryType?: string; // For PostGIS geometry specification
   dimensions?: number; // For PostGIS dimensions (2D, 3D, 4D)
   index?: boolean;
+  description?: string; // Custom description for OpenAPI docs
   references?: {
     model: string;
     field: string;
