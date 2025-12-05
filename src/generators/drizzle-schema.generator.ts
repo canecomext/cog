@@ -71,14 +71,15 @@ export class DrizzleSchemaGenerator {
   private generateModelSchema(model: ModelDefinition): string {
     // Add foreign key fields from incoming relationships
     const enhancedModel = this.addForeignKeyFields(model);
-    
+
     const imports = this.generateImports(enhancedModel);
     const enumDefinitions = this.generateEnumDefinitions(enhancedModel);
     const tableDefinition = this.generateTableDefinition(enhancedModel);
     const typeExports = this.generateTypeExports(enhancedModel);
     const zodSchemas = this.generateZodSchemas(enhancedModel);
+    const fieldMetadata = this.generateFieldMetadata(enhancedModel);
 
-    return `${imports}\n\n${enumDefinitions}${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}`;
+    return `${imports}\n\n${enumDefinitions}${tableDefinition}\n\n${typeExports}\n\n${zodSchemas}\n${fieldMetadata}`;
   }
 
   /**
@@ -139,6 +140,9 @@ export class DrizzleSchemaGenerator {
 
     // Add drizzle-zod imports for schema validation
     imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
+
+    // Add filter utilities import for field metadata
+    imports += `import type { FieldMeta } from '../utils/filter.utils.ts';\n`;
 
     // Import spatial utilities if PostGIS fields exist
     if (this.postgis && this.hasPostGISFields(model)) {
@@ -855,6 +859,65 @@ export class DrizzleSchemaGenerator {
     code += `export type New${model.name} = typeof ${model.name.toLowerCase()}Table.$inferInsert;`;
 
     return code;
+  }
+
+  /**
+   * Generate field metadata for filtering
+   */
+  private generateFieldMetadata(model: ModelDefinition): string {
+    const modelNameLower = model.name.toLowerCase();
+    let code = `\n// Field metadata for filtering\n`;
+
+    // Generate field metadata map
+    code += `export const ${modelNameLower}FieldMeta: Map<string, FieldMeta> = new Map([\n`;
+
+    const allFields = this.getAllFieldsWithTimestamps(model);
+    const entries: string[] = [];
+
+    for (const field of allFields) {
+      const exposed = field.exposed !== false; // Default to true
+      const isArray = field.array === true;
+      entries.push(`  ['${field.name}', { type: '${field.type}', exposed: ${exposed}, array: ${isArray} }]`);
+    }
+
+    code += entries.join(',\n') + '\n]);\n\n';
+
+    // Generate exposed fields set
+    const exposedFields = allFields.filter(f => f.exposed !== false);
+    code += `export const ${modelNameLower}ExposedFields: Set<string> = new Set([\n`;
+    code += exposedFields.map(f => `  '${f.name}'`).join(',\n') + '\n]);\n\n';
+
+    // Generate unexposed fields array
+    const unexposedFields = allFields.filter(f => f.exposed === false);
+    code += `export const ${modelNameLower}UnexposedFields: string[] = [\n`;
+    if (unexposedFields.length > 0) {
+      code += unexposedFields.map(f => `  '${f.name}'`).join(',\n') + '\n';
+    }
+    code += '];\n';
+
+    return code;
+  }
+
+  /**
+   * Get all fields including generated timestamp fields
+   */
+  private getAllFieldsWithTimestamps(model: ModelDefinition): FieldDefinition[] {
+    const fields = [...model.fields];
+
+    // Add timestamp fields if enabled
+    if (model.timestamps === true) {
+      fields.push({ name: 'createdAt', type: 'date', exposed: true });
+      fields.push({ name: 'updatedAt', type: 'date', exposed: true });
+    } else if (typeof model.timestamps === 'object') {
+      if (model.timestamps.createdAt) {
+        fields.push({ name: 'createdAt', type: 'date', exposed: true });
+      }
+      if (model.timestamps.updatedAt) {
+        fields.push({ name: 'updatedAt', type: 'date', exposed: true });
+      }
+    }
+
+    return fields;
   }
 
   /**

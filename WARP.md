@@ -18,6 +18,7 @@
   - [Hook System](#hook-system)
   - [Exception Handling (Domain vs REST)](#exception-handling-domain-vs-rest)
   - [Validation System](#validation-system)
+  - [Filtering System](#filtering-system)
   - [Check Constraints](#check-constraints)
 - [Database Compatibility](#database-compatibility)
 - [CLI Reference](#cli-reference)
@@ -109,12 +110,15 @@ generated/
 │   ├── database.ts             # Database connection & pooling
 │   └── initialize-database.ts  # Database initialization & PostGIS setup
 ├── schema/
-│   ├── [model].schema.ts       # Drizzle table definitions + Zod schemas
+│   ├── [model].schema.ts       # Drizzle table definitions + Zod schemas + field metadata
 │   ├── relations.ts            # Drizzle relationship definitions
 │   └── index.ts
 ├── domain/
 │   ├── [model].domain.ts       # Business logic (CRUD operations)
 │   ├── hooks.types.ts          # Hook type definitions
+│   └── index.ts
+├── utils/
+│   ├── filter.utils.ts         # Filter parsing, validation, SQL building
 │   └── index.ts
 └── rest/
     ├── [model].rest.ts         # Hono REST endpoints
@@ -256,6 +260,7 @@ COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (P
 - Foreign keys: `"references": { "model": "...", "field": "..." }`
 - Enums: Standard (single value) or bitwise (multiple values via integer flags)
 - Field descriptions: `"description": "Custom text"` for OpenAPI documentation
+- Field exposure: `"exposed": false` excludes field from filtering and REST responses (default: `true`)
 
 **Numeric Precision Limitation:**
 
@@ -608,6 +613,160 @@ export const userSelectSchema = createSelectSchema(userTable);  // Select ops
 
 This prevents hooks from emitting malformed data.
 
+### Filtering System
+
+COG provides a powerful filtering system for `findMany` endpoints, allowing clients to query data with sophisticated conditions.
+
+#### Query Parameter Format
+
+Filters are passed via the `where` query parameter as base64-encoded JSON:
+
+```
+GET /api/user?where={base64-encoded-json}
+```
+
+**Why Base64?** Encoding avoids URL encoding issues with special characters in complex JSON filters.
+
+#### Filter Structure
+
+**Single Condition:**
+```typescript
+interface FilterCondition {
+  field: string;      // Field name to filter on
+  op: FilterOperator; // Operator (eq, neq, gt, etc.)
+  value: unknown;     // Value to compare against
+}
+```
+
+**Logical Groups (AND/OR):**
+```typescript
+interface FilterGroup {
+  and?: (FilterCondition | FilterGroup)[];  // All conditions must match
+  or?: (FilterCondition | FilterGroup)[];   // Any condition must match
+}
+```
+
+#### Operators by Field Type
+
+| Type | Operators | Notes |
+|------|-----------|-------|
+| `string`, `text` | `eq`, `neq`, `like`, `ilike`, `in`, `nin`, `isNull` | `like`/`ilike` require user to provide `%` wildcards |
+| `integer`, `bigint`, `decimal`, `date` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `isNull` | Date values are EPOCH milliseconds |
+| `boolean` | `eq`, `isNull` | |
+| `uuid`, `enum` | `eq`, `neq`, `in`, `nin`, `isNull` | |
+| `json`, `jsonb` | `isNull` | No deep querying |
+| Array fields (`array: true`) | `contains`, `overlaps`, `isNull` | |
+| PostGIS types | `isNull` | Spatial queries not supported via filter |
+
+#### Example Filters
+
+**Simple equality:**
+```json
+{ "field": "status", "op": "eq", "value": "active" }
+```
+
+**Range query (numeric):**
+```json
+{
+  "and": [
+    { "field": "price", "op": "gte", "value": 10 },
+    { "field": "price", "op": "lte", "value": 100 }
+  ]
+}
+```
+
+**Pattern matching (user provides % wildcards):**
+```json
+{ "field": "email", "op": "ilike", "value": "%@gmail.com" }
+```
+
+**Nested AND/OR:**
+```json
+{
+  "and": [
+    { "field": "isActive", "op": "eq", "value": true },
+    {
+      "or": [
+        { "field": "role", "op": "eq", "value": "admin" },
+        { "field": "credits", "op": "gte", "value": 1000 }
+      ]
+    }
+  ]
+}
+```
+
+**Array contains:**
+```json
+{ "field": "tags", "op": "contains", "value": ["urgent"] }
+```
+
+**IN operator (multiple values):**
+```json
+{ "field": "status", "op": "in", "value": ["active", "pending", "review"] }
+```
+
+#### Field Exposure Control
+
+Fields can be marked as `exposed: false` to exclude them from filtering AND REST responses:
+
+```json
+{
+  "name": "passwordHash",
+  "type": "string",
+  "exposed": false
+}
+```
+
+**When `exposed: false`:**
+- Field is excluded from filter validation (attempts to filter return 400)
+- Field is automatically stripped from all REST responses
+- Field remains usable in domain layer (hooks, internal logic)
+
+**Default:** All fields have `exposed: true` unless explicitly set to `false`.
+
+#### Error Responses
+
+Invalid filters return HTTP 400 with descriptive error messages:
+
+```json
+{ "error": "Invalid filter: malformed base64 or JSON" }
+{ "error": "Invalid filter: unknown field 'nonexistent'" }
+{ "error": "Invalid filter: field 'passwordHash' is not filterable" }
+{ "error": "Invalid filter: operator 'like' not supported for boolean field 'isActive'" }
+```
+
+#### Domain-to-Domain Filtering
+
+Domain code can use the same filter format when calling other domains:
+
+```typescript
+// In a hook or domain method
+const activeUsers = await userDomain.findMany(
+  tx,
+  {
+    where: {
+      and: [
+        { field: 'status', op: 'eq', value: 'active' },
+        { field: 'createdAt', op: 'gte', value: Date.now() - 86400000 }
+      ]
+    }
+  },
+  { limit: 100 }
+);
+```
+
+Alternatively, raw Drizzle SQL can be passed directly:
+
+```typescript
+import { eq, and, gte } from 'drizzle-orm';
+import { userTable } from '../schema/user.schema.ts';
+
+const result = await userDomain.findMany(
+  tx,
+  { where: and(eq(userTable.status, 'active'), gte(userTable.age, 18)) }
+);
+```
+
 ### Check Constraints
 
 COG supports PostgreSQL check constraints via the `"check"` property in model definitions.
@@ -917,10 +1076,12 @@ DELETE /api/{model}/:id/{relation}/:targetId # Remove single item
 **Note:** oneToMany/manyToOne relationships do NOT generate dedicated endpoints. Use query parameters or includes instead.
 
 **Query Parameters:**
-- `limit` - Pagination limit
-- `offset` - Pagination offset
+- `limit` - Pagination limit (default: 10)
+- `offset` - Pagination offset (default: 0)
 - `orderBy` - Sort field
-- `order` - Sort direction (asc/desc)
+- `orderDirection` - Sort direction (asc/desc, default: asc)
+- `where` - Base64-encoded JSON filter (see [Filtering System](#filtering-system))
+- `include` - Comma-separated relationship names to eagerly load
 
 ### Exposing API Documentation
 
@@ -1167,6 +1328,6 @@ Projects using generated code need these in `deno.json`:
 
 ## Last Updated
 
-Generated: 2025-11-21
+Generated: 2025-12-05
 
 **NOTE**: This file should be updated whenever major architectural changes, new features, or important patterns are added to the codebase.

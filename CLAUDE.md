@@ -105,6 +105,31 @@ in REST requests/responses.
 
 **See**: [WARP.md - Hook System](./WARP.md#hook-system) for complete hook signatures and parameters
 
+### Filtering (findMany endpoints)
+
+**Query Format:** `GET /api/{model}?where={base64-encoded-json}`
+
+| Type                                   | Operators                                            |
+| -------------------------------------- | ---------------------------------------------------- |
+| `string`, `text`                       | eq, neq, like, ilike, in, nin, isNull                |
+| `integer`, `bigint`, `decimal`, `date` | eq, neq, gt, gte, lt, lte, in, nin, isNull           |
+| `boolean`                              | eq, isNull                                           |
+| `uuid`, `enum`                         | eq, neq, in, nin, isNull                             |
+| `json`, `jsonb`                        | isNull                                               |
+| Array fields                           | contains, overlaps, isNull                           |
+
+**Example filter (decoded JSON):**
+```json
+{
+  "and": [
+    { "field": "status", "op": "eq", "value": "active" },
+    { "field": "age", "op": "gte", "value": 18 }
+  ]
+}
+```
+
+**See**: [WARP.md - Filtering System](./WARP.md#filtering-system)
+
 ---
 
 ## Common Patterns
@@ -198,8 +223,9 @@ cog/
 generated/
 ├── index.ts                      # Main entry point
 ├── db/                           # Database layer
-├── schema/                       # Drizzle schemas + Zod
+├── schema/                       # Drizzle schemas + Zod + field metadata
 ├── domain/                       # Business logic
+├── utils/                        # Shared utilities (filtering, etc.)
 └── rest/                         # HTTP/REST layer
 ```
 
@@ -310,6 +336,7 @@ Converts to HTTP responses (404, 500, etc.)
 6. **PostGIS is always enabled** - Spatial types and GIST indexes work out of the box
 7. **Domain layer uses transport-agnostic exceptions** - Never use `HTTPException` in domain code, only `DomainException` or `NotFoundException`
 8. **REST layer handles exception conversion** - All domain exceptions converted to HTTP responses via `handleDomainException()`
+9. **Field exposure control** - Use `"exposed": false` to exclude fields from filtering and REST responses (e.g., `passwordHash`)
 
 **See**: [WARP.md - Critical Gotchas & Edge Cases](./WARP.md#critical-gotchas--edge-cases)
 
@@ -333,6 +360,6 @@ Converts to HTTP responses (404, 500, etc.)
 
 ## Last Updated
 
-2025-11-21
+2025-12-05
 
 **Always refer to [WARP.md](./WARP.md) as the authoritative source of technical documentation.**

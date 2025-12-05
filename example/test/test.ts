@@ -13,13 +13,14 @@
  * Cleanup: deno task test:clean
  */
 
-import { Assignment, Department, Employee, IDCard, Project, Skill } from '../generated/index.ts';
+import { Assignment, Department, Employee, IDCard, Project, SecureEntity, Skill } from '../generated/index.ts';
 import {
   assert,
   assertArray,
   assertEqual,
   assertExists,
   assertIsUUID,
+  encodeFilter,
   GET,
   logData,
   logSection,
@@ -50,6 +51,7 @@ const createdIds = {
   skills: [] as string[],
   assignments: [] as string[],
   idCards: [] as string[],
+  secureEntities: [] as string[],
 };
 
 /**
@@ -509,6 +511,268 @@ async function main() {
     logSuccess('All endpoint configuration tests passed!');
 
     // ========================================
+    // 13. FILTERING
+    // ========================================
+    logSection('13. Testing Filtering (where parameter)');
+
+    // 13.1 Simple Equality Filter
+    logStep('13.1 Filter employees by firstName (eq)');
+    const filteredByFirstName = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'eq', value: 'Jane' })}`,
+    );
+    assertArray(filteredByFirstName.data, 'filteredByFirstName.data');
+    assertEqual(filteredByFirstName.data.length, 1, 'Should find exactly 1 employee named Jane');
+    assertEqual((filteredByFirstName.data[0] as Employee).firstName, 'Jane', 'Should be Jane');
+    logSuccess('✓ Simple equality filter works');
+
+    // 13.2 Numeric Comparison (gte)
+    logStep('13.2 Filter employees created after a timestamp (gte)');
+    const timestampBefore = Date.now() - 60000; // 1 minute ago
+    const filteredByDate = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'createdAt', op: 'gte', value: timestampBefore })}`,
+    );
+    assertArray(filteredByDate.data, 'filteredByDate.data');
+    assert(filteredByDate.data.length >= 1, 'Should find employees created recently');
+    logSuccess('✓ Numeric comparison filter (gte) works');
+
+    // 13.3 Pattern Matching (ilike) - case insensitive
+    logStep('13.3 Filter employees by email pattern (ilike)');
+    const filteredByEmail = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'email', op: 'ilike', value: '%@example.com' })}`,
+    );
+    assertArray(filteredByEmail.data, 'filteredByEmail.data');
+    assert(filteredByEmail.data.length >= 3, 'Should find all employees with @example.com emails');
+    logSuccess('✓ Pattern matching filter (ilike) works');
+
+    // 13.4 IN Operator
+    logStep('13.4 Filter employees by firstName IN list');
+    const filteredByIn = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'in', value: ['Jane', 'Bob'] })}`,
+    );
+    assertArray(filteredByIn.data, 'filteredByIn.data');
+    assertEqual(filteredByIn.data.length, 2, 'Should find Jane and Bob');
+    const names = filteredByIn.data.map((e) => (e as Employee).firstName).sort();
+    assert(names.includes('Jane') && names.includes('Bob'), 'Should include Jane and Bob');
+    logSuccess('✓ IN operator filter works');
+
+    // 13.5 Nested AND Filter
+    logStep('13.5 Filter with AND (department AND firstName)');
+    const filteredByAnd = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${
+        encodeFilter({
+          and: [
+            { field: 'departmentId', op: 'eq', value: engineering.id },
+            { field: 'firstName', op: 'eq', value: 'Jane' },
+          ],
+        })
+      }`,
+    );
+    assertArray(filteredByAnd.data, 'filteredByAnd.data');
+    assertEqual(filteredByAnd.data.length, 1, 'Should find only Jane in Engineering');
+    assertEqual((filteredByAnd.data[0] as Employee).firstName, 'Jane', 'Should be Jane');
+    assertEqual((filteredByAnd.data[0] as Employee).departmentId, engineering.id, 'Should be in Engineering');
+    logSuccess('✓ Nested AND filter works');
+
+    // 13.6 Nested OR Filter
+    logStep('13.6 Filter with OR (firstName OR firstName)');
+    const filteredByOr = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${
+        encodeFilter({
+          or: [
+            { field: 'firstName', op: 'eq', value: 'Jane' },
+            { field: 'firstName', op: 'eq', value: 'Bob' },
+          ],
+        })
+      }`,
+    );
+    assertArray(filteredByOr.data, 'filteredByOr.data');
+    assertEqual(filteredByOr.data.length, 2, 'Should find Jane and Bob via OR');
+    logSuccess('✓ Nested OR filter works');
+
+    // 13.7 Complex Nested AND/OR
+    logStep('13.7 Filter with complex AND/OR nesting');
+    const filteredComplex = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${
+        encodeFilter({
+          and: [
+            { field: 'departmentId', op: 'eq', value: engineering.id },
+            {
+              or: [
+                { field: 'firstName', op: 'eq', value: 'Johnny' }, // Updated John -> Johnny earlier
+                { field: 'firstName', op: 'eq', value: 'Jane' },
+              ],
+            },
+          ],
+        })
+      }`,
+    );
+    assertArray(filteredComplex.data, 'filteredComplex.data');
+    assertEqual(filteredComplex.data.length, 2, 'Should find Johnny and Jane in Engineering');
+    logSuccess('✓ Complex nested AND/OR filter works');
+
+    // 13.8 isNull Operator - Test on createdAt (never null for existing records)
+    logStep('13.8 Test isNull operator');
+
+    // Filter employees where createdAt is NOT null (all employees should match)
+    const employeesCreatedAtNotNull = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'createdAt', op: 'isNull', value: false })}`,
+    );
+    assertArray(employeesCreatedAtNotNull.data, 'employeesCreatedAtNotNull.data');
+    assert(employeesCreatedAtNotNull.data.length >= 3, 'Should find all employees (createdAt is never null)');
+    logSuccess('✓ isNull: false filter works');
+
+    // Filter employees where createdAt IS null (none should match)
+    const employeesCreatedAtNull = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'createdAt', op: 'isNull', value: true })}`,
+    );
+    assertArray(employeesCreatedAtNull.data, 'employeesCreatedAtNull.data');
+    assertEqual(employeesCreatedAtNull.data.length, 0, 'Should find no employees with null createdAt');
+    assertEqual(employeesCreatedAtNull.pagination.total, 0, 'Total should be 0');
+    logSuccess('✓ isNull: true filter works');
+
+    // 13.9 Filter with Pagination
+    logStep('13.9 Filter with pagination');
+    const filteredWithPagination = await GET<{ data: Employee[]; pagination: { total: number; limit: number; offset: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'departmentId', op: 'eq', value: engineering.id })}&limit=1&offset=0`,
+    );
+    assertArray(filteredWithPagination.data, 'filteredWithPagination.data');
+    assertEqual(filteredWithPagination.data.length, 1, 'Should return 1 employee (limit=1)');
+    assertEqual(filteredWithPagination.pagination.total, 2, 'Total should be 2 (Johnny and Jane in Engineering)');
+    assertEqual(filteredWithPagination.pagination.limit, 1, 'Limit should be 1');
+    logSuccess('✓ Filter with pagination works');
+
+    // 13.10 Filter with Include
+    logStep('13.10 Filter with include');
+    const filteredWithInclude = await GET<{ data: EmployeeWithRelations[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'eq', value: 'Jane' })}&include=department,skillList`,
+    );
+    assertArray(filteredWithInclude.data, 'filteredWithInclude.data');
+    assertEqual(filteredWithInclude.data.length, 1, 'Should find Jane');
+    assertExists((filteredWithInclude.data[0] as EmployeeWithRelations).department, 'Department should be included');
+    assertArray((filteredWithInclude.data[0] as EmployeeWithRelations).skillList, 'skillList should be included');
+    logSuccess('✓ Filter with include works');
+
+    // 13.11 Error Cases
+    logStep('13.11 Error cases - Invalid field name');
+    const invalidFieldResult = await REQUEST(
+      'GET',
+      `/api/employee?where=${encodeFilter({ field: 'nonexistent', op: 'eq', value: 'x' })}`,
+    );
+    assertEqual(invalidFieldResult.status, 400, 'Invalid field should return 400');
+    assert(
+      (invalidFieldResult.error?.toLowerCase().includes('unknown') || invalidFieldResult.error?.toLowerCase().includes('field')) ?? false,
+      'Error should mention unknown field',
+    );
+    logSuccess('✓ Invalid field returns 400');
+
+    logStep('13.11 Error cases - Malformed base64');
+    const malformedBase64Result = await REQUEST('GET', '/api/employee?where=not-valid-base64!!!');
+    assertEqual(malformedBase64Result.status, 400, 'Malformed base64 should return 400');
+    logSuccess('✓ Malformed base64 returns 400');
+
+    logStep('13.11 Error cases - Invalid JSON');
+    const invalidJsonResult = await REQUEST('GET', `/api/employee?where=${btoa('not json')}`);
+    assertEqual(invalidJsonResult.status, 400, 'Invalid JSON should return 400');
+    logSuccess('✓ Invalid JSON returns 400');
+
+    // 13.12 Empty Filter (no results)
+    logStep('13.12 Filter with no matching results');
+    const emptyResult = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'eq', value: 'NonexistentName12345' })}`,
+    );
+    assertArray(emptyResult.data, 'emptyResult.data');
+    assertEqual(emptyResult.data.length, 0, 'Should return empty array');
+    assertEqual(emptyResult.pagination.total, 0, 'Total should be 0');
+    logSuccess('✓ Empty filter result works');
+
+    logSuccess('All filtering tests passed!');
+
+    // ========================================
+    // 14. FIELD EXPOSURE CONTROL
+    // ========================================
+    logSection('14. Testing Field Exposure Control (exposed: false)');
+
+    // 14.1 Create SecureEntity with unexposed fields
+    logStep('14.1 Create SecureEntity with secret fields');
+    const secureEntity = await POST('/api/secureentity', {
+      publicName: 'Test Entity',
+      secretToken: 'super-secret-token-123',
+      internalScore: 42,
+    }) as SecureEntity;
+
+    assertExists(secureEntity.id, 'secureEntity.id should exist');
+    assertEqual(secureEntity.publicName, 'Test Entity', 'publicName should be present');
+    assert(!('secretToken' in secureEntity), 'secretToken should be stripped from POST response');
+    assert(!('internalScore' in secureEntity), 'internalScore should be stripped from POST response');
+    createdIds.secureEntities.push(secureEntity.id);
+    logSuccess('✓ Unexposed fields stripped from POST response');
+
+    // 14.2 Unexposed fields stripped from GET by ID
+    logStep('14.2 Get SecureEntity by ID - verify unexposed fields stripped');
+    const fetchedEntity = await GET<SecureEntity>(`/api/secureentity/${secureEntity.id}`);
+    assertExists(fetchedEntity, 'fetchedEntity should exist');
+    assertEqual(fetchedEntity.publicName, 'Test Entity', 'publicName should be present');
+    assert(!('secretToken' in fetchedEntity), 'secretToken should be stripped from GET by ID');
+    assert(!('internalScore' in fetchedEntity), 'internalScore should be stripped from GET by ID');
+    logSuccess('✓ Unexposed fields stripped from GET by ID response');
+
+    // 14.3 Unexposed fields stripped from list response
+    logStep('14.3 List SecureEntities - verify unexposed fields stripped');
+    const entityList = await GET<{ data: SecureEntity[] }>('/api/secureentity');
+    assertArray(entityList.data, 'entityList.data should be array');
+    assert(entityList.data.length >= 1, 'Should have at least 1 entity');
+    for (const item of entityList.data) {
+      assert(!('secretToken' in (item as Record<string, unknown>)), 'secretToken should be stripped from list items');
+      assert(!('internalScore' in (item as Record<string, unknown>)), 'internalScore should be stripped from list items');
+    }
+    logSuccess('✓ Unexposed fields stripped from list response');
+
+    // 14.4 Unexposed fields stripped from PUT response
+    logStep('14.4 Update SecureEntity - verify unexposed fields stripped');
+    const updatedEntity = await PUT(`/api/secureentity/${secureEntity.id}`, {
+      publicName: 'Updated Entity',
+    }) as SecureEntity;
+    assertEqual(updatedEntity.publicName, 'Updated Entity', 'publicName should be updated');
+    assert(!('secretToken' in updatedEntity), 'secretToken should be stripped from PUT response');
+    assert(!('internalScore' in updatedEntity), 'internalScore should be stripped from PUT response');
+    logSuccess('✓ Unexposed fields stripped from PUT response');
+
+    // 14.5 Filter on unexposed field should return 400
+    logStep('14.5 Filter on unexposed string field (secretToken) - should return 400');
+    const filterSecretTokenResult = await REQUEST(
+      'GET',
+      `/api/secureentity?where=${encodeFilter({ field: 'secretToken', op: 'eq', value: 'x' })}`,
+    );
+    assertEqual(filterSecretTokenResult.status, 400, 'Filtering on unexposed field should return 400');
+    assert(
+      (filterSecretTokenResult.error?.toLowerCase().includes('not filterable') ||
+        filterSecretTokenResult.error?.toLowerCase().includes('secrettoken')) ?? false,
+      'Error should mention field is not filterable',
+    );
+    logSuccess('✓ Filtering on unexposed string field returns 400');
+
+    // 14.6 Filter on unexposed integer field should return 400
+    logStep('14.6 Filter on unexposed integer field (internalScore) - should return 400');
+    const filterInternalScoreResult = await REQUEST(
+      'GET',
+      `/api/secureentity?where=${encodeFilter({ field: 'internalScore', op: 'gte', value: 10 })}`,
+    );
+    assertEqual(filterInternalScoreResult.status, 400, 'Filtering on unexposed integer field should return 400');
+    logSuccess('✓ Filtering on unexposed integer field returns 400');
+
+    // 14.7 Filter on exposed field should still work
+    logStep('14.7 Filter on exposed field (publicName) - should work');
+    const filterExposedResult = await GET<{ data: SecureEntity[]; pagination: { total: number } }>(
+      `/api/secureentity?where=${encodeFilter({ field: 'publicName', op: 'eq', value: 'Updated Entity' })}`,
+    );
+    assertArray(filterExposedResult.data, 'filterExposedResult.data');
+    assert(filterExposedResult.data.length >= 1, 'Should find at least 1 entity');
+    assertEqual((filterExposedResult.data[0] as SecureEntity).publicName, 'Updated Entity', 'Should match the updated entity');
+    logSuccess('✓ Filtering on exposed field works correctly');
+
+    logSuccess('All field exposure tests passed!');
+
+    // ========================================
     // SUCCESS
     // ========================================
     logSection('All Tests Passed!');
@@ -519,6 +783,7 @@ async function main() {
     console.log(`  Projects created: ${createdIds.projects.length}`);
     console.log(`  Assignments created: ${createdIds.assignments.length}`);
     console.log(`  ID Cards created: ${createdIds.idCards.length}`);
+    console.log(`  Secure Entities created: ${createdIds.secureEntities.length}`);
     console.log(`\nTip: Run 'deno task db:clean' to remove test data\n`);
 
     Deno.exit(0);

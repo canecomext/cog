@@ -125,6 +125,13 @@ export async function REQUEST(
 }
 
 /**
+ * Encode a filter object to base64 for URL query parameter
+ */
+export function encodeFilter(filter: unknown): string {
+  return btoa(JSON.stringify(filter));
+}
+
+/**
  * Validation helpers
  */
 

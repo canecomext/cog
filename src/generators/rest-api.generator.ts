@@ -46,9 +46,9 @@ import { HTTPException } from '@hono/hono/http-exception';
 import { NotFoundException, DomainException } from '../domain/exceptions.ts';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import { ${modelName}, New${modelName} } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelName}, New${modelName}, ${modelNameLower}FieldMeta, ${modelNameLower}UnexposedFields } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
-import { convertBigIntToNumber, handleDomainException } from './helpers.ts';
+import { convertBigIntToNumber, handleDomainException, parseWhereParam, validateFilter, stripUnexposedFields } from './helpers.ts';
 
 /**
  * ${modelName} REST Routes
@@ -67,20 +67,37 @@ ${
       model.endpoints?.readMany !== false
         ? `    /**
      * GET /${modelNameLower}
-     * List all ${modelNameLower} with pagination
+     * List all ${modelNameLower} with pagination and filtering
      */
     this.routes.get('/', async (c) => {
       try {
         const context = c.var as RestEnvVars;
-        const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include } = c.req.query();
+        const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include, where } = c.req.query();
 
         // Parse include parameter
         const includeArray = include ? include.split(',') : undefined;
 
+        // Parse and validate filter parameter
+        let whereFilter;
+        if (where) {
+          try {
+            whereFilter = parseWhereParam(where);
+            if (whereFilter) {
+              const validation = validateFilter(whereFilter, ${modelNameLower}FieldMeta);
+              if (!validation.valid) {
+                throw new HTTPException(400, { message: validation.error });
+              }
+            }
+          } catch (error) {
+            if (error instanceof HTTPException) throw error;
+            throw new HTTPException(400, { message: (error as Error).message });
+          }
+        }
+
         // No transaction needed for read operations
         const result = await ${modelNameLower}Domain.findMany(
           undefined, // No transaction
-          includeArray ? { include: includeArray } : undefined, // Filter with include
+          { where: whereFilter, include: includeArray },
           {
             limit: parseInt(limit),
             offset: parseInt(offset),
@@ -90,8 +107,11 @@ ${
           context // Pass all context variables to domain hooks
         );
 
+        // Strip unexposed fields from response
+        const sanitizedData = stripUnexposedFields(result.data, ${modelNameLower}UnexposedFields);
+
         return c.json({
-          data: convertBigIntToNumber(result.data),
+          data: convertBigIntToNumber(sanitizedData),
           pagination: {
             total: result.total,
             limit: parseInt(limit),
@@ -129,7 +149,10 @@ ${
           throw new HTTPException(404, { message: '${modelName} not found' });
         }
 
-        return c.json({ data: convertBigIntToNumber(result) });
+        // Strip unexposed fields from response
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+
+        return c.json({ data: convertBigIntToNumber(sanitizedResult) });
       } catch (error) {
         handleDomainException(error);
       }
@@ -156,7 +179,10 @@ ${
           );
         });
 
-        return c.json({ data: convertBigIntToNumber(result) }, 201);
+        // Strip unexposed fields from response
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+
+        return c.json({ data: convertBigIntToNumber(sanitizedResult) }, 201);
       } catch (error) {
         handleDomainException(error);
       }
@@ -185,7 +211,10 @@ ${
           );
         });
 
-        return c.json({ data: convertBigIntToNumber(result) });
+        // Strip unexposed fields from response
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+
+        return c.json({ data: convertBigIntToNumber(sanitizedResult) });
       } catch (error) {
         handleDomainException(error);
       }
@@ -272,6 +301,18 @@ export type DefaultEnv = {
   private generateRestHelpers(): string {
     return `import { HTTPException } from '@hono/hono/http-exception';
 import { NotFoundException, DomainException } from '../domain/exceptions.ts';
+
+// Re-export filter utilities for use in REST handlers
+export {
+  parseWhereParam,
+  validateFilter,
+  stripUnexposedFields,
+  type WhereFilter,
+  type FilterCondition,
+  type FilterGroup,
+  type FieldMeta,
+  type FilterValidationResult,
+} from '../utils/filter.utils.ts';
 
 /**
  * Converts BigInt values to numbers for JSON serialization

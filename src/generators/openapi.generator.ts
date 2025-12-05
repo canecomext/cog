@@ -310,6 +310,89 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
           default: 'asc',
         },
       },
+      WhereParameter: {
+        name: 'where',
+        in: 'query',
+        description: `Base64-encoded JSON filter for querying records. Supports nested AND/OR conditions.
+
+**Example (decoded JSON):**
+\`\`\`json
+{
+  "and": [
+    { "field": "status", "op": "eq", "value": "active" },
+    { "field": "age", "op": "gte", "value": 18 }
+  ]
+}
+\`\`\`
+
+**Operators by type:**
+- String: eq, neq, like, ilike, in, nin, isNull
+- Numeric/Date: eq, neq, gt, gte, lt, lte, in, nin, isNull
+- Boolean: eq, isNull
+- UUID/Enum: eq, neq, in, nin, isNull
+- Array: contains, overlaps, isNull`,
+        schema: {
+          type: 'string',
+          format: 'base64',
+        },
+      },
+    };
+
+    // Add filter-related schemas to components
+    const schemas = (spec.components as Record<string, Record<string, unknown>>).schemas;
+    schemas.FilterCondition = {
+      type: 'object',
+      description: 'A single filter condition',
+      properties: {
+        field: {
+          type: 'string',
+          description: 'Field name to filter on',
+        },
+        op: {
+          type: 'string',
+          enum: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'in', 'nin', 'isNull', 'contains', 'overlaps'],
+          description: 'Filter operator',
+        },
+        value: {
+          description: 'Value to compare against (type depends on field and operator)',
+        },
+      },
+      required: ['field', 'op', 'value'],
+    };
+
+    schemas.FilterGroup = {
+      type: 'object',
+      description: 'Logical grouping of filter conditions',
+      properties: {
+        and: {
+          type: 'array',
+          items: {
+            oneOf: [
+              { $ref: '#/components/schemas/FilterCondition' },
+              { $ref: '#/components/schemas/FilterGroup' },
+            ],
+          },
+          description: 'All conditions must match (logical AND)',
+        },
+        or: {
+          type: 'array',
+          items: {
+            oneOf: [
+              { $ref: '#/components/schemas/FilterCondition' },
+              { $ref: '#/components/schemas/FilterGroup' },
+            ],
+          },
+          description: 'Any condition must match (logical OR)',
+        },
+      },
+    };
+
+    schemas.WhereFilter = {
+      oneOf: [
+        { $ref: '#/components/schemas/FilterCondition' },
+        { $ref: '#/components/schemas/FilterGroup' },
+      ],
+      description: 'Filter for querying records. Can be a single condition or a logical group.',
     };
 
     return spec;
@@ -561,6 +644,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
           { $ref: '#/components/parameters/OffsetParameter' },
           { $ref: '#/components/parameters/OrderByParameter' },
           { $ref: '#/components/parameters/OrderDirectionParameter' },
+          { $ref: '#/components/parameters/WhereParameter' },
         ],
         responses: {
           '200': {

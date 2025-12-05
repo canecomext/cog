@@ -9,6 +9,7 @@ import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
 import { DomainExceptionsGenerator } from './generators/domain-exceptions.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
 import { OpenAPIGenerator } from './generators/openapi.generator.ts';
+import { FilterUtilsGenerator } from './generators/filter-utils.generator.ts';
 import { GeneratorConfig, ModelDefinition } from './types/model.types.ts';
 
 export * from './types/model.types.ts';
@@ -94,6 +95,11 @@ export async function generateFromModels(
   const exceptionsGenerator = new DomainExceptionsGenerator();
   files.set('domain/exceptions.ts', exceptionsGenerator.generate());
 
+  // Generate filter utilities
+  const filterUtilsGenerator = new FilterUtilsGenerator();
+  files.set('utils/filter.utils.ts', filterUtilsGenerator.generate());
+  files.set('utils/index.ts', generateUtilsIndex());
+
   // Generate domain APIs
   const domainGenerator = new DomainAPIGenerator(models);
   const domainFiles = domainGenerator.generateDomainAPIs();
@@ -120,6 +126,20 @@ export async function generateFromModels(
     fileCount: files.size,
     outputPath,
   };
+}
+
+/**
+ * Generate utils index file
+ */
+function generateUtilsIndex(): string {
+  return `/**
+ * Utility Exports
+ *
+ * Re-exports all utility functions for convenient access.
+ */
+
+export * from './filter.utils.ts';
+`;
 }
 
 /**
@@ -199,6 +219,7 @@ export * from './db/database.ts';
 export * from './rest/index.ts';
 export * from './domain/index.ts';
 export * from './schema/index.ts';
+export * from './utils/index.ts';
 export type { DefaultEnv } from './rest/types.ts';
 `;
 }

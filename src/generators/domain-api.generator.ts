@@ -37,6 +37,7 @@ export class DomainAPIGenerator {
   private generateHooksTypes(): string {
     return `import { SQL } from 'drizzle-orm';
 import { type DbTransaction } from '../db/database.ts';
+import { type WhereFilter } from '../utils/filter.utils.ts';
 
 /**
  * Domain hook context that receives all variables from the Hono context.
@@ -49,8 +50,13 @@ import { type DbTransaction } from '../db/database.ts';
  */
 export type DomainHookContext<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> = DomainEnvVars;
 
+/**
+ * Filter options for findMany operations
+ * - where: Can be a WhereFilter object (from REST) or raw SQL (from hooks)
+ * - include: Array of relationship names to eagerly load
+ */
 export interface FilterOptions {
-  where?: SQL;
+  where?: WhereFilter | SQL;
   include?: string[];
 }
 
@@ -184,10 +190,11 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     return `${drizzleImports}
 import { NotFoundException } from './exceptions.ts';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 ${this.generateJunctionTableImports(model)}
 import { DomainHooks, JunctionTableHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
+import { buildWhereSQL, isWhereFilter, type SQL } from '../utils/filter.utils.ts';
 
 export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
@@ -317,12 +324,24 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       filter = await this.hooks.preFindMany(tx, filter, context);
     }
 
+    // Convert WhereFilter to SQL if needed
+    let whereSQL: SQL | undefined;
+    if (filter?.where) {
+      if (isWhereFilter(filter.where)) {
+        // Convert WhereFilter object to SQL using buildWhereSQL
+        whereSQL = buildWhereSQL(filter.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields);
+      } else {
+        // Already SQL (from hooks or direct usage)
+        whereSQL = filter.where as SQL;
+      }
+    }
+
     // Build query with chaining to avoid type issues
     let baseQuery = db.select().from(${modelNameLower}Table);
 
     // Apply filters
-    if (filter?.where) {
-      baseQuery = baseQuery.where(filter.where) as unknown as typeof baseQuery;
+    if (whereSQL) {
+      baseQuery = baseQuery.where(whereSQL) as unknown as typeof baseQuery;
     }
 
     // Apply pagination
@@ -350,13 +369,13 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
 
     ${this.generateRelationshipIncludesForMany(model)}
 
-    // Get total count
+    // Get total count (using the same whereSQL)
     const countQueryBase = db
       .select({ count: sql<number>\`count(*)\` })
       .from(${modelNameLower}Table);
-    
-    const countQuery = filter?.where 
-      ? countQueryBase.where(filter.where)
+
+    const countQuery = whereSQL
+      ? countQueryBase.where(whereSQL)
       : countQueryBase;
 
     const [{ count }] = await countQuery;

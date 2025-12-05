@@ -1,0 +1,31 @@
+{
+  "name": "SecureEntity",
+  "tableName": "secure_entity",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true
+    },
+    {
+      "name": "publicName",
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    },
+    {
+      "name": "secretToken",
+      "type": "string",
+      "maxLength": 255,
+      "exposed": false
+    },
+    {
+      "name": "internalScore",
+      "type": "integer",
+      "exposed": false
+    }
+  ],
+  "timestamps": true
+}

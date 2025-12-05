@@ -55,6 +55,7 @@ export interface FieldDefinition {
   dimensions?: number; // For PostGIS dimensions (2D, 3D, 4D)
   index?: boolean;
   description?: string; // Custom description for OpenAPI docs
+  exposed?: boolean; // Whether field is exposed in REST responses and filterable (default: true)
   references?: {
     model: string;
     field: string;
