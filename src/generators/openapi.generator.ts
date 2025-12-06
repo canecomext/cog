@@ -12,7 +12,9 @@ function normalizeExpose(expose?: ExposeType): { create: boolean; read: boolean 
     return { create: false, read: false };
   }
   if (expose === 'create') {
-    return { create: true, read: false };
+    // Include in response schema - POST responses include this field
+    // Runtime controls per-endpoint visibility (GET won't return it)
+    return { create: true, read: true };
   }
   // fallback (should never happen with proper validation)
   return { create: true, read: true };
