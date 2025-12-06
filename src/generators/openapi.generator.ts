@@ -470,15 +470,17 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
       const acceptConfig = normalizeAccept(field.accept);
 
       // Determine if field should be included based on schema type
+      // - accept controls INPUT (Create/Update schemas)
+      // - expose controls OUTPUT (Response schema)
       let shouldInclude: boolean;
       if (isInput && !isUpdate) {
-        // Create schema uses create exposure AND accept.create
-        shouldInclude = exposeConfig.create && acceptConfig.create;
+        // Create schema: only check accept.create (expose doesn't affect input)
+        shouldInclude = acceptConfig.create;
       } else if (isInput && isUpdate) {
-        // Update schema uses read exposure AND accept.update
-        shouldInclude = exposeConfig.read && acceptConfig.update;
+        // Update schema: only check accept.update (expose doesn't affect input)
+        shouldInclude = acceptConfig.update;
       } else {
-        // Response schema uses read exposure (accept doesn't apply to output)
+        // Response schema: only check expose.read (accept doesn't affect output)
         shouldInclude = exposeConfig.read;
       }
 
