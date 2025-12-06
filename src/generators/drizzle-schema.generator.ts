@@ -3,25 +3,40 @@ import {
   IndexDefinition,
   ModelDefinition,
   RelationshipDefinition,
-  ExposedType
+  ExposeType,
+  AcceptType
 } from '../types/model.types.ts';
 
 /**
- * Helper function to normalize exposed config to a consistent object format
+ * Helper function to normalize expose config to a consistent object format
  * Handles string enum values: "default", "hidden", "create"
  */
-function normalizeExposed(exposed?: ExposedType): { create: boolean; read: boolean } {
-  if (exposed === undefined || exposed === 'default') {
+function normalizeExpose(expose?: ExposeType): { create: boolean; read: boolean } {
+  if (expose === undefined || expose === 'default') {
     return { create: true, read: true };
   }
-  if (exposed === 'hidden') {
+  if (expose === 'hidden') {
     return { create: false, read: false };
   }
-  if (exposed === 'create') {
+  if (expose === 'create') {
     return { create: true, read: false };
   }
   // fallback (should never happen with proper validation)
   return { create: true, read: true };
+}
+
+/**
+ * Helper function to normalize accept config to a consistent object format
+ * Handles string enum values: "default", "create", "never"
+ */
+function normalizeAccept(accept?: AcceptType): { create: boolean; update: boolean } {
+  if (accept === 'create') {
+    return { create: true, update: false };
+  }
+  if (accept === 'never') {
+    return { create: false, update: false };
+  }
+  return { create: true, update: true };
 }
 import { SpatialUtilsGenerator } from './spatial-utils.generator.ts';
 
@@ -894,34 +909,59 @@ export class DrizzleSchemaGenerator {
     const entries: string[] = [];
 
     for (const field of allFields) {
-      const exposedConfig = normalizeExposed(field.exposed);
+      const exposeConfig = normalizeExpose(field.expose);
       const isArray = field.array === true;
-      // FieldMeta uses 'exposed' for read exposure (used for filtering)
-      entries.push(`  ['${field.name}', { type: '${field.type}', exposed: ${exposedConfig.read}, array: ${isArray} }]`);
+      // FieldMeta uses 'expose' for read exposure (used for filtering)
+      entries.push(`  ['${field.name}', { type: '${field.type}', expose: ${exposeConfig.read}, array: ${isArray} }]`);
     }
 
     code += entries.join(',\n') + '\n]);\n\n';
 
     // Generate read-exposed fields set (for filtering)
-    const readExposedFields = allFields.filter(f => normalizeExposed(f.exposed).read);
+    const readExposedFields = allFields.filter(f => normalizeExpose(f.expose).read);
     code += `export const ${modelNameLower}ExposedFields: Set<string> = new Set([\n`;
     code += readExposedFields.map(f => `  '${f.name}'`).join(',\n') + '\n]);\n\n';
 
     // Generate unexposed field arrays per operation
-    const createUnexposed = allFields.filter(f => !normalizeExposed(f.exposed).create);
-    const readUnexposed = allFields.filter(f => !normalizeExposed(f.exposed).read);
+    const createUnexposed = allFields.filter(f => !normalizeExpose(f.expose).create);
+    const readUnexposed = allFields.filter(f => !normalizeExpose(f.expose).read);
 
-    // Create unexposed fields (POST response) - fields with exposed: "hidden"
+    // Create unexposed fields (POST response) - fields with expose: "hidden"
     code += `export const ${modelNameLower}CreateUnexposedFields: string[] = [\n`;
     if (createUnexposed.length > 0) {
       code += createUnexposed.map(f => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n\n';
 
-    // Read unexposed fields (GET/PUT/DELETE response) - fields with exposed: "hidden" or "create"
+    // Read unexposed fields (GET/PUT/DELETE response) - fields with expose: "hidden" or "create"
     code += `export const ${modelNameLower}ReadUnexposedFields: string[] = [\n`;
     if (readUnexposed.length > 0) {
       code += readUnexposed.map(f => `  '${f.name}'`).join(',\n') + '\n';
+    }
+    code += '];\n\n';
+
+    // Generate unaccepted field arrays per operation (for input stripping)
+    // Primary key fields get implicit accept: "create" (can be set on create, not on update)
+    // unless explicitly overridden
+    const getEffectiveAccept = (f: FieldDefinition) => {
+      if (f.accept) return f.accept; // Explicit accept takes precedence
+      if (f.primaryKey) return 'create' as const; // Primary key defaults to create-only
+      return undefined; // All other fields use default behavior
+    };
+    const createUnaccepted = allFields.filter(f => !normalizeAccept(getEffectiveAccept(f)).create);
+    const updateUnaccepted = allFields.filter(f => !normalizeAccept(getEffectiveAccept(f)).update);
+
+    // Create unaccepted fields (POST body) - fields with accept: "never"
+    code += `export const ${modelNameLower}CreateUnacceptedFields: string[] = [\n`;
+    if (createUnaccepted.length > 0) {
+      code += createUnaccepted.map(f => `  '${f.name}'`).join(',\n') + '\n';
+    }
+    code += '];\n\n';
+
+    // Update unaccepted fields (PUT body) - fields with accept: "never" or "create"
+    code += `export const ${modelNameLower}UpdateUnacceptedFields: string[] = [\n`;
+    if (updateUnaccepted.length > 0) {
+      code += updateUnaccepted.map(f => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n';
 
@@ -934,16 +974,17 @@ export class DrizzleSchemaGenerator {
   private getAllFieldsWithTimestamps(model: ModelDefinition): FieldDefinition[] {
     const fields = [...model.fields];
 
-    // Add timestamp fields if enabled (timestamps are always exposed by default)
+    // Add timestamp fields if enabled
+    // Timestamps are: expose by default, never accepted from input (server-managed)
     if (model.timestamps === true) {
-      fields.push({ name: 'createdAt', type: 'date', exposed: 'default' });
-      fields.push({ name: 'updatedAt', type: 'date', exposed: 'default' });
+      fields.push({ name: 'createdAt', type: 'date', expose: 'default', accept: 'never' });
+      fields.push({ name: 'updatedAt', type: 'date', expose: 'default', accept: 'never' });
     } else if (typeof model.timestamps === 'object') {
       if (model.timestamps.createdAt) {
-        fields.push({ name: 'createdAt', type: 'date', exposed: 'default' });
+        fields.push({ name: 'createdAt', type: 'date', expose: 'default', accept: 'never' });
       }
       if (model.timestamps.updatedAt) {
-        fields.push({ name: 'updatedAt', type: 'date', exposed: 'default' });
+        fields.push({ name: 'updatedAt', type: 'date', expose: 'default', accept: 'never' });
       }
     }
 

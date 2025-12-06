@@ -13,7 +13,7 @@
  * Cleanup: deno task test:clean
  */
 
-import { Assignment, Department, Employee, ExposureTestEntity, IDCard, Project, Skill } from '../generated/index.ts';
+import { AcceptanceTestEntity, Assignment, Department, Employee, ExposureTestEntity, IDCard, Project, Skill } from '../generated/index.ts';
 import {
   assert,
   assertArray,
@@ -52,6 +52,7 @@ const createdIds = {
   assignments: [] as string[],
   idCards: [] as string[],
   exposureTestEntities: [] as string[],
+  acceptanceTestEntities: [] as string[],
 };
 
 /**
@@ -768,6 +769,83 @@ async function main() {
     logSuccess('All field exposure tests passed!');
 
     // ========================================
+    // 15. FIELD ACCEPTANCE CONTROL (input stripping)
+    // ========================================
+    logSection('15. Testing Field Acceptance Control (input stripping)');
+
+    // 15.1 POST - verify neverAcceptedField stripped, createOnlyField accepted
+    logStep('15.1 Create AcceptanceTestEntity - verify input stripping');
+    const customId = crypto.randomUUID();
+    const acceptanceEntity = await POST('/api/acceptancetestentity', {
+      id: customId, // Should be accepted (primary key implicit accept: create)
+      normalField: 'Normal Value',
+      createOnlyField: 'Immutable Value',
+      neverAcceptedField: 'This should be stripped and use default',
+      createdAt: 9999999999999, // Should be stripped (implicit accept: never)
+      updatedAt: 9999999999999, // Should be stripped (implicit accept: never)
+    }) as AcceptanceTestEntity;
+
+    assertExists(acceptanceEntity.id, 'acceptanceEntity.id should exist');
+    assertEqual(acceptanceEntity.id, customId, 'Custom ID should be accepted on POST');
+    assertEqual(acceptanceEntity.normalField, 'Normal Value', 'normalField should be accepted');
+    assertEqual(acceptanceEntity.createOnlyField, 'Immutable Value', 'createOnlyField should be accepted on POST');
+    assertEqual(acceptanceEntity.neverAcceptedField, 'server-generated', 'neverAcceptedField should use default value');
+    assert(acceptanceEntity.createdAt !== 9999999999999, 'createdAt should be stripped (use DB default)');
+    assert(acceptanceEntity.updatedAt !== 9999999999999, 'updatedAt should be stripped (use DB default)');
+    createdIds.acceptanceTestEntities.push(acceptanceEntity.id);
+    logSuccess('✓ POST: neverAcceptedField/timestamps stripped, id/createOnlyField accepted');
+
+    // 15.2 PUT - verify id, createOnlyField, neverAcceptedField, and timestamps all stripped
+    logStep('15.2 Update AcceptanceTestEntity - verify input stripping');
+    const originalCreateOnlyField = acceptanceEntity.createOnlyField;
+    const originalCreatedAt = acceptanceEntity.createdAt;
+    const updatedAcceptance = await PUT(`/api/acceptancetestentity/${acceptanceEntity.id}`, {
+      id: crypto.randomUUID(), // Should be stripped (primary key implicit accept: create)
+      normalField: 'Updated Normal Value',
+      createOnlyField: 'This should be stripped', // Should be stripped (accept: create)
+      neverAcceptedField: 'This should also be stripped', // Should be stripped (accept: never)
+      createdAt: 1111111111111, // Should be stripped
+      updatedAt: 1111111111111, // Should be stripped (but auto-updated)
+    }) as AcceptanceTestEntity;
+
+    assertEqual(updatedAcceptance.id, acceptanceEntity.id, 'ID should NOT change on PUT');
+    assertEqual(updatedAcceptance.normalField, 'Updated Normal Value', 'normalField should be updated');
+    assertEqual(updatedAcceptance.createOnlyField, originalCreateOnlyField, 'createOnlyField should NOT change on PUT');
+    assertEqual(updatedAcceptance.neverAcceptedField, 'server-generated', 'neverAcceptedField should NOT change');
+    assertEqual(updatedAcceptance.createdAt, originalCreatedAt, 'createdAt should NOT change');
+    assert(updatedAcceptance.updatedAt !== 1111111111111, 'updatedAt should be auto-updated, not from input');
+    assert(updatedAcceptance.updatedAt > originalCreatedAt, 'updatedAt should be newer than createdAt');
+    logSuccess('✓ PUT: id/createOnlyField/neverAcceptedField/timestamps all stripped');
+
+    // 15.3 Verify GET returns all visible fields correctly
+    logStep('15.3 Get AcceptanceTestEntity - verify all fields visible');
+    const fetchedAcceptance = await GET<AcceptanceTestEntity>(`/api/acceptancetestentity/${acceptanceEntity.id}`);
+    assertExists(fetchedAcceptance, 'fetchedAcceptance should exist');
+    assertEqual(fetchedAcceptance.id, customId, 'ID should match custom ID');
+    assertEqual(fetchedAcceptance.normalField, 'Updated Normal Value', 'normalField should be present');
+    assertEqual(fetchedAcceptance.createOnlyField, originalCreateOnlyField, 'createOnlyField should be present');
+    assertEqual(fetchedAcceptance.neverAcceptedField, 'server-generated', 'neverAcceptedField should be visible');
+    assertExists(fetchedAcceptance.createdAt, 'createdAt should be present');
+    assertExists(fetchedAcceptance.updatedAt, 'updatedAt should be present');
+    logSuccess('✓ GET: all fields visible (accept controls input, not output)');
+
+    // 15.4 Test that timestamps are always stripped (implicit accept: never)
+    logStep('15.4 Verify timestamps stripped on another entity');
+    const timestampTestEntity = await POST('/api/acceptancetestentity', {
+      normalField: 'Timestamp Test',
+    }) as AcceptanceTestEntity;
+
+    assertExists(timestampTestEntity.createdAt, 'createdAt should exist with DB default');
+    assertExists(timestampTestEntity.updatedAt, 'updatedAt should exist with DB default');
+    const now = Date.now();
+    assert(Math.abs(timestampTestEntity.createdAt - now) < 5000, 'createdAt should be close to current time');
+    assert(Math.abs(timestampTestEntity.updatedAt - now) < 5000, 'updatedAt should be close to current time');
+    createdIds.acceptanceTestEntities.push(timestampTestEntity.id);
+    logSuccess('✓ Timestamps automatically set by database, not from input');
+
+    logSuccess('All field acceptance tests passed!');
+
+    // ========================================
     // SUCCESS
     // ========================================
     logSection('All Tests Passed!');
@@ -779,6 +857,7 @@ async function main() {
     console.log(`  Assignments created: ${createdIds.assignments.length}`);
     console.log(`  ID Cards created: ${createdIds.idCards.length}`);
     console.log(`  Exposure Test Entities created: ${createdIds.exposureTestEntities.length}`);
+    console.log(`  Acceptance Test Entities created: ${createdIds.acceptanceTestEntities.length}`);
     console.log(`\nTip: Run 'deno task db:clean' to remove test data\n`);
 
     Deno.exit(0);

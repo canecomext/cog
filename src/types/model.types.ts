@@ -36,11 +36,17 @@ export interface EnumDefinition {
   useBitwise?: boolean; // Store as integer with bitwise flags for efficient queries
 }
 
-// Field exposure type - controls field visibility in responses and filtering
+// Field expose type - controls field visibility in responses and filtering
 // "default" (or omit) - visible in all responses, filterable
 // "hidden" - never visible in responses, not filterable
 // "create" - visible in POST response only, not visible in GET/PUT/DELETE, not filterable
-export type ExposedType = "default" | "hidden" | "create";
+export type ExposeType = "default" | "hidden" | "create";
+
+// Field accept type - controls which fields are accepted as input
+// "default" (or omit) - accepted on both create and update
+// "create" - accepted on create only (immutable after creation)
+// "never" - never accepted (server-managed field, must have defaultValue or beforeCreate hook)
+export type AcceptType = "default" | "create" | "never";
 
 // Field definition
 export interface FieldDefinition {
@@ -61,7 +67,8 @@ export interface FieldDefinition {
   dimensions?: number; // For PostGIS dimensions (2D, 3D, 4D)
   index?: boolean;
   description?: string; // Custom description for OpenAPI docs
-  exposed?: ExposedType; // Field visibility: "default" | "hidden" | "create" (default: visible everywhere)
+  expose?: ExposeType; // Field visibility: "default" | "hidden" | "create" (default: visible everywhere)
+  accept?: AcceptType; // Field input acceptance: "default" | "create" | "never" (default: accepted on create and update)
   references?: {
     model: string;
     field: string;

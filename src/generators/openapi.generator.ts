@@ -1,21 +1,35 @@
-import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition, ExposedType } from '../types/model.types.ts';
+import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition, ExposeType, AcceptType } from '../types/model.types.ts';
 
 /**
- * Helper function to normalize exposed config to a consistent object format
+ * Helper function to normalize expose config to a consistent object format
  * Handles string enum values: "default", "hidden", "create"
  */
-function normalizeExposed(exposed?: ExposedType): { create: boolean; read: boolean } {
-  if (exposed === undefined || exposed === 'default') {
+function normalizeExpose(expose?: ExposeType): { create: boolean; read: boolean } {
+  if (expose === undefined || expose === 'default') {
     return { create: true, read: true };
   }
-  if (exposed === 'hidden') {
+  if (expose === 'hidden') {
     return { create: false, read: false };
   }
-  if (exposed === 'create') {
+  if (expose === 'create') {
     return { create: true, read: false };
   }
   // fallback (should never happen with proper validation)
   return { create: true, read: true };
+}
+
+/**
+ * Helper function to normalize accept config to a consistent object format
+ * Handles string enum values: "default", "create", "never"
+ */
+function normalizeAccept(accept?: AcceptType): { create: boolean; update: boolean } {
+  if (accept === 'create') {
+    return { create: true, update: false };
+  }
+  if (accept === 'never') {
+    return { create: false, update: false };
+  }
+  return { create: true, update: true };
 }
 
 /**
@@ -186,7 +200,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         model,
         false,
       );
-      (spec.components as Record<string, Record<string, unknown>>).schemas[`${model.name}Input`] = this
+      (spec.components as Record<string, Record<string, unknown>>).schemas[`${model.name}Create`] = this
         .generateModelSchema(model, true);
       (spec.components as Record<string, Record<string, unknown>>).schemas[`${model.name}Update`] = this
         .generateModelSchema(model, true, true);
@@ -425,8 +439,8 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
    *
    * Schema types and their exposure rules:
    * - {Model} (isInput=false, isUpdate=false): Response schema - uses read exposure
-   * - {Model}Input (isInput=true, isUpdate=false): Create schema - uses create exposure
-   * - {Model}Update (isInput=true, isUpdate=true): Update schema - uses read exposure (same as response)
+   * - {Model}Create (isInput=true, isUpdate=false): Create schema - uses create exposure + accept.create
+   * - {Model}Update (isInput=true, isUpdate=true): Update schema - uses read exposure + accept.update
    */
   private generateModelSchema(
     model: ModelDefinition,
@@ -452,19 +466,23 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
       }
 
       // Check field exposure based on schema type
-      const exposedConfig = normalizeExposed(field.exposed);
+      const exposeConfig = normalizeExpose(field.expose);
+      const acceptConfig = normalizeAccept(field.accept);
 
       // Determine if field should be included based on schema type
       let shouldInclude: boolean;
       if (isInput && !isUpdate) {
-        // Input/Create schema uses create exposure
-        shouldInclude = exposedConfig.create;
+        // Create schema uses create exposure AND accept.create
+        shouldInclude = exposeConfig.create && acceptConfig.create;
+      } else if (isInput && isUpdate) {
+        // Update schema uses read exposure AND accept.update
+        shouldInclude = exposeConfig.read && acceptConfig.update;
       } else {
-        // Response schema and Update schema both use read exposure
-        shouldInclude = exposedConfig.read;
+        // Response schema uses read exposure (accept doesn't apply to output)
+        shouldInclude = exposeConfig.read;
       }
 
-      // Skip unexposed fields
+      // Skip unexposed or unaccepted fields
       if (!shouldInclude) {
         continue;
       }
@@ -732,7 +750,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
           required: true,
           content: {
             'application/json': {
-              schema: { $ref: `#/components/schemas/${model.name}Input` },
+              schema: { $ref: `#/components/schemas/${model.name}Create` },
             },
           },
         },

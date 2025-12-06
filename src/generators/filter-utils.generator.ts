@@ -19,6 +19,7 @@ export class FilterUtilsGenerator {
     code += this.generateValidateFilter();
     code += this.generateBuildWhereSQL();
     code += this.generateStripUnexposedFields();
+    code += this.generateStripUnacceptedFields();
     code += this.generateHelpers();
 
     return code;
@@ -121,7 +122,7 @@ export type WhereFilter = FilterCondition | FilterGroup;
  */
 export interface FieldMeta {
   type: string;
-  exposed: boolean;
+  expose: boolean;
   array: boolean;
 }
 
@@ -311,7 +312,7 @@ function validateFilterRecursive(
   }
 
   // Validate field is exposed
-  if (!meta.exposed) {
+  if (!meta.expose) {
     throw new Error(\`Invalid filter: field '\${condition.field}' is not filterable\`);
   }
 
@@ -486,6 +487,40 @@ export function stripUnexposedFields<T>(
   }
 
   return data;
+}
+
+`;
+  }
+
+  private generateStripUnacceptedFields(): string {
+    return `// ============================================
+// Input Sanitization
+// ============================================
+
+/**
+ * Strip unaccepted fields from input data
+ *
+ * Used to remove fields that should not be accepted in create/update operations.
+ * This is called BEFORE beforeCreate/beforeUpdate hooks so hooks can inject
+ * server-managed values before Zod validation.
+ *
+ * @param data - The input data to sanitize
+ * @param unacceptedFields - Array of field names to remove
+ * @returns Sanitized data with unaccepted fields removed
+ */
+export function stripUnacceptedFields<T extends Record<string, unknown>>(
+  data: T,
+  unacceptedFields: string[]
+): T {
+  if (unacceptedFields.length === 0) {
+    return data;
+  }
+
+  const result = { ...data };
+  for (const field of unacceptedFields) {
+    delete result[field];
+  }
+  return result as T;
 }
 
 `;

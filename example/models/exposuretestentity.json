@@ -18,13 +18,13 @@
       "name": "hiddenField",
       "type": "string",
       "maxLength": 100,
-      "exposed": "hidden"
+      "expose": "hidden"
     },
     {
       "name": "createOnlyField",
       "type": "string",
       "maxLength": 100,
-      "exposed": "create"
+      "expose": "create"
     }
   ],
   "timestamps": true

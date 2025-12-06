@@ -350,7 +350,7 @@ Control field visibility in API responses:
 {
   "name": "apiSecret",
   "type": "string",
-  "exposed": "create"
+  "expose": "create"
 }
 ```
 
@@ -366,6 +366,39 @@ For internal domain calls needing hidden fields, use `skipSanitization: true`:
 
 ```typescript
 const { data } = await userDomain.findById(id, tx, { skipSanitization: true });
+```
+
+### Field Accept Control
+
+Control which fields are accepted as input:
+
+```json
+{
+  "name": "createdBy",
+  "type": "uuid",
+  "required": true,
+  "accept": "never",
+  "defaultValue": "gen_random_uuid()"
+}
+```
+
+| Value | Effect |
+|-------|--------|
+| `"default"` (or omit) | Accepted on create and update |
+| `"create"` | Accepted on create only (immutable after) |
+| `"never"` | Never accepted (server-managed) |
+
+**Important:** For `required` fields with `accept: "never"` and no `defaultValue`,
+the `beforeCreate` hook MUST provide the value before Zod validation runs.
+
+```typescript
+// Example: Server-managed createdBy field
+const employeeDomainWithHooks = new EmployeeDomain({
+  beforeCreate: async (input, context) => ({
+    ...input,
+    createdBy: context?.userId  // Inject before Zod validation
+  })
+});
 ```
 
 ### Endpoint Configuration

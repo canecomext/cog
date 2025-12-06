@@ -260,7 +260,7 @@ COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (P
 - Foreign keys: `"references": { "model": "...", "field": "..." }`
 - Enums: Standard (single value) or bitwise (multiple values via integer flags)
 - Field descriptions: `"description": "Custom text"` for OpenAPI documentation
-- Field exposure: `"exposed": "hidden"` or `"exposed": "create"` controls field visibility (default: visible everywhere)
+- Field exposure: `"expose": "hidden"` or `"expose": "create"` controls field visibility (default: visible everywhere)
 
 **Numeric Precision Limitation:**
 
@@ -707,7 +707,7 @@ interface FilterGroup {
 
 #### Field Exposure Control
 
-Fields can control their visibility using the `exposed` property with three possible values:
+Fields can control their visibility using the `expose` property with three possible values:
 
 | Value | POST Response | GET/PUT/DELETE Response | Filterable |
 |-------|---------------|-------------------------|------------|
@@ -720,7 +720,7 @@ Fields can control their visibility using the `exposed` property with three poss
 {
   "name": "internalScore",
   "type": "integer",
-  "exposed": "hidden"
+  "expose": "hidden"
 }
 ```
 
@@ -729,7 +729,7 @@ Fields can control their visibility using the `exposed` property with three poss
 {
   "name": "apiSecret",
   "type": "string",
-  "exposed": "create"
+  "expose": "create"
 }
 ```
 
@@ -737,9 +737,9 @@ Fields can control their visibility using the `exposed` property with three poss
 
 | Use Case | Configuration | Effect |
 |----------|---------------|--------|
-| API secret (show once) | `"exposed": "create"` | Visible in POST response only, never returned after |
-| Internal field | `"exposed": "hidden"` | Completely hidden from REST layer |
-| Normal field | omit `exposed` | Visible in all operations (default) |
+| API secret (show once) | `"expose": "create"` | Visible in POST response only, never returned after |
+| Internal field | `"expose": "hidden"` | Completely hidden from REST layer |
+| Normal field | omit `expose` | Visible in all operations (default) |
 
 **Included Relationships:** Field exposure is properly enforced for included child objects. When using `?include=department,assignmentList`, each included entity's hidden/create-only fields are stripped according to its own exposure rules.
 
@@ -748,7 +748,93 @@ Fields can control their visibility using the `exposed` property with three poss
 - `{Model}Input` schema: Fields with `"hidden"` are excluded
 - `{Model}Update` schema: Fields with `"hidden"` or `"create"` are excluded
 
-**Default:** All fields are fully visible unless `exposed` is explicitly set.
+**Default:** All fields are fully visible unless `expose` is explicitly set.
+
+#### Field Accept Control
+
+Fields can control input acceptance using the `accept` property with three possible values:
+
+| Value | POST (create) | PUT (update) | Use Case |
+|-------|---------------|--------------|----------|
+| `"default"` (or omit) | ✓ Accepted | ✓ Accepted | Normal editable field |
+| `"create"` | ✓ Accepted | ✗ Stripped | Immutable after creation (e.g., email, username) |
+| `"never"` | ✗ Stripped | ✗ Stripped | Server-managed field (e.g., createdBy, computed) |
+
+**Immutable Field (set once):**
+```json
+{
+  "name": "email",
+  "type": "string",
+  "required": true,
+  "accept": "create"
+}
+```
+
+**Server-Managed Field with default:**
+```json
+{
+  "name": "createdBy",
+  "type": "uuid",
+  "required": true,
+  "accept": "never",
+  "defaultValue": "gen_random_uuid()"
+}
+```
+
+**Server-Managed Field with hook:**
+```json
+{
+  "name": "createdBy",
+  "type": "uuid",
+  "required": true,
+  "accept": "never"
+}
+```
+
+```typescript
+// beforeCreate hook injects the value before Zod validation
+const userDomainWithHooks = new UserDomain({
+  beforeCreate: async (input, context) => ({
+    ...input,
+    createdBy: context?.userId
+  })
+});
+```
+
+**Processing Flow:**
+```
+Input arrives
+    ↓
+Strip unaccepted fields (based on operation: create vs update)
+    ↓
+beforeCreate/beforeUpdate hook ← Can inject required server-managed fields
+    ↓
+Zod validation (fields with defaultValue are optional in schema)
+    ↓
+preCreate/preUpdate hook
+    ↓
+Zod re-validation
+    ↓
+Database operation
+```
+
+**Relationship with Other Properties:**
+
+| Combination | Valid? | Notes |
+|-------------|--------|-------|
+| `required: true` + `accept: "never"` + `defaultValue` | ✅ | DB provides default |
+| `required: true` + `accept: "never"` + NO default | ⚠️ | `beforeCreate` hook MUST provide value |
+| `required: true` + `accept: "create"` | ✅ | Required on create, immutable after |
+| `required: false` + `accept: "never"` | ✅ | Optional server-managed field |
+
+**Warning:** COG emits a generation-time warning for `required: true` + `accept: "never"` + no `defaultValue`.
+
+**OpenAPI Impact:**
+- `{Model}Input` schema: Fields with `accept: "never"` are excluded
+- `{Model}Update` schema: Fields with `accept: "never"` or `"create"` are excluded
+- `{Model}` schema (response): Not affected by `accept`
+
+**Default:** All fields are accepted on both create and update unless `accept` is explicitly set.
 
 #### Error Responses
 

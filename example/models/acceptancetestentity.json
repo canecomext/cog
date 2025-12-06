@@ -1,0 +1,37 @@
+{
+  "name": "AcceptanceTestEntity",
+  "tableName": "acceptance_test_entity",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "primaryKey": true,
+      "defaultValue": "gen_random_uuid()",
+      "required": true,
+      "description": "Primary key - implicitly accept: create (can set on POST, stripped on PUT)"
+    },
+    {
+      "name": "normalField",
+      "type": "string",
+      "maxLength": 100,
+      "description": "Normal field - default accept (accepted on both POST and PUT)"
+    },
+    {
+      "name": "createOnlyField",
+      "type": "string",
+      "maxLength": 100,
+      "accept": "create",
+      "description": "Immutable after creation - accepted on POST, stripped on PUT"
+    },
+    {
+      "name": "neverAcceptedField",
+      "type": "string",
+      "maxLength": 100,
+      "accept": "never",
+      "defaultValue": "server-generated",
+      "description": "Server-managed field - stripped from both POST and PUT"
+    }
+  ],
+  "timestamps": true,
+  "description": "Test entity for validating accept field control (input acceptance)"
+}

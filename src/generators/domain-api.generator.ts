@@ -212,11 +212,11 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     return `${drizzleImports}
 import { NotFoundException } from './exceptions.ts';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields, ${modelNameLower}CreateUnexposedFields, ${modelNameLower}ReadUnexposedFields } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields, ${modelNameLower}CreateUnexposedFields, ${modelNameLower}ReadUnexposedFields, ${modelNameLower}CreateUnacceptedFields, ${modelNameLower}UpdateUnacceptedFields } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 ${this.generateJunctionTableImports(model)}
 import { DomainHooks, JunctionTableHooks, DomainHookContext, QueryOptions } from './hooks.types.ts';
-import { buildWhereSQL, isWhereFilter, stripUnexposedFields, type SQL } from '../utils/filter.utils.ts';
+import { buildWhereSQL, isWhereFilter, stripUnexposedFields, stripUnacceptedFields, type SQL } from '../utils/filter.utils.ts';
 
 export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
@@ -234,10 +234,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Create a new ${modelName}
    */
   async create(input: New${modelName}, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+    // Strip unaccepted fields from input (before any hooks)
+    let strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}CreateUnacceptedFields);
+
     // Before-create hook (outside transaction, before validation)
-    let transformedInput: unknown = input;
+    // Hook can inject server-managed fields that were stripped
+    let transformedInput: unknown = strippedInput;
     if (this.hooks.beforeCreate) {
-      transformedInput = await this.hooks.beforeCreate(input, context);
+      transformedInput = await this.hooks.beforeCreate(strippedInput, context);
     }
 
     // Validate input before pre-hook
@@ -251,14 +255,12 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       processedInput = ${modelNameLower}InsertSchema.parse(processedInput) as New${modelName};
     }
 
-    // Strip protected timestamp fields (createdAt, updatedAt) - database defaults will apply
-    // Allow custom id field if provided (useful for migrations, testing, data imports)
-    const { createdAt: _, updatedAt: __, ...safeInput } = processedInput as unknown as Record<string, unknown>;
+    // Unaccepted fields (timestamps) already stripped via stripUnacceptedFields
 
     // Perform create operation
     const [created] = await tx
       .insert(${modelNameLower}Table)
-      .values(safeInput as New${modelName})
+      .values(processedInput as New${modelName})
       .returning();
 
     // Post-create hook (within transaction)
@@ -437,10 +439,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    * Update ${modelName}
    */
   async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+    // Strip unaccepted fields from input (before any hooks)
+    let strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}UpdateUnacceptedFields);
+
     // Before-update hook (outside transaction, before validation)
-    let transformedInput: unknown = input;
+    // Hook can inject server-managed fields that were stripped
+    let transformedInput: unknown = strippedInput;
     if (this.hooks.beforeUpdate) {
-      transformedInput = await this.hooks.beforeUpdate(id, input, context);
+      transformedInput = await this.hooks.beforeUpdate(id, strippedInput, context);
     }
 
     // Validate input before pre-hook (partial update)
@@ -454,15 +460,13 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       processedInput = ${modelNameLower}UpdateSchema.parse(processedInput) as Partial<New${modelName}>;
     }
 
-    // Strip protected fields (id, createdAt, updatedAt) to prevent modification
-    // These fields are managed by the domain layer and cannot be overridden
-    const { id: _, createdAt: __, updatedAt: ___, ...safeInput } = processedInput as unknown as Record<string, unknown>;
+    // Unaccepted fields (id, timestamps) already stripped via stripUnacceptedFields
 
     // Perform update
     const [updated] = await tx
       .update(${modelNameLower}Table)
       .set({
-        ...safeInput,
+        ...processedInput,
         ${model.timestamps ? 'updatedAt: Date.now(),' : ''}
       })
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id))

@@ -3,7 +3,8 @@ import {
   ValidationError,
   FieldDefinition,
   EnumDefinition,
-  ExposedType,
+  ExposeType,
+  AcceptType,
 } from '../types/model.types.ts';
 
 /**
@@ -319,10 +320,27 @@ export class ModelParser {
         }
       }
 
-      // Validate exposed field (boolean or ExposedConfig object)
-      if (field.exposed !== undefined) {
-        if (!this.validateExposedField(field.exposed, modelName, field.name as string)) {
+      // Validate expose field (boolean or ExposeConfig object)
+      if (field.expose !== undefined) {
+        if (!this.validateExposeField(field.expose, modelName, field.name as string)) {
           return null;
+        }
+      }
+
+      // Validate accept field
+      if (field.accept !== undefined) {
+        if (!this.validateAcceptField(field.accept, modelName, field.name as string)) {
+          return null;
+        }
+
+        // Warn about risky combinations: required + accept: "never" + no defaultValue
+        if (field.accept === 'never' && field.required && field.defaultValue === undefined) {
+          this.errors.push({
+            model: modelName,
+            field: field.name as string,
+            message: `Field '${field.name}' is required with accept: "never" but has no defaultValue. A beforeCreate hook MUST provide this value.`,
+            severity: 'warning'
+          });
         }
       }
 
@@ -602,31 +620,65 @@ export class ModelParser {
   }
 
   /**
-   * Validate exposed field configuration
+   * Validate expose field configuration
    * Only accepts string enum values: "default", "hidden", "create"
    */
-  private validateExposedField(
-    exposed: unknown,
+  private validateExposeField(
+    expose: unknown,
     modelName: string,
     fieldName: string
   ): boolean {
-    const validValues: ExposedType[] = ['default', 'hidden', 'create'];
+    const validValues: ExposeType[] = ['default', 'hidden', 'create'];
 
-    if (typeof exposed !== 'string') {
+    if (typeof expose !== 'string') {
       this.errors.push({
         model: modelName,
         field: fieldName,
-        message: `Field '${fieldName}' has invalid 'exposed' value: must be one of "default", "hidden", or "create"`,
+        message: `Field '${fieldName}' has invalid 'expose' value: must be one of "default", "hidden", or "create"`,
         severity: 'error'
       });
       return false;
     }
 
-    if (!validValues.includes(exposed as ExposedType)) {
+    if (!validValues.includes(expose as ExposeType)) {
       this.errors.push({
         model: modelName,
         field: fieldName,
-        message: `Field '${fieldName}' has invalid 'exposed' value: "${exposed}". Must be one of "default", "hidden", or "create"`,
+        message: `Field '${fieldName}' has invalid 'expose' value: "${expose}". Must be one of "default", "hidden", or "create"`,
+        severity: 'error'
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Validate accept field configuration
+   * Only accepts string enum values: "default", "create", "never"
+   */
+  private validateAcceptField(
+    accept: unknown,
+    modelName: string,
+    fieldName: string
+  ): boolean {
+    const validValues: AcceptType[] = ['default', 'create', 'never'];
+
+    if (typeof accept !== 'string') {
+      this.errors.push({
+        model: modelName,
+        field: fieldName,
+        message: `Field '${fieldName}' has invalid 'accept' value: must be one of "default", "create", or "never"`,
+        severity: 'error'
+      });
+      return false;
+    }
+
+    if (!validValues.includes(accept as AcceptType)) {
+      this.errors.push({
+        model: modelName,
+        field: fieldName,
+        message: `Field '${fieldName}' has invalid 'accept' value: "${accept}". Must be one of "default", "create", or "never"`,
         severity: 'error'
       });
       return false;

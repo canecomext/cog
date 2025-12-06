@@ -123,6 +123,10 @@ async function main() {
     const exposureTestEntityIds = await getAllIds('/api/exposuretestentity');
     console.log(`  Found ${exposureTestEntityIds.length} exposure test entities`);
 
+    logStep('Finding all acceptance test entities');
+    const acceptanceTestEntityIds = await getAllIds('/api/acceptancetestentity');
+    console.log(`  Found ${acceptanceTestEntityIds.length} acceptance test entities`);
+
     // ========================================
     // 2. DELETE JUNCTION TABLE RECORDS
     // ========================================
@@ -215,6 +219,17 @@ async function main() {
 
     for (const id of exposureTestEntityIds) {
       if (await safeDelete(`/api/exposuretestentity/${id}`, `exposure test entity ${id.slice(0, 8)}`)) {
+        totalDeleted++;
+      }
+    }
+
+    // ========================================
+    // 10. DELETE ACCEPTANCE TEST ENTITIES
+    // ========================================
+    logSection('10. Deleting Acceptance Test Entities');
+
+    for (const id of acceptanceTestEntityIds) {
+      if (await safeDelete(`/api/acceptancetestentity/${id}`, `acceptance test entity ${id.slice(0, 8)}`)) {
         totalDeleted++;
       }
     }

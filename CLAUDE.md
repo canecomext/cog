@@ -336,7 +336,8 @@ Converts to HTTP responses (404, 500, etc.)
 6. **PostGIS is always enabled** - Spatial types and GIST indexes work out of the box
 7. **Domain layer uses transport-agnostic exceptions** - Never use `HTTPException` in domain code, only `DomainException` or `NotFoundException`
 8. **REST layer handles exception conversion** - All domain exceptions converted to HTTP responses via `handleDomainException()`
-9. **Field exposure control** - Use `"exposed": "hidden"` (never visible) or `"exposed": "create"` (visible once on POST) to control field visibility. Works with `?include=` relationships too.
+9. **Field exposure control** - Use `"expose": "hidden"` (never visible) or `"expose": "create"` (visible once on POST) to control field visibility. Works with `?include=` relationships too.
+10. **Field accept control** - Use `"accept": "never"` (server-managed) or `"accept": "create"` (immutable after creation). Required fields with `accept: "never"` need `defaultValue` or `beforeCreate` hook.
 
 **See**: [WARP.md - Critical Gotchas & Edge Cases](./WARP.md#critical-gotchas--edge-cases)
 
