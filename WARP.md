@@ -260,7 +260,7 @@ COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (P
 - Foreign keys: `"references": { "model": "...", "field": "..." }`
 - Enums: Standard (single value) or bitwise (multiple values via integer flags)
 - Field descriptions: `"description": "Custom text"` for OpenAPI documentation
-- Field exposure: `"exposed": false` excludes field from filtering and REST responses (default: `true`)
+- Field exposure: `"exposed": "hidden"` or `"exposed": "create"` controls field visibility (default: visible everywhere)
 
 **Numeric Precision Limitation:**
 
@@ -707,22 +707,46 @@ interface FilterGroup {
 
 #### Field Exposure Control
 
-Fields can be marked as `exposed: false` to exclude them from filtering AND REST responses:
+Fields can control their visibility using the `exposed` property with three possible values:
 
+| Value | POST Response | GET/PUT/DELETE Response | Filterable |
+|-------|---------------|-------------------------|------------|
+| `"default"` (or omit) | ✓ Visible | ✓ Visible | ✓ Yes |
+| `"hidden"` | ✗ Stripped | ✗ Stripped | ✗ No |
+| `"create"` | ✓ Visible | ✗ Stripped | ✗ No |
+
+**Hidden Field (never visible):**
 ```json
 {
-  "name": "passwordHash",
-  "type": "string",
-  "exposed": false
+  "name": "internalScore",
+  "type": "integer",
+  "exposed": "hidden"
 }
 ```
 
-**When `exposed: false`:**
-- Field is excluded from filter validation (attempts to filter return 400)
-- Field is automatically stripped from all REST responses
-- Field remains usable in domain layer (hooks, internal logic)
+**Create-Only Field (visible once on creation):**
+```json
+{
+  "name": "apiSecret",
+  "type": "string",
+  "exposed": "create"
+}
+```
 
-**Default:** All fields have `exposed: true` unless explicitly set to `false`.
+**Common Use Cases:**
+
+| Use Case | Configuration | Effect |
+|----------|---------------|--------|
+| API secret (show once) | `"exposed": "create"` | Visible in POST response only, never returned after |
+| Internal field | `"exposed": "hidden"` | Completely hidden from REST layer |
+| Normal field | omit `exposed` | Visible in all operations (default) |
+
+**OpenAPI Impact:**
+- `{Model}` schema: Fields with `"hidden"` or `"create"` are excluded
+- `{Model}Input` schema: Fields with `"hidden"` are excluded
+- `{Model}Update` schema: Fields with `"hidden"` or `"create"` are excluded
+
+**Default:** All fields are fully visible unless `exposed` is explicitly set.
 
 #### Error Responses
 

@@ -3,6 +3,7 @@ import {
   ValidationError,
   FieldDefinition,
   EnumDefinition,
+  ExposedType,
 } from '../types/model.types.ts';
 
 /**
@@ -318,6 +319,13 @@ export class ModelParser {
         }
       }
 
+      // Validate exposed field (boolean or ExposedConfig object)
+      if (field.exposed !== undefined) {
+        if (!this.validateExposedField(field.exposed, modelName, field.name as string)) {
+          return null;
+        }
+      }
+
       validatedFields.push(field as unknown as FieldDefinition);
     }
 
@@ -588,6 +596,40 @@ export class ModelParser {
           return false;
         }
       }
+    }
+
+    return true;
+  }
+
+  /**
+   * Validate exposed field configuration
+   * Only accepts string enum values: "default", "hidden", "create"
+   */
+  private validateExposedField(
+    exposed: unknown,
+    modelName: string,
+    fieldName: string
+  ): boolean {
+    const validValues: ExposedType[] = ['default', 'hidden', 'create'];
+
+    if (typeof exposed !== 'string') {
+      this.errors.push({
+        model: modelName,
+        field: fieldName,
+        message: `Field '${fieldName}' has invalid 'exposed' value: must be one of "default", "hidden", or "create"`,
+        severity: 'error'
+      });
+      return false;
+    }
+
+    if (!validValues.includes(exposed as ExposedType)) {
+      this.errors.push({
+        model: modelName,
+        field: fieldName,
+        message: `Field '${fieldName}' has invalid 'exposed' value: "${exposed}". Must be one of "default", "hidden", or "create"`,
+        severity: 'error'
+      });
+      return false;
     }
 
     return true;

@@ -46,7 +46,7 @@ import { HTTPException } from '@hono/hono/http-exception';
 import { NotFoundException, DomainException } from '../domain/exceptions.ts';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
 import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import { ${modelName}, New${modelName}, ${modelNameLower}FieldMeta, ${modelNameLower}UnexposedFields } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelName}, New${modelName}, ${modelNameLower}FieldMeta, ${modelNameLower}CreateUnexposedFields, ${modelNameLower}ReadUnexposedFields } from '../schema/${modelNameLower}.schema.ts';
 import type { DefaultEnv } from './types.ts';
 import { convertBigIntToNumber, handleDomainException, parseWhereParam, validateFilter, stripUnexposedFields } from './helpers.ts';
 
@@ -107,8 +107,8 @@ ${
           context // Pass all context variables to domain hooks
         );
 
-        // Strip unexposed fields from response
-        const sanitizedData = stripUnexposedFields(result.data, ${modelNameLower}UnexposedFields);
+        // Strip unexposed fields from response (using read exposure for GET)
+        const sanitizedData = stripUnexposedFields(result.data, ${modelNameLower}ReadUnexposedFields);
 
         return c.json({
           data: convertBigIntToNumber(sanitizedData),
@@ -149,8 +149,8 @@ ${
           throw new HTTPException(404, { message: '${modelName} not found' });
         }
 
-        // Strip unexposed fields from response
-        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+        // Strip unexposed fields from response (using read exposure for GET)
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}ReadUnexposedFields);
 
         return c.json({ data: convertBigIntToNumber(sanitizedResult) });
       } catch (error) {
@@ -179,8 +179,8 @@ ${
           );
         });
 
-        // Strip unexposed fields from response
-        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+        // Strip unexposed fields from response (using create exposure for POST)
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}CreateUnexposedFields);
 
         return c.json({ data: convertBigIntToNumber(sanitizedResult) }, 201);
       } catch (error) {
@@ -211,8 +211,8 @@ ${
           );
         });
 
-        // Strip unexposed fields from response
-        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}UnexposedFields);
+        // Strip unexposed fields from response (using read exposure for PUT)
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}ReadUnexposedFields);
 
         return c.json({ data: convertBigIntToNumber(sanitizedResult) });
       } catch (error) {
@@ -241,7 +241,10 @@ ${
           );
         });
 
-        return c.json({ data: convertBigIntToNumber(result) });
+        // Strip unexposed fields from response (using read exposure for DELETE - inherits from read)
+        const sanitizedResult = stripUnexposedFields(result, ${modelNameLower}ReadUnexposedFields);
+
+        return c.json({ data: convertBigIntToNumber(sanitizedResult) });
       } catch (error) {
         handleDomainException(error);
       }

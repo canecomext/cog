@@ -51,8 +51,8 @@ try {
   await sql`DELETE FROM spatial_demo`;
   console.log('Cleaned spatial_demo');
 
-  await sql`DELETE FROM secure_entity`;
-  console.log('Cleaned secure_entity');
+  await sql`DELETE FROM exposure_test_entity`;
+  console.log('Cleaned exposure_test_entity');
 
   console.log('All tables cleaned successfully!');
 } catch (error) {

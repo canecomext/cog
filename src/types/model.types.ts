@@ -36,6 +36,12 @@ export interface EnumDefinition {
   useBitwise?: boolean; // Store as integer with bitwise flags for efficient queries
 }
 
+// Field exposure type - controls field visibility in responses and filtering
+// "default" (or omit) - visible in all responses, filterable
+// "hidden" - never visible in responses, not filterable
+// "create" - visible in POST response only, not visible in GET/PUT/DELETE, not filterable
+export type ExposedType = "default" | "hidden" | "create";
+
 // Field definition
 export interface FieldDefinition {
   name: string;
@@ -55,7 +61,7 @@ export interface FieldDefinition {
   dimensions?: number; // For PostGIS dimensions (2D, 3D, 4D)
   index?: boolean;
   description?: string; // Custom description for OpenAPI docs
-  exposed?: boolean; // Whether field is exposed in REST responses and filterable (default: true)
+  exposed?: ExposedType; // Field visibility: "default" | "hidden" | "create" (default: visible everywhere)
   references?: {
     model: string;
     field: string;

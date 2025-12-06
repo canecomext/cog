@@ -13,7 +13,7 @@
  * Cleanup: deno task test:clean
  */
 
-import { Assignment, Department, Employee, IDCard, Project, SecureEntity, Skill } from '../generated/index.ts';
+import { Assignment, Department, Employee, ExposureTestEntity, IDCard, Project, Skill } from '../generated/index.ts';
 import {
   assert,
   assertArray,
@@ -51,7 +51,7 @@ const createdIds = {
   skills: [] as string[],
   assignments: [] as string[],
   idCards: [] as string[],
-  secureEntities: [] as string[],
+  exposureTestEntities: [] as string[],
 };
 
 /**
@@ -688,87 +688,82 @@ async function main() {
     logSuccess('All filtering tests passed!');
 
     // ========================================
-    // 14. FIELD EXPOSURE CONTROL
+    // 14. FIELD EXPOSURE CONTROL (hidden vs create-only fields)
     // ========================================
-    logSection('14. Testing Field Exposure Control (exposed: false)');
+    logSection('14. Testing Field Exposure Control (hidden vs create-only fields)');
 
-    // 14.1 Create SecureEntity with unexposed fields
-    logStep('14.1 Create SecureEntity with secret fields');
-    const secureEntity = await POST('/api/secureentity', {
-      publicName: 'Test Entity',
-      secretToken: 'super-secret-token-123',
-      internalScore: 42,
-    }) as SecureEntity;
+    // 14.1 POST - verify hiddenField stripped, createOnlyField visible
+    logStep('14.1 Create ExposureTestEntity - verify field visibility');
+    const exposureEntity = await POST('/api/exposuretestentity', {
+      normalField: 'Normal Value',
+      hiddenField: 'This should be hidden',
+      createOnlyField: 'This should be visible on create only',
+    }) as ExposureTestEntity;
 
-    assertExists(secureEntity.id, 'secureEntity.id should exist');
-    assertEqual(secureEntity.publicName, 'Test Entity', 'publicName should be present');
-    assert(!('secretToken' in secureEntity), 'secretToken should be stripped from POST response');
-    assert(!('internalScore' in secureEntity), 'internalScore should be stripped from POST response');
-    createdIds.secureEntities.push(secureEntity.id);
-    logSuccess('✓ Unexposed fields stripped from POST response');
+    assertExists(exposureEntity.id, 'exposureEntity.id should exist');
+    assertEqual(exposureEntity.normalField, 'Normal Value', 'normalField should be present');
+    assert(!('hiddenField' in exposureEntity), 'hiddenField should be stripped from POST response');
+    assert('createOnlyField' in exposureEntity, 'createOnlyField should be visible in POST response');
+    assertEqual((exposureEntity as Record<string, unknown>).createOnlyField, 'This should be visible on create only', 'createOnlyField value should match');
+    createdIds.exposureTestEntities.push(exposureEntity.id);
+    logSuccess('✓ POST: hiddenField stripped, createOnlyField visible');
 
-    // 14.2 Unexposed fields stripped from GET by ID
-    logStep('14.2 Get SecureEntity by ID - verify unexposed fields stripped');
-    const fetchedEntity = await GET<SecureEntity>(`/api/secureentity/${secureEntity.id}`);
-    assertExists(fetchedEntity, 'fetchedEntity should exist');
-    assertEqual(fetchedEntity.publicName, 'Test Entity', 'publicName should be present');
-    assert(!('secretToken' in fetchedEntity), 'secretToken should be stripped from GET by ID');
-    assert(!('internalScore' in fetchedEntity), 'internalScore should be stripped from GET by ID');
-    logSuccess('✓ Unexposed fields stripped from GET by ID response');
+    // 14.2 GET - verify both hidden and create-only fields stripped
+    logStep('14.2 Get ExposureTestEntity by ID - verify both fields stripped');
+    const fetchedExposure = await GET<ExposureTestEntity>(`/api/exposuretestentity/${exposureEntity.id}`);
+    assertExists(fetchedExposure, 'fetchedExposure should exist');
+    assertEqual(fetchedExposure.normalField, 'Normal Value', 'normalField should be present');
+    assert(!('hiddenField' in fetchedExposure), 'hiddenField should be stripped from GET response');
+    assert(!('createOnlyField' in fetchedExposure), 'createOnlyField should be stripped from GET response');
+    logSuccess('✓ GET: both hiddenField and createOnlyField stripped');
 
-    // 14.3 Unexposed fields stripped from list response
-    logStep('14.3 List SecureEntities - verify unexposed fields stripped');
-    const entityList = await GET<{ data: SecureEntity[] }>('/api/secureentity');
-    assertArray(entityList.data, 'entityList.data should be array');
-    assert(entityList.data.length >= 1, 'Should have at least 1 entity');
-    for (const item of entityList.data) {
-      assert(!('secretToken' in (item as Record<string, unknown>)), 'secretToken should be stripped from list items');
-      assert(!('internalScore' in (item as Record<string, unknown>)), 'internalScore should be stripped from list items');
+    // 14.3 PUT - verify both hidden and create-only fields stripped
+    logStep('14.3 Update ExposureTestEntity - verify both fields stripped');
+    const updatedExposure = await PUT(`/api/exposuretestentity/${exposureEntity.id}`, {
+      normalField: 'Updated Normal Value',
+    }) as ExposureTestEntity;
+    assertEqual(updatedExposure.normalField, 'Updated Normal Value', 'normalField should be updated');
+    assert(!('hiddenField' in updatedExposure), 'hiddenField should be stripped from PUT response');
+    assert(!('createOnlyField' in updatedExposure), 'createOnlyField should be stripped from PUT response');
+    logSuccess('✓ PUT: both hiddenField and createOnlyField stripped');
+
+    // 14.4 List - verify both fields stripped from all items
+    logStep('14.4 List ExposureTestEntities - verify both fields stripped');
+    const exposureList = await GET<{ data: ExposureTestEntity[] }>('/api/exposuretestentity');
+    assertArray(exposureList.data, 'exposureList.data should be array');
+    assert(exposureList.data.length >= 1, 'Should have at least 1 entity');
+    for (const item of exposureList.data) {
+      assert(!('hiddenField' in (item as Record<string, unknown>)), 'hiddenField should be stripped from list items');
+      assert(!('createOnlyField' in (item as Record<string, unknown>)), 'createOnlyField should be stripped from list items');
     }
-    logSuccess('✓ Unexposed fields stripped from list response');
+    logSuccess('✓ List: both hiddenField and createOnlyField stripped from all items');
 
-    // 14.4 Unexposed fields stripped from PUT response
-    logStep('14.4 Update SecureEntity - verify unexposed fields stripped');
-    const updatedEntity = await PUT(`/api/secureentity/${secureEntity.id}`, {
-      publicName: 'Updated Entity',
-    }) as SecureEntity;
-    assertEqual(updatedEntity.publicName, 'Updated Entity', 'publicName should be updated');
-    assert(!('secretToken' in updatedEntity), 'secretToken should be stripped from PUT response');
-    assert(!('internalScore' in updatedEntity), 'internalScore should be stripped from PUT response');
-    logSuccess('✓ Unexposed fields stripped from PUT response');
-
-    // 14.5 Filter on unexposed field should return 400
-    logStep('14.5 Filter on unexposed string field (secretToken) - should return 400');
-    const filterSecretTokenResult = await REQUEST(
+    // 14.5 Filter on hiddenField - should return 400
+    logStep('14.5 Filter on hiddenField - should return 400');
+    const filterHiddenResult = await REQUEST(
       'GET',
-      `/api/secureentity?where=${encodeFilter({ field: 'secretToken', op: 'eq', value: 'x' })}`,
+      `/api/exposuretestentity?where=${encodeFilter({ field: 'hiddenField', op: 'eq', value: 'x' })}`,
     );
-    assertEqual(filterSecretTokenResult.status, 400, 'Filtering on unexposed field should return 400');
-    assert(
-      (filterSecretTokenResult.error?.toLowerCase().includes('not filterable') ||
-        filterSecretTokenResult.error?.toLowerCase().includes('secrettoken')) ?? false,
-      'Error should mention field is not filterable',
-    );
-    logSuccess('✓ Filtering on unexposed string field returns 400');
+    assertEqual(filterHiddenResult.status, 400, 'Filtering on hiddenField should return 400');
+    logSuccess('✓ Filtering on hiddenField returns 400');
 
-    // 14.6 Filter on unexposed integer field should return 400
-    logStep('14.6 Filter on unexposed integer field (internalScore) - should return 400');
-    const filterInternalScoreResult = await REQUEST(
+    // 14.6 Filter on createOnlyField - should return 400
+    logStep('14.6 Filter on createOnlyField - should return 400');
+    const filterCreateOnlyResult = await REQUEST(
       'GET',
-      `/api/secureentity?where=${encodeFilter({ field: 'internalScore', op: 'gte', value: 10 })}`,
+      `/api/exposuretestentity?where=${encodeFilter({ field: 'createOnlyField', op: 'eq', value: 'x' })}`,
     );
-    assertEqual(filterInternalScoreResult.status, 400, 'Filtering on unexposed integer field should return 400');
-    logSuccess('✓ Filtering on unexposed integer field returns 400');
+    assertEqual(filterCreateOnlyResult.status, 400, 'Filtering on createOnlyField should return 400');
+    logSuccess('✓ Filtering on createOnlyField returns 400');
 
-    // 14.7 Filter on exposed field should still work
-    logStep('14.7 Filter on exposed field (publicName) - should work');
-    const filterExposedResult = await GET<{ data: SecureEntity[]; pagination: { total: number } }>(
-      `/api/secureentity?where=${encodeFilter({ field: 'publicName', op: 'eq', value: 'Updated Entity' })}`,
+    // 14.7 Filter on normalField - should succeed
+    logStep('14.7 Filter on normalField - should succeed');
+    const filterNormalResult = await GET<{ data: ExposureTestEntity[]; pagination: { total: number } }>(
+      `/api/exposuretestentity?where=${encodeFilter({ field: 'normalField', op: 'eq', value: 'Updated Normal Value' })}`,
     );
-    assertArray(filterExposedResult.data, 'filterExposedResult.data');
-    assert(filterExposedResult.data.length >= 1, 'Should find at least 1 entity');
-    assertEqual((filterExposedResult.data[0] as SecureEntity).publicName, 'Updated Entity', 'Should match the updated entity');
-    logSuccess('✓ Filtering on exposed field works correctly');
+    assertArray(filterNormalResult.data, 'filterNormalResult.data');
+    assert(filterNormalResult.data.length >= 1, 'Should find at least 1 entity');
+    logSuccess('✓ Filtering on normalField works correctly');
 
     logSuccess('All field exposure tests passed!');
 
@@ -783,7 +778,7 @@ async function main() {
     console.log(`  Projects created: ${createdIds.projects.length}`);
     console.log(`  Assignments created: ${createdIds.assignments.length}`);
     console.log(`  ID Cards created: ${createdIds.idCards.length}`);
-    console.log(`  Secure Entities created: ${createdIds.secureEntities.length}`);
+    console.log(`  Exposure Test Entities created: ${createdIds.exposureTestEntities.length}`);
     console.log(`\nTip: Run 'deno task db:clean' to remove test data\n`);
 
     Deno.exit(0);

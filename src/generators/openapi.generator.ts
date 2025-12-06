@@ -1,4 +1,22 @@
-import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition, ExposedType } from '../types/model.types.ts';
+
+/**
+ * Helper function to normalize exposed config to a consistent object format
+ * Handles string enum values: "default", "hidden", "create"
+ */
+function normalizeExposed(exposed?: ExposedType): { create: boolean; read: boolean } {
+  if (exposed === undefined || exposed === 'default') {
+    return { create: true, read: true };
+  }
+  if (exposed === 'hidden') {
+    return { create: false, read: false };
+  }
+  if (exposed === 'create') {
+    return { create: true, read: false };
+  }
+  // fallback (should never happen with proper validation)
+  return { create: true, read: true };
+}
 
 /**
  * Generates OpenAPI 3.1.0 specification from model definitions
@@ -400,6 +418,15 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
 
   /**
    * Generate schema for a model
+   * @param model - The model definition
+   * @param isInput - If true, generates input schema (for POST - create)
+   * @param isUpdate - If true, generates update schema (for PUT - update)
+   * @returns OpenAPI schema object
+   *
+   * Schema types and their exposure rules:
+   * - {Model} (isInput=false, isUpdate=false): Response schema - uses read exposure
+   * - {Model}Input (isInput=true, isUpdate=false): Create schema - uses create exposure
+   * - {Model}Update (isInput=true, isUpdate=true): Update schema - uses read exposure (same as response)
    */
   private generateModelSchema(
     model: ModelDefinition,
@@ -421,6 +448,24 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
     for (const field of model.fields) {
       // Skip generated fields in input schemas
       if (isInput && field.primaryKey && field.defaultValue) {
+        continue;
+      }
+
+      // Check field exposure based on schema type
+      const exposedConfig = normalizeExposed(field.exposed);
+
+      // Determine if field should be included based on schema type
+      let shouldInclude: boolean;
+      if (isInput && !isUpdate) {
+        // Input/Create schema uses create exposure
+        shouldInclude = exposedConfig.create;
+      } else {
+        // Response schema and Update schema both use read exposure
+        shouldInclude = exposedConfig.read;
+      }
+
+      // Skip unexposed fields
+      if (!shouldInclude) {
         continue;
       }
 

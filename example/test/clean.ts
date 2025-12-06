@@ -119,9 +119,9 @@ async function main() {
     const departmentIds = await getAllIds('/api/department');
     console.log(`  Found ${departmentIds.length} departments`);
 
-    logStep('Finding all secure entities');
-    const secureEntityIds = await getAllIds('/api/secureentity');
-    console.log(`  Found ${secureEntityIds.length} secure entities`);
+    logStep('Finding all exposure test entities');
+    const exposureTestEntityIds = await getAllIds('/api/exposuretestentity');
+    console.log(`  Found ${exposureTestEntityIds.length} exposure test entities`);
 
     // ========================================
     // 2. DELETE JUNCTION TABLE RECORDS
@@ -209,12 +209,12 @@ async function main() {
     }
 
     // ========================================
-    // 9. DELETE SECURE ENTITIES
+    // 9. DELETE EXPOSURE TEST ENTITIES
     // ========================================
-    logSection('9. Deleting Secure Entities');
+    logSection('9. Deleting Exposure Test Entities');
 
-    for (const id of secureEntityIds) {
-      if (await safeDelete(`/api/secureentity/${id}`, `secure entity ${id.slice(0, 8)}`)) {
+    for (const id of exposureTestEntityIds) {
+      if (await safeDelete(`/api/exposuretestentity/${id}`, `exposure test entity ${id.slice(0, 8)}`)) {
         totalDeleted++;
       }
     }
