@@ -51,14 +51,33 @@ import { type WhereFilter } from '../utils/filter.utils.ts';
 export type DomainHookContext<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> = DomainEnvVars;
 
 /**
- * Filter options for findMany operations
- * - where: Can be a WhereFilter object (from REST) or raw SQL (from hooks)
- * - include: Array of relationship names to eagerly load
+ * Query options for domain operations
+ * - where: Can be a WhereFilter object (from REST) or raw SQL (from hooks) - findMany only
+ * - include: Array of relationship names to eagerly load - find* methods
+ * - limit/offset/orderBy/orderDirection: Pagination - findMany only
+ * - skipSanitization: Skip field exposure filtering (default: false) - all methods
  */
-export interface FilterOptions {
+export interface QueryOptions {
+  // Filtering (findMany only)
   where?: WhereFilter | SQL;
+
+  // Pagination (findMany only)
+  limit?: number;
+  offset?: number;
+  orderBy?: string;
+  orderDirection?: 'asc' | 'desc';
+
+  // Relationship loading (find* methods)
   include?: string[];
+
+  // Sanitization control (all methods, default: false)
+  skipSanitization?: boolean;
 }
+
+/**
+ * @deprecated Use QueryOptions instead
+ */
+export type FilterOptions = QueryOptions;
 
 /**
  * Domain layer hooks with input validation.
@@ -118,6 +137,9 @@ export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends 
   afterFindMany?: (results: T[], context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
 }
 
+/**
+ * @deprecated Use QueryOptions instead (pagination fields are now in QueryOptions)
+ */
 export interface PaginationOptions {
   limit?: number;
   offset?: number;
@@ -190,11 +212,11 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     return `${drizzleImports}
 import { NotFoundException } from './exceptions.ts';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields, ${modelNameLower}CreateUnexposedFields, ${modelNameLower}ReadUnexposedFields } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 ${this.generateJunctionTableImports(model)}
-import { DomainHooks, JunctionTableHooks, DomainHookContext, PaginationOptions, FilterOptions } from './hooks.types.ts';
-import { buildWhereSQL, isWhereFilter, type SQL } from '../utils/filter.utils.ts';
+import { DomainHooks, JunctionTableHooks, DomainHookContext, QueryOptions } from './hooks.types.ts';
+import { buildWhereSQL, isWhereFilter, stripUnexposedFields, type SQL } from '../utils/filter.utils.ts';
 
 export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
@@ -211,7 +233,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
   /**
    * Create a new ${modelName}
    */
-  async create(input: New${modelName}, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+  async create(input: New${modelName}, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Before-create hook (outside transaction, before validation)
     let transformedInput: unknown = input;
     if (this.hooks.beforeCreate) {
@@ -253,13 +275,19 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       }, 0);
     }
 
+    // Sanitize response (strip unexposed fields) unless skipped
+    // For create, use CreateUnexposedFields (strips hidden only, keeps create-only visible)
+    if (!options?.skipSanitization) {
+      result = stripUnexposedFields(result, ${modelNameLower}CreateUnexposedFields) as ${modelName};
+    }
+
     return result;
   }
 
   /**
    * Find ${modelName} by ID
    */
-  async findById(id: string, tx?: DbTransaction, options?: FilterOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName} | null> {
+  async findById(id: string, tx?: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName} | null> {
     // Before-find-by-id hook (outside transaction)
     if (this.hooks.beforeFindById) {
       id = await this.hooks.beforeFindById(id, context);
@@ -299,6 +327,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       }, 0);
     }
 
+    // Sanitize response (strip unexposed fields) unless skipped
+    if (finalResult && !options?.skipSanitization) {
+      finalResult = stripUnexposedFields(finalResult, ${modelNameLower}ReadUnexposedFields) as ${modelName};
+    }
+
     return finalResult;
   }
 
@@ -307,13 +340,12 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async findMany(
     tx?: DbTransaction,
-    filter?: FilterOptions,
-    pagination?: PaginationOptions,
+    options?: QueryOptions,
     context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Before-find-many hook (outside transaction)
     if (this.hooks.beforeFindMany) {
-      filter = await this.hooks.beforeFindMany(filter, context) as FilterOptions | undefined;
+      options = await this.hooks.beforeFindMany(options, context) as QueryOptions | undefined;
     }
 
     // Use provided transaction or get database instance
@@ -321,18 +353,18 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
 
     // Pre-find hook
     if (this.hooks.preFindMany) {
-      filter = await this.hooks.preFindMany(tx, filter, context);
+      options = await this.hooks.preFindMany(tx, options, context);
     }
 
     // Convert WhereFilter to SQL if needed
     let whereSQL: SQL | undefined;
-    if (filter?.where) {
-      if (isWhereFilter(filter.where)) {
+    if (options?.where) {
+      if (isWhereFilter(options.where)) {
         // Convert WhereFilter object to SQL using buildWhereSQL
-        whereSQL = buildWhereSQL(filter.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields);
+        whereSQL = buildWhereSQL(options.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields);
       } else {
         // Already SQL (from hooks or direct usage)
-        whereSQL = filter.where as SQL;
+        whereSQL = options.where as SQL;
       }
     }
 
@@ -344,24 +376,22 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       baseQuery = baseQuery.where(whereSQL) as unknown as typeof baseQuery;
     }
 
-    // Apply pagination
-    if (pagination) {
-      if (pagination.orderBy) {
-        const orderFn = pagination.orderDirection === 'desc' ? desc : asc;
-        // Type-safe column access
-        const column = ${modelNameLower}Table[pagination.orderBy as keyof typeof ${modelNameLower}Table] as AnyColumn;
-        if (column) {
-          baseQuery = baseQuery.orderBy(orderFn(column)) as unknown as typeof baseQuery;
-        }
-      }
-      if (pagination.limit) {
-        baseQuery = baseQuery.limit(pagination.limit) as unknown as typeof baseQuery;
-      }
-      if (pagination.offset) {
-        baseQuery = baseQuery.offset(pagination.offset) as unknown as typeof baseQuery;
+    // Apply pagination from options
+    if (options?.orderBy) {
+      const orderFn = options.orderDirection === 'desc' ? desc : asc;
+      // Type-safe column access
+      const column = ${modelNameLower}Table[options.orderBy as keyof typeof ${modelNameLower}Table] as AnyColumn;
+      if (column) {
+        baseQuery = baseQuery.orderBy(orderFn(column)) as unknown as typeof baseQuery;
       }
     }
-    
+    if (options?.limit) {
+      baseQuery = baseQuery.limit(options.limit) as unknown as typeof baseQuery;
+    }
+    if (options?.offset) {
+      baseQuery = baseQuery.offset(options.offset) as unknown as typeof baseQuery;
+    }
+
     const query = baseQuery;
 
     // Execute query
@@ -381,8 +411,8 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     const [{ count }] = await countQuery;
 
     // Post-find hook
-    const finalResults = this.hooks.postFindMany
-      ? await this.hooks.postFindMany(filter, results, tx, context)
+    let finalResults = this.hooks.postFindMany
+      ? await this.hooks.postFindMany(options, results, tx, context)
       : results;
 
     // After-find hook (outside transaction, after post-hook)
@@ -390,6 +420,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       setTimeout(() => {
         this.hooks.afterFindMany!(finalResults, context).catch(console.error);
       }, 0);
+    }
+
+    // Sanitize response (strip unexposed fields) unless skipped
+    if (!options?.skipSanitization) {
+      finalResults = stripUnexposedFields(finalResults, ${modelNameLower}ReadUnexposedFields) as ${modelName}[];
     }
 
     return {
@@ -401,7 +436,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
   /**
    * Update ${modelName}
    */
-  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+  async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Before-update hook (outside transaction, before validation)
     let transformedInput: unknown = input;
     if (this.hooks.beforeUpdate) {
@@ -450,13 +485,18 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       }, 0);
     }
 
+    // Sanitize response (strip unexposed fields) unless skipped
+    if (!options?.skipSanitization) {
+      result = stripUnexposedFields(result, ${modelNameLower}ReadUnexposedFields) as ${modelName};
+    }
+
     return result;
   }
 
   /**
    * Delete ${modelName}
    */
-  async delete(id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
+  async delete(id: string, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Before-delete hook (outside transaction)
     if (this.hooks.beforeDelete) {
       await this.hooks.beforeDelete(id, context);
@@ -486,6 +526,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       setTimeout(() => {
         this.hooks.afterDelete!(result, context).catch(console.error);
       }, 0);
+    }
+
+    // Sanitize response (strip unexposed fields) unless skipped
+    if (!options?.skipSanitization) {
+      result = stripUnexposedFields(result, ${modelNameLower}ReadUnexposedFields) as ${modelName};
     }
 
     return result;
@@ -528,115 +573,130 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Generate relation imports
+   * Generate relation imports (schema tables and domain instances)
    */
   private generateRelationImports(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
       return '';
     }
 
-    const imports: string[] = [];
-    const addedImports = new Set<string>();
+    const schemaImports: string[] = [];
+    const domainImports: string[] = [];
+    const addedSchemaImports = new Set<string>();
+    const addedDomainImports = new Set<string>();
 
     for (const rel of model.relationships) {
-      if (rel.target !== model.name && !addedImports.has(rel.target)) {
-        imports.push(
-          `import { ${rel.target.toLowerCase()}Table, type ${rel.target} } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
-        );
-        addedImports.add(rel.target);
-      }
-
-      // Add junction table imports for manyToMany relationships
-      if (rel.type === 'manyToMany' && rel.through && !addedImports.has(rel.through)) {
-        imports.push(
+      // Schema imports for junction tables (manyToMany still needs direct table access)
+      if (rel.type === 'manyToMany' && rel.through && !addedSchemaImports.has(rel.through)) {
+        schemaImports.push(
           `import { ${rel.through.toLowerCase()}Table } from '../schema/${rel.through.toLowerCase()}.schema.ts';`,
         );
-        addedImports.add(rel.through);
+        addedSchemaImports.add(rel.through);
+
+        // Also import target table and type for manyToMany get* methods (skip self-referential)
+        if (rel.target !== model.name && !addedSchemaImports.has(rel.target)) {
+          schemaImports.push(
+            `import { ${rel.target.toLowerCase()}Table, type ${rel.target} } from '../schema/${rel.target.toLowerCase()}.schema.ts';`,
+          );
+          addedSchemaImports.add(rel.target);
+        }
+      }
+
+      // Domain imports for related entities (skip self-referential - will use this.findById/findMany)
+      if (rel.target !== model.name && !addedDomainImports.has(rel.target)) {
+        domainImports.push(
+          `import { ${rel.target.toLowerCase()}Domain } from './${rel.target.toLowerCase()}.domain.ts';`,
+        );
+        addedDomainImports.add(rel.target);
       }
     }
 
-    return imports.join('\n');
+    return [...schemaImports, ...domainImports].join('\n');
   }
 
   /**
-   * Generate relationship includes
+   * Generate relationship includes using domain methods
    */
   private generateRelationshipIncludes(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
       return '// No relationships to include';
     }
 
+    const modelNameLower = model.name.toLowerCase();
+
     // Generate the include logic for relationships
     let code = '\n    // Handle relationship includes\n';
     code += '    if (options?.include && options.include.length > 0 && found) {\n';
 
     for (const rel of model.relationships) {
+      const targetDomain = rel.target === model.name
+        ? 'this' // Self-referential
+        : `${rel.target.toLowerCase()}Domain`;
+
       code += `        if (options.include.includes('${rel.name}')) {\n`;
 
       if (rel.type === 'manyToOne') {
-        // For manyToOne, fetch the single related entity
+        // For manyToOne, fetch the single related entity via domain
         const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
-        code += `          // Load ${rel.name} (manyToOne)\n`;
+        code += `          // Load ${rel.name} (manyToOne) via domain\n`;
         code += `          if (found.${foreignKey}) {\n`;
-        code += `            const ${rel.name} = await db\n`;
-        code += `              .select()\n`;
-        code += `              .from(${rel.target.toLowerCase()}Table)\n`;
-        code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
-        code += `              .limit(1);\n`;
-        code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
+        code += `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
+        code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
         code += `          } else {\n`;
         code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
         code += `          }\n`;
       } else if (rel.type === 'oneToMany') {
-        // For oneToMany, fetch the array of related entities
+        // For oneToMany, fetch the array of related entities via domain
         const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
-        code += `          // Load ${rel.name} (oneToMany)\n`;
-        code += `          const ${rel.name} = await db\n`;
-        code += `            .select()\n`;
-        code += `            .from(${rel.target.toLowerCase()}Table)\n`;
-        code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id));\n`;
+        code += `          // Load ${rel.name} (oneToMany) via domain\n`;
+        code += `          const { data: ${rel.name} } = await ${targetDomain}.findMany(tx, {\n`;
+        code += `            where: { and: [{ field: '${foreignKey}', op: 'eq', value: id }] },\n`;
+        code += `            skipSanitization: options.skipSanitization\n`;
+        code += `          });\n`;
         code += `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
       } else if (rel.type === 'manyToMany' && rel.through) {
-        // For manyToMany, fetch through junction table
+        // For manyToMany, get IDs from junction table then fetch via domain
         const junctionTable = rel.through.toLowerCase();
         const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
         const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
-        code += `          // Load ${rel.name} (manyToMany)\n`;
-        code += `          const ${rel.name}Result = await db\n`;
-        code += `            .select()\n`;
+        code += `          // Load ${rel.name} (manyToMany) via domain\n`;
+        code += `          const ${rel.name}JunctionData = await db\n`;
+        code += `            .select({ targetId: ${junctionTable}Table.${targetFK} })\n`;
         code += `            .from(${junctionTable}Table)\n`;
-        code +=
-          `            .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `            .where(eq(${junctionTable}Table.${sourceFK}, id));\n`;
-        code +=
-          `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Result.map(r => r.${rel.target.toLowerCase()});\n`;
+        code += `          const ${rel.name}TargetIds = ${rel.name}JunctionData.map(j => j.targetId);\n`;
+        code += `          if (${rel.name}TargetIds.length > 0) {\n`;
+        code += `            const { data: ${rel.name} } = await ${targetDomain}.findMany(tx, {\n`;
+        code += `              where: { and: [{ field: 'id', op: 'in', value: ${rel.name}TargetIds }] },\n`;
+        code += `              skipSanitization: options.skipSanitization\n`;
+        code += `            });\n`;
+        code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
+        code += `          } else {\n`;
+        code += `            (found as unknown as Record<string, unknown>).${rel.name} = [];\n`;
+        code += `          }\n`;
       } else if (rel.type === 'oneToOne') {
         // For oneToOne, check if foreign key is on this model
         const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
         if (hasFK) {
-          // Foreign key is on this model, fetch the related entity
+          // Foreign key is on this model, fetch the related entity via domain
           const foreignKey = rel.foreignKey!;
-          code += `          // Load ${rel.name} (oneToOne - owned)\n`;
+          code += `          // Load ${rel.name} (oneToOne - owned) via domain\n`;
           code += `          if (found.${foreignKey}) {\n`;
-          code += `            const ${rel.name} = await db\n`;
-          code += `              .select()\n`;
-          code += `              .from(${rel.target.toLowerCase()}Table)\n`;
-          code += `              .where(eq(${rel.target.toLowerCase()}Table.id, found.${foreignKey}))\n`;
-          code += `              .limit(1);\n`;
-          code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
+          code += `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
+          code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
           code += `          } else {\n`;
           code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
           code += `          }\n`;
         } else {
-          // Foreign key is on the target model, fetch the related entity
+          // Foreign key is on the target model, fetch the related entity via domain
           const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
-          code += `          // Load ${rel.name} (oneToOne - inverse)\n`;
-          code += `          const ${rel.name} = await db\n`;
-          code += `            .select()\n`;
-          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
-          code += `            .where(eq(${rel.target.toLowerCase()}Table.${foreignKey}, id))\n`;
-          code += `            .limit(1);\n`;
-          code += `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}[0] || null;\n`;
+          code += `          // Load ${rel.name} (oneToOne - inverse) via domain\n`;
+          code += `          const { data: ${rel.name}List } = await ${targetDomain}.findMany(tx, {\n`;
+          code += `            where: { and: [{ field: '${foreignKey}', op: 'eq', value: id }] },\n`;
+          code += `            limit: 1,\n`;
+          code += `            skipSanitization: options.skipSanitization\n`;
+          code += `          });\n`;
+          code += `          (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name}List[0] || null;\n`;
         }
       }
 
@@ -649,7 +709,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Generate relationship includes for findMany
+   * Generate relationship includes for findMany using domain methods
    */
   private generateRelationshipIncludesForMany(model: ModelDefinition): string {
     if (!model.relationships || model.relationships.length === 0) {
@@ -658,24 +718,27 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     // Generate the include logic for relationships in findMany
     let code = '// Handle relationship includes for multiple results\n';
-    code += '    if (filter?.include && filter.include.length > 0 && results.length > 0) {\n';
+    code += '    if (options?.include && options.include.length > 0 && results.length > 0) {\n';
 
     for (const rel of model.relationships) {
-      code += `      if (filter.include.includes('${rel.name}')) {\n`;
+      const targetDomain = rel.target === model.name
+        ? 'this' // Self-referential
+        : `${rel.target.toLowerCase()}Domain`;
+
+      code += `      if (options.include.includes('${rel.name}')) {\n`;
 
       if (rel.type === 'manyToOne') {
-        // For manyToOne, batch fetch related entities
+        // For manyToOne, batch fetch related entities via domain
         const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
-        code += `        // Load ${rel.name} (manyToOne) for all results\n`;
+        code += `        // Load ${rel.name} (manyToOne) for all results via domain\n`;
         code +=
-          `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+          `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))] as string[];\n`;
         code += `        if (${rel.name}Ids.length > 0) {\n`;
-        code += `          const ${rel.name}Map = new Map();\n`;
-        code += `          const ${rel.name}Data = await db\n`;
-        code += `            .select()\n`;
-        code += `            .from(${rel.target.toLowerCase()}Table)\n`;
-        code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
-        code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
+        code += `          const { data: ${rel.name}Data } = await ${targetDomain}.findMany(tx, {\n`;
+        code += `            where: { and: [{ field: 'id', op: 'in', value: ${rel.name}Ids }] },\n`;
+        code += `            skipSanitization: options.skipSanitization\n`;
+        code += `          });\n`;
+        code += `          const ${rel.name}Map = new Map(${rel.name}Data.map(item => [item.id, item]));\n`;
         code += `          results.forEach(result => {\n`;
         code +=
           `            (result as unknown as Record<string, unknown>).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
@@ -686,19 +749,20 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `          });\n`;
         code += `        }\n`;
       } else if (rel.type === 'oneToMany') {
-        // For oneToMany, batch fetch all related entities
+        // For oneToMany, batch fetch all related entities via domain
         const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
-        code += `        // Load ${rel.name} (oneToMany) for all results\n`;
+        code += `        // Load ${rel.name} (oneToMany) for all results via domain\n`;
         code += `        const resultIds = results.map(r => r.id);\n`;
-        code += `        const ${rel.name}Data = await db\n`;
-        code += `          .select()\n`;
-        code += `          .from(${rel.target.toLowerCase()}Table)\n`;
-        code += `          .where(inArray(${rel.target.toLowerCase()}Table.${foreignKey}, resultIds));\n`;
+        code += `        const { data: ${rel.name}Data } = await ${targetDomain}.findMany(tx, {\n`;
+        code += `          where: { and: [{ field: '${foreignKey}', op: 'in', value: resultIds }] },\n`;
+        code += `          skipSanitization: options.skipSanitization\n`;
+        code += `        });\n`;
         code += `        const ${rel.name}Map = new Map<string, unknown[]>();\n`;
         code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
         code += `        ${rel.name}Data.forEach(item => {\n`;
-        code += `          if (item.${foreignKey}) {\n`;
-        code += `            const list = ${rel.name}Map.get(item.${foreignKey});\n`;
+        code += `          const fkValue = (item as unknown as Record<string, unknown>).${foreignKey} as string;\n`;
+        code += `          if (fkValue) {\n`;
+        code += `            const list = ${rel.name}Map.get(fkValue);\n`;
         code += `            if (list) list.push(item);\n`;
         code += `          }\n`;
         code += `        });\n`;
@@ -707,46 +771,56 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           `          (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
         code += `        });\n`;
       } else if (rel.type === 'manyToMany' && rel.through) {
-        // For manyToMany, batch fetch through junction table
+        // For manyToMany, get IDs from junction table then batch fetch via domain
         const junctionTable = rel.through.toLowerCase();
         const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
         const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
-        code += `        // Load ${rel.name} (manyToMany) for all results\n`;
+        code += `        // Load ${rel.name} (manyToMany) for all results via domain\n`;
         code += `        const resultIds = results.map(r => r.id);\n`;
-        code += `        const ${rel.name}Data = await db\n`;
-        code += `          .select()\n`;
+        code += `        const ${rel.name}JunctionData = await db\n`;
+        code += `          .select({ sourceId: ${junctionTable}Table.${sourceFK}, targetId: ${junctionTable}Table.${targetFK} })\n`;
         code += `          .from(${junctionTable}Table)\n`;
-        code +=
-          `          .innerJoin(${rel.target.toLowerCase()}Table, eq(${junctionTable}Table.${targetFK}, ${rel.target.toLowerCase()}Table.id))\n`;
         code += `          .where(inArray(${junctionTable}Table.${sourceFK}, resultIds));\n`;
-        code += `        const ${rel.name}Map = new Map<string, unknown[]>();\n`;
-        code += `        resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
-        code += `        ${rel.name}Data.forEach(item => {\n`;
-        code += `          if (item.${junctionTable}.${sourceFK}) {\n`;
-        code += `            const list = ${rel.name}Map.get(item.${junctionTable}.${sourceFK});\n`;
-        code += `            if (list) list.push(item.${rel.target.toLowerCase()});\n`;
-        code += `          }\n`;
-        code += `        });\n`;
-        code += `        results.forEach(result => {\n`;
+        code += `        const ${rel.name}TargetIds = [...new Set(${rel.name}JunctionData.map(j => j.targetId))];\n`;
+        code += `        if (${rel.name}TargetIds.length > 0) {\n`;
+        code += `          const { data: ${rel.name}Data } = await ${targetDomain}.findMany(tx, {\n`;
+        code += `            where: { and: [{ field: 'id', op: 'in', value: ${rel.name}TargetIds }] },\n`;
+        code += `            skipSanitization: options.skipSanitization\n`;
+        code += `          });\n`;
+        code += `          const ${rel.name}EntityMap = new Map(${rel.name}Data.map(item => [item.id, item]));\n`;
+        code += `          const ${rel.name}Map = new Map<string, unknown[]>();\n`;
+        code += `          resultIds.forEach(id => ${rel.name}Map.set(id, []));\n`;
+        code += `          ${rel.name}JunctionData.forEach(j => {\n`;
+        code += `            const entity = ${rel.name}EntityMap.get(j.targetId);\n`;
+        code += `            if (entity) {\n`;
+        code += `              const list = ${rel.name}Map.get(j.sourceId);\n`;
+        code += `              if (list) list.push(entity);\n`;
+        code += `            }\n`;
+        code += `          });\n`;
+        code += `          results.forEach(result => {\n`;
         code +=
-          `          (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
-        code += `        });\n`;
+          `            (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || [];\n`;
+        code += `          });\n`;
+        code += `        } else {\n`;
+        code += `          results.forEach(result => {\n`;
+        code += `            (result as unknown as Record<string, unknown>).${rel.name} = [];\n`;
+        code += `          });\n`;
+        code += `        }\n`;
       } else if (rel.type === 'oneToOne') {
-        // For oneToOne, batch fetch related entities
+        // For oneToOne, batch fetch related entities via domain
         const hasFK = model.fields.some((f) => f.name === rel.foreignKey);
         if (hasFK) {
           // Foreign key is on this model
           const foreignKey = rel.foreignKey!;
-          code += `        // Load ${rel.name} (oneToOne - owned) for all results\n`;
+          code += `        // Load ${rel.name} (oneToOne - owned) for all results via domain\n`;
           code +=
-            `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))];\n`;
+            `        const ${rel.name}Ids = [...new Set(results.map(r => r.${foreignKey}).filter(id => id !== null && id !== undefined))] as string[];\n`;
           code += `        if (${rel.name}Ids.length > 0) {\n`;
-          code += `          const ${rel.name}Map = new Map();\n`;
-          code += `          const ${rel.name}Data = await db\n`;
-          code += `            .select()\n`;
-          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
-          code += `            .where(inArray(${rel.target.toLowerCase()}Table.id, ${rel.name}Ids));\n`;
-          code += `          ${rel.name}Data.forEach(item => ${rel.name}Map.set(item.id, item));\n`;
+          code += `          const { data: ${rel.name}Data } = await ${targetDomain}.findMany(tx, {\n`;
+          code += `            where: { and: [{ field: 'id', op: 'in', value: ${rel.name}Ids }] },\n`;
+          code += `            skipSanitization: options.skipSanitization\n`;
+          code += `          });\n`;
+          code += `          const ${rel.name}Map = new Map(${rel.name}Data.map(item => [item.id, item]));\n`;
           code += `          results.forEach(result => {\n`;
           code +=
             `            (result as unknown as Record<string, unknown>).${rel.name} = result.${foreignKey} ? ${rel.name}Map.get(result.${foreignKey}) || null : null;\n`;
@@ -759,19 +833,20 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         } else {
           // Foreign key is on the target model
           const foreignKey = rel.foreignKey || model.name.toLowerCase() + 'Id';
-          code += `        // Load ${rel.name} (oneToOne - inverse) for all results\n`;
+          code += `        // Load ${rel.name} (oneToOne - inverse) for all results via domain\n`;
           code += `        const resultIds = results.map(r => r.id);\n`;
-          code += `        const ${rel.name}Data = await db\n`;
-          code += `            .select()\n`;
-          code += `            .from(${rel.target.toLowerCase()}Table)\n`;
-          code += `            .where(inArray(${rel.target.toLowerCase()}Table.${foreignKey}, resultIds));\n`;
-          code += `        const ${rel.name}Map = new Map();\n`;
+          code += `        const { data: ${rel.name}Data } = await ${targetDomain}.findMany(tx, {\n`;
+          code += `          where: { and: [{ field: '${foreignKey}', op: 'in', value: resultIds }] },\n`;
+          code += `          skipSanitization: options.skipSanitization\n`;
+          code += `        });\n`;
+          code += `        const ${rel.name}Map = new Map<string, unknown>();\n`;
           code += `        ${rel.name}Data.forEach(item => {\n`;
-          code += `          ${rel.name}Map.set(item.${foreignKey}, item);\n`;
+          code += `          const fkValue = (item as unknown as Record<string, unknown>).${foreignKey} as string;\n`;
+          code += `          ${rel.name}Map.set(fkValue, item);\n`;
           code += `        });\n`;
           code += `        results.forEach(result => {\n`;
           code +=
-            `            (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || null;\n`;
+            `          (result as unknown as Record<string, unknown>).${rel.name} = ${rel.name}Map.get(result.id) || null;\n`;
           code += `        });\n`;
         }
       }

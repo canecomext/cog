@@ -342,6 +342,32 @@ Generates: `CHECK (num_nonnulls(field1, field2, field3) >= 2)`
 
 **Actions:** `CASCADE`, `SET NULL`, `RESTRICT`, `NO ACTION`
 
+### Field Exposure Control
+
+Control field visibility in API responses:
+
+```json
+{
+  "name": "apiSecret",
+  "type": "string",
+  "exposed": "create"
+}
+```
+
+| Value | Effect |
+|-------|--------|
+| `"default"` (or omit) | Visible in all responses |
+| `"hidden"` | Never visible in responses |
+| `"create"` | Visible only in POST response |
+
+Works with `?include=` - included child objects respect their own exposure rules.
+
+For internal domain calls needing hidden fields, use `skipSanitization: true`:
+
+```typescript
+const { data } = await userDomain.findById(id, tx, { skipSanitization: true });
+```
+
 ### Endpoint Configuration
 
 Control which endpoints are generated for each model:

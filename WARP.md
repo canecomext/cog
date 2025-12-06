@@ -741,6 +741,8 @@ Fields can control their visibility using the `exposed` property with three poss
 | Internal field | `"exposed": "hidden"` | Completely hidden from REST layer |
 | Normal field | omit `exposed` | Visible in all operations (default) |
 
+**Included Relationships:** Field exposure is properly enforced for included child objects. When using `?include=department,assignmentList`, each included entity's hidden/create-only fields are stripped according to its own exposure rules.
+
 **OpenAPI Impact:**
 - `{Model}` schema: Fields with `"hidden"` or `"create"` are excluded
 - `{Model}Input` schema: Fields with `"hidden"` are excluded
@@ -761,22 +763,20 @@ Invalid filters return HTTP 400 with descriptive error messages:
 
 #### Domain-to-Domain Filtering
 
-Domain code can use the same filter format when calling other domains:
+Domain code can use the same filter format when calling other domains via `QueryOptions`:
 
 ```typescript
 // In a hook or domain method
-const activeUsers = await userDomain.findMany(
-  tx,
-  {
-    where: {
-      and: [
-        { field: 'status', op: 'eq', value: 'active' },
-        { field: 'createdAt', op: 'gte', value: Date.now() - 86400000 }
-      ]
-    }
+const { data: activeUsers } = await userDomain.findMany(tx, {
+  where: {
+    and: [
+      { field: 'status', op: 'eq', value: 'active' },
+      { field: 'createdAt', op: 'gte', value: Date.now() - 86400000 }
+    ]
   },
-  { limit: 100 }
-);
+  limit: 100,
+  include: ['department']  // Include related entities
+});
 ```
 
 Alternatively, raw Drizzle SQL can be passed directly:
@@ -785,10 +785,19 @@ Alternatively, raw Drizzle SQL can be passed directly:
 import { eq, and, gte } from 'drizzle-orm';
 import { userTable } from '../schema/user.schema.ts';
 
-const result = await userDomain.findMany(
-  tx,
-  { where: and(eq(userTable.status, 'active'), gte(userTable.age, 18)) }
-);
+const { data } = await userDomain.findMany(tx, {
+  where: and(eq(userTable.status, 'active'), gte(userTable.age, 18))
+});
+```
+
+**Skip Sanitization:** For internal domain-to-domain calls that need access to hidden fields:
+
+```typescript
+// Access hidden fields for internal logic
+const { data } = await userDomain.findMany(tx, {
+  where: { and: [{ field: 'id', op: 'eq', value: userId }] },
+  skipSanitization: true  // Returns all fields including hidden
+});
 ```
 
 ### Check Constraints
