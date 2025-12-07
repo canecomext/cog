@@ -345,7 +345,15 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     options?: QueryOptions,
     context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
-    // Before-find-many hook (outside transaction)
+    // Convert WhereFilter to SQL first (so hooks receive SQL, not raw filter objects)
+    if (options?.where && isWhereFilter(options.where)) {
+      options = {
+        ...options,
+        where: buildWhereSQL(options.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields),
+      };
+    }
+
+    // Before-find-many hook (outside transaction, receives SQL)
     if (this.hooks.beforeFindMany) {
       options = await this.hooks.beforeFindMany(options, context) as QueryOptions | undefined;
     }
@@ -358,17 +366,8 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       options = await this.hooks.preFindMany(tx, options, context);
     }
 
-    // Convert WhereFilter to SQL if needed
-    let whereSQL: SQL | undefined;
-    if (options?.where) {
-      if (isWhereFilter(options.where)) {
-        // Convert WhereFilter object to SQL using buildWhereSQL
-        whereSQL = buildWhereSQL(options.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields);
-      } else {
-        // Already SQL (from hooks or direct usage)
-        whereSQL = options.where as SQL;
-      }
-    }
+    // Extract whereSQL from options (already converted to SQL)
+    const whereSQL = options?.where as SQL | undefined;
 
     // Build query with chaining to avoid type issues
     let baseQuery = db.select().from(${modelNameLower}Table);

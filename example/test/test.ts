@@ -846,6 +846,61 @@ async function main() {
     logSuccess('All field acceptance tests passed!');
 
     // ========================================
+    // 16. HOOK FILTER COMBINATION (beforeFindMany with and())
+    // ========================================
+    logSection('16. Testing beforeFindMany Hook Filter Combination');
+
+    // The beforeFindMany hook in main.ts combines the REST filter with isNotNull(departmentId)
+    // This test validates that WhereFilter is converted to SQL BEFORE the hook runs
+    // If the bug exists (WhereFilter passed to hook), and() would silently fail
+
+    // 16.1 Test filter combination works (REST filter + hook condition)
+    logStep('16.1 Filter with hook combination (firstName filter + departmentId not null)');
+    const hookFilterResult = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'eq', value: 'Jane' })}`,
+    );
+    assertArray(hookFilterResult.data, 'hookFilterResult.data');
+    // Should find Jane (who has a department) - the hook adds isNotNull(departmentId)
+    assertEqual(hookFilterResult.data.length, 1, 'Should find exactly 1 employee named Jane with a department');
+    const janeFromHook = hookFilterResult.data[0] as Employee;
+    assertEqual(janeFromHook.firstName, 'Jane', 'Should find Jane');
+    assertExists(janeFromHook.departmentId, 'Jane should have a departmentId (hook condition)');
+    logSuccess('✓ beforeFindMany hook successfully combined REST filter with SQL condition');
+
+    // 16.2 Test that hook condition alone works (no REST filter)
+    logStep('16.2 List without filter (hook adds departmentId not null)');
+    const hookOnlyResult = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee`,
+    );
+    assertArray(hookOnlyResult.data, 'hookOnlyResult.data');
+    // All returned employees should have departmentId (hook adds isNotNull condition)
+    for (const emp of hookOnlyResult.data as Employee[]) {
+      assertExists(emp.departmentId, `Employee ${emp.firstName} should have departmentId (hook condition)`);
+    }
+    logSuccess('✓ beforeFindMany hook condition works without REST filter');
+
+    // 16.3 Test complex filter combination
+    logStep('16.3 Complex filter with hook (AND group + hook condition)');
+    const complexFilterResult = await GET<{ data: Employee[]; pagination: { total: number } }>(
+      `/api/employee?where=${encodeFilter({
+        and: [
+          { field: 'firstName', op: 'in', value: ['Jane', 'Bob', 'Alice'] },
+          { field: 'email', op: 'ilike', value: '%@example.com' },
+        ],
+      })}`,
+    );
+    assertArray(complexFilterResult.data, 'complexFilterResult.data');
+    // All results should match the REST filter AND have departmentId
+    for (const emp of complexFilterResult.data as Employee[]) {
+      assert(['Jane', 'Bob', 'Alice'].includes(emp.firstName), `${emp.firstName} should be Jane, Bob, or Alice`);
+      assert(emp.email.endsWith('@example.com'), `${emp.email} should end with @example.com`);
+      assertExists(emp.departmentId, `Employee ${emp.firstName} should have departmentId (hook condition)`);
+    }
+    logSuccess('✓ Complex REST filter combined with hook SQL condition');
+
+    logSuccess('All beforeFindMany hook tests passed!');
+
+    // ========================================
     // SUCCESS
     // ========================================
     logSection('All Tests Passed!');

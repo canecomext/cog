@@ -4,9 +4,11 @@ import { Scalar } from '@scalar/hono-api-reference';
 import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import { crypto } from '@std/crypto';
-import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated } from '../generated/index.ts';
+import { and, isNotNull, type SQL } from 'drizzle-orm';
+import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated, type QueryOptions } from '../generated/index.ts';
 import type { DomainHookContext } from '../generated/domain/hooks.types.ts';
 import type { Employee, NewEmployee } from '../generated/schema/index.ts';
+import { employeeTable } from '../generated/schema/employee.schema.ts';
 import { buildOpenAPISpec } from '../generated/rest/openapi.ts';
 import type { ExampleEnv } from './context.ts';
 
@@ -184,11 +186,25 @@ await initializeGenerated({
       },
 
       beforeFindMany: (
-        filter: unknown,
+        options: QueryOptions | undefined,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<unknown> => {
+      ): Promise<QueryOptions | undefined> => {
         console.log('Employee.beforeFindMany - outside transaction');
-        return Promise.resolve(filter);
+        // Test combining existing filter with additional SQL condition using and()
+        // This validates that options.where is already SQL (not raw WhereFilter)
+        const additionalCondition = isNotNull(employeeTable.departmentId);
+        if (options?.where) {
+          // Combine existing filter with our condition
+          return Promise.resolve({
+            ...options,
+            where: and(options.where as SQL, additionalCondition),
+          });
+        }
+        // No existing filter, just add our condition
+        return Promise.resolve({
+          ...options,
+          where: additionalCondition,
+        });
       },
 
       preFindMany: (
