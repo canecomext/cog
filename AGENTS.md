@@ -1,7 +1,7 @@
 # WARP - Complete Technical Documentation
 
-> **WARP**: **W**ork **A**rchitecture **R**eference **P**ackage
-> Complete technical reference for COG (CRUD Operations Generator)
+> **WARP**: **W**ork **A**rchitecture **R**eference **P**ackage Complete technical reference for COG (CRUD Operations
+> Generator)
 
 ---
 
@@ -33,10 +33,11 @@
 
 ## What is COG?
 
-**COG (CRUD Operations Generator)** is a TypeScript code generator that transforms JSON model definitions into production-ready backend code. Think of it as a compiler for backend applications.
+**COG (CRUD Operations Generator)** is a TypeScript code generator that transforms JSON model definitions into
+production-ready backend code. Think of it as a compiler for backend applications.
 
-**Input**: Simple JSON model definitions (user, post, comment, etc.)
-**Output**: Complete layered TypeScript backend with database, domain logic, REST APIs, and OpenAPI docs
+**Input**: Simple JSON model definitions (user, post, comment, etc.) **Output**: Complete layered TypeScript backend
+with database, domain logic, REST APIs, and OpenAPI docs
 
 **Stack**: Deno + TypeScript + Drizzle ORM + Hono + Zod + PostgreSQL/CockroachDB
 
@@ -74,8 +75,13 @@ cog/
 ├── example/
 │   ├── models/                          # Example JSON model definitions
 │   └── generated/                       # Example generated code
-├── WARP.md                              # This file (complete technical docs)
-├── CLAUDE.md                            # Brief reference (points to WARP.md)
+|   └── src/                             # The example server code to demonstrate cog usage and to run the test against
+|   └── test/clean.ts                    # Code that cleans up test data against the server (testing deletes actually)
+|   └── test/test.ts                     # The test code testing the example against a running example server
+|   └── test/utils.ts                    # Utility code for test/test.ts and test/clean.ts
+|   └── test/README.md                   # User-facing documentation of the example
+├── AGENTS.md                            # This file (complete technical docs)
+├── CLAUDE.md                            # Points to AGENTS.md
 └── README.md                            # User-facing documentation
 ```
 
@@ -133,9 +139,11 @@ generated/
 
 #### Database Layer (`/db`)
 
-Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with PostgreSQL or CockroachDB.
+Manages connections, transactions, and database initialization. Uses Drizzle ORM for type-safe SQL operations with
+PostgreSQL or CockroachDB.
 
 **Key Files:**
+
 - `database.ts` - Connection pooling, transaction management, SQL client access
 - `initialize-database.ts` - Creates tables, indexes, constraints, PostGIS setup
 
@@ -144,6 +152,7 @@ Manages connections, transactions, and database initialization. Uses Drizzle ORM
 Drizzle ORM table definitions and Zod validation schemas. This layer defines the data structure and validation rules.
 
 **Key Files:**
+
 - `[model].schema.ts` - Table schema, Zod schemas (insert/update/select)
 - `relations.ts` - Drizzle relationship definitions
 - `index.ts` - Exports all schemas
@@ -153,6 +162,7 @@ Drizzle ORM table definitions and Zod validation schemas. This layer defines the
 Pure business logic layer with no HTTP dependencies. All operations accept a database transaction parameter.
 
 **Key Features:**
+
 - CRUD operations (create, findById, findMany, update, delete)
 - Relationship operations (add/remove for many-to-many)
 - Hook integration (pre/post/after for all operations)
@@ -163,6 +173,7 @@ Pure business logic layer with no HTTP dependencies. All operations accept a dat
 HTTP interface using Hono framework. Translates HTTP requests to domain operations.
 
 **Key Features:**
+
 - RESTful endpoints for all CRUD operations
 - Relationship endpoints (e.g., `/employee/:id/skillList`)
 - Input validation via Zod
@@ -179,16 +190,16 @@ Models are defined in JSON with this structure:
 
 ```json
 {
-  "name": "User",                    // Model name (PascalCase)
-  "tableName": "user",               // Database table name (singular, snake_case)
-  "schema": "public",                // Optional: database schema
-  "enums": [                         // Optional: enum definitions
+  "name": "User", // Model name (PascalCase)
+  "tableName": "user", // Database table name (singular, snake_case)
+  "schema": "public", // Optional: database schema
+  "enums": [ // Optional: enum definitions
     {
       "name": "AccountType",
       "values": ["free", "premium"]
     }
   ],
-  "fields": [                        // Required: field definitions
+  "fields": [ // Required: field definitions
     {
       "name": "id",
       "type": "uuid",
@@ -197,7 +208,7 @@ Models are defined in JSON with this structure:
       "required": true
     }
   ],
-  "relationships": [                 // Optional: relationships
+  "relationships": [ // Optional: relationships
     {
       "type": "oneToMany",
       "name": "postList",
@@ -205,13 +216,13 @@ Models are defined in JSON with this structure:
       "foreignKey": "authorId"
     }
   ],
-  "indexes": [                       // Optional: custom indexes
+  "indexes": [ // Optional: custom indexes
     {
       "fields": ["email", "isActive"],
       "unique": true
     }
   ],
-  "check": {                         // Optional: check constraints
+  "check": { // Optional: check constraints
     "numNotNulls": [
       {
         "fields": ["field1", "field2"],
@@ -219,13 +230,14 @@ Models are defined in JSON with this structure:
       }
     ]
   },
-  "timestamps": true                 // Optional: auto createdAt/updatedAt
+  "timestamps": true // Optional: auto createdAt/updatedAt
 }
 ```
 
 ### Supported Data Types
 
 **Primitives:**
+
 - `text`, `string`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid`
 - `json`, `jsonb` (structured data)
 - `enum` (PostgreSQL enums with standard or bitwise modes)
@@ -233,15 +245,18 @@ Models are defined in JSON with this structure:
 **Date Type - EPOCH Milliseconds:**
 
 COG stores all `date` fields as EPOCH millisecond integers (`bigint`) in the database:
+
 - **API Input/Output**: Use numeric timestamps (EPOCH milliseconds)
 - **Database Storage**: `bigint` column with values like `1704067200000`
 - **JavaScript/TypeScript**: Use `Date.getTime()` to get timestamp, `new Date(timestamp)` to create Date object
 - **Example**: Send `1704067200000` (represents 2024-01-01) via REST API
-- **Timestamps**: `createdAt` and `updatedAt` automatically use SQL formula: `(extract(epoch from now()) * 1000)::bigint`
+- **Timestamps**: `createdAt` and `updatedAt` automatically use SQL formula:
+  `(extract(epoch from now()) * 1000)::bigint`
 - **OpenAPI**: Date fields documented as `type: integer, format: int64` with "(EPOCH milliseconds)" description
 - **Rationale**: Avoids timezone complexities, ISO string parsing issues, and provides universal compatibility
 
 **PostGIS Spatial Types:**
+
 - `point`, `linestring`, `polygon`
 - `multipoint`, `multilinestring`, `multipolygon`
 - `geometry`, `geography`
@@ -249,6 +264,7 @@ COG stores all `date` fields as EPOCH millisecond integers (`bigint`) in the dat
 **PostGIS GeoJSON Support:**
 
 COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (PostGIS format):
+
 - **API Input/Output**: Use standard GeoJSON objects
 - **Database Storage**: Automatically converted to WKT/EWKB format
 - **Example**: Send `{ type: 'Point', coordinates: [-122.4194, 37.7749] }` via REST API
@@ -256,6 +272,7 @@ COG automatically converts between GeoJSON (JavaScript/JSON standard) and WKT (P
 - **Conversion**: Bidirectional - GeoJSON in requests/responses, WKT in database
 
 **Special Features:**
+
 - Array types: `"array": true` on any field
 - Foreign keys: `"references": { "model": "...", "field": "..." }`
 - Enums: Standard (single value) or bitwise (multiple values via integer flags)
@@ -282,16 +299,17 @@ COG supports numeric default values only up to JavaScript's `Number.MAX_SAFE_INT
 
 COG only generates endpoints for many-to-many relationships (junction tables are hidden from direct access):
 
-| Operation | URL Pattern | Body | Example |
-|-----------|-------------|------|---------|
-| GET (list) | `GET /:id/{relationName}List` | N/A | `GET /employee/:id/skillList` |
-| POST (add multiple) | `POST /:id/{relationName}List` | `{ ids: [...] }` | `POST /employee/:id/skillList` |
-| POST (add single) | `POST /:id/{singularRelName}` | `{ id: "..." }` | `POST /employee/:id/skill` |
-| PUT (replace all) | `PUT /:id/{relationName}List` | `{ ids: [...] }` | `PUT /employee/:id/skillList` |
+| Operation                | URL Pattern                      | Body             | Example                          |
+| ------------------------ | -------------------------------- | ---------------- | -------------------------------- |
+| GET (list)               | `GET /:id/{relationName}List`    | N/A              | `GET /employee/:id/skillList`    |
+| POST (add multiple)      | `POST /:id/{relationName}List`   | `{ ids: [...] }` | `POST /employee/:id/skillList`   |
+| POST (add single)        | `POST /:id/{singularRelName}`    | `{ id: "..." }`  | `POST /employee/:id/skill`       |
+| PUT (replace all)        | `PUT /:id/{relationName}List`    | `{ ids: [...] }` | `PUT /employee/:id/skillList`    |
 | DELETE (remove multiple) | `DELETE /:id/{relationName}List` | `{ ids: [...] }` | `DELETE /employee/:id/skillList` |
-| DELETE (remove single) | `DELETE /:id/{singularRelName}` | `{ id: "..." }` | `DELETE /employee/:id/skill` |
+| DELETE (remove single)   | `DELETE /:id/{singularRelName}`  | `{ id: "..." }`  | `DELETE /employee/:id/skill`     |
 
-**Note:** oneToMany and manyToOne relationships do NOT generate dedicated endpoints. Use generic CRUD endpoints with foreign keys or query parameters with `?include` instead.
+**Note:** oneToMany and manyToOne relationships do NOT generate dedicated endpoints. Use generic CRUD endpoints with
+foreign keys or query parameters with `?include` instead.
 
 ### Hook System
 
@@ -312,56 +330,62 @@ Commit Transaction
 ```
 
 **Hook Types:**
-- **Before-hooks** - Run before validation, outside transaction (can transform input, do auth checks, prevent operations by throwing)
+
+- **Before-hooks** - Run before validation, outside transaction (can transform input, do auth checks, prevent operations
+  by throwing)
 - **Pre-hooks** - Modify input before operation (validated twice: before and after hook)
 - **Post-hooks** - Modify output after operation (within transaction)
 - **After-hooks** - Side effects after commit (notifications, logging, external APIs)
 
 **Hook Context:**
+
 - `requestId` - Unique request identifier
 - `userId` - Current user from authentication
 - `metadata` - Custom data passed between hooks
 - `transaction` - Active database transaction
 
-**Note:** Hooks return data directly (not wrapped in `{data, context}`). Context is passed as a parameter for read access.
+**Note:** Hooks return data directly (not wrapped in `{data, context}`). Context is passed as a parameter for read
+access.
 
 #### Hook Signatures Reference
 
 **Domain Hooks (CRUD Operations):**
 
-| Hook | Signature | When It Runs |
-|------|-----------|--------------|
-| **beforeCreate** | `(rawInput, context?) => Promise<unknown>` | Before validation, outside transaction |
-| **preCreate** | `(input, rawInput, tx, context?) => Promise<input>` | Before creating entity |
-| **postCreate** | `(input, result, rawInput, tx, context?) => Promise<result>` | After creating entity (in transaction) |
-| **afterCreate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **beforeUpdate** | `(id, rawInput, context?) => Promise<unknown>` | Before validation, outside transaction |
-| **preUpdate** | `(id, input, rawInput, tx, context?) => Promise<input>` | Before updating entity |
-| **postUpdate** | `(id, input, result, rawInput, tx, context?) => Promise<result>` | After updating entity (in transaction) |
-| **afterUpdate** | `(result, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **beforeDelete** | `(id, context?) => Promise<void>` | Before validation, outside transaction |
-| **preDelete** | `(id, tx, context?) => Promise<{id}>` | Before deleting entity |
-| **postDelete** | `(id, result, tx, context?) => Promise<result>` | After deleting entity (in transaction) |
-| **afterDelete** | `(result, context?) => Promise<void>` | After transaction commits (async) |
-| **beforeFindById** | `(id, context?) => Promise<string>` | Before find operation, outside transaction |
-| **beforeFindMany** | `(filter, context?) => Promise<unknown>` | Before find operation, outside transaction |
+| Hook               | Signature                                                        | When It Runs                               |
+| ------------------ | ---------------------------------------------------------------- | ------------------------------------------ |
+| **beforeCreate**   | `(rawInput, context?) => Promise<unknown>`                       | Before validation, outside transaction     |
+| **preCreate**      | `(input, rawInput, tx, context?) => Promise<input>`              | Before creating entity                     |
+| **postCreate**     | `(input, result, rawInput, tx, context?) => Promise<result>`     | After creating entity (in transaction)     |
+| **afterCreate**    | `(result, rawInput, context?) => Promise<void>`                  | After transaction commits (async)          |
+| **beforeUpdate**   | `(id, rawInput, context?) => Promise<unknown>`                   | Before validation, outside transaction     |
+| **preUpdate**      | `(id, input, rawInput, tx, context?) => Promise<input>`          | Before updating entity                     |
+| **postUpdate**     | `(id, input, result, rawInput, tx, context?) => Promise<result>` | After updating entity (in transaction)     |
+| **afterUpdate**    | `(result, rawInput, context?) => Promise<void>`                  | After transaction commits (async)          |
+| **beforeDelete**   | `(id, context?) => Promise<void>`                                | Before validation, outside transaction     |
+| **preDelete**      | `(id, tx, context?) => Promise<{id}>`                            | Before deleting entity                     |
+| **postDelete**     | `(id, result, tx, context?) => Promise<result>`                  | After deleting entity (in transaction)     |
+| **afterDelete**    | `(result, context?) => Promise<void>`                            | After transaction commits (async)          |
+| **beforeFindById** | `(id, context?) => Promise<string>`                              | Before find operation, outside transaction |
+| **beforeFindMany** | `(filter, context?) => Promise<unknown>`                         | Before find operation, outside transaction |
 
 **Junction Hooks (Many-to-Many):**
 
-| Hook | Signature | When It Runs |
-|------|-----------|--------------|
-| **beforeAddJunction** | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction |
-| **preAddJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before adding relationship |
-| **postAddJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After adding relationship (in transaction) |
-| **afterAddJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
-| **beforeRemoveJunction** | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction |
-| **preRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<{ids}>` | Before removing relationship |
-| **postRemoveJunction** | `(ids, rawInput, tx, context?) => Promise<void>` | After removing relationship (in transaction) |
-| **afterRemoveJunction** | `(ids, rawInput, context?) => Promise<void>` | After transaction commits (async) |
+| Hook                     | Signature                                                      | When It Runs                                 |
+| ------------------------ | -------------------------------------------------------------- | -------------------------------------------- |
+| **beforeAddJunction**    | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction       |
+| **preAddJunction**       | `(ids, rawInput, tx, context?) => Promise<{ids}>`              | Before adding relationship                   |
+| **postAddJunction**      | `(ids, rawInput, tx, context?) => Promise<void>`               | After adding relationship (in transaction)   |
+| **afterAddJunction**     | `(ids, rawInput, context?) => Promise<void>`                   | After transaction commits (async)            |
+| **beforeRemoveJunction** | `(ids, rawInput, context?) => Promise<Record<string, string>>` | Before validation, outside transaction       |
+| **preRemoveJunction**    | `(ids, rawInput, tx, context?) => Promise<{ids}>`              | Before removing relationship                 |
+| **postRemoveJunction**   | `(ids, rawInput, tx, context?) => Promise<void>`               | After removing relationship (in transaction) |
+| **afterRemoveJunction**  | `(ids, rawInput, context?) => Promise<void>`                   | After transaction commits (async)            |
 
 **Hook Parameters:**
+
 - `input` - Validated input data (after Zod parsing)
-- `rawInput` - Original unvalidated request body (for nested creates or metadata). Only on create/update/junction operations, not delete.
+- `rawInput` - Original unvalidated request body (for nested creates or metadata). Only on create/update/junction
+  operations, not delete.
 - `result` - Entity returned from database operation
 - `id`/`ids` - Entity identifier(s)
 - `tx` - Database transaction (use for operations that must be atomic)
@@ -370,12 +394,14 @@ Commit Transaction
 #### Domain Hooks
 
 All hooks run at the domain layer within database transactions, providing:
+
 - Access to database transaction (`tx: DbTransaction`)
 - Transaction safety for all operations
 - Data validation and transformation capabilities
 - Business logic execution
 
 **Use Domain Hooks for:**
+
 - Modifying data before/after database operations
 - Validating business rules that require DB queries
 - Enriching data with related records from database
@@ -386,7 +412,9 @@ All hooks run at the domain layer within database transactions, providing:
 
 ### Exception Handling (Domain vs REST)
 
-COG implements a clean separation between domain-level exceptions and transport-specific error handling. This architecture ensures the domain layer remains transport-agnostic while the REST layer handles HTTP-specific error conversion.
+COG implements a clean separation between domain-level exceptions and transport-specific error handling. This
+architecture ensures the domain layer remains transport-agnostic while the REST layer handles HTTP-specific error
+conversion.
 
 #### Architecture Overview
 
@@ -398,7 +426,8 @@ REST Layer (HTTP Transport)
 HTTP Response (404, 500, etc.)
 ```
 
-**Key Principle**: Domain layer never imports or uses `HTTPException`. All HTTP concerns are handled at the REST layer boundary.
+**Key Principle**: Domain layer never imports or uses `HTTPException`. All HTTP concerns are handled at the REST layer
+boundary.
 
 #### Domain Exception Classes
 
@@ -470,7 +499,7 @@ The REST layer provides centralized exception handling via `handleDomainExceptio
 ```typescript
 // generated/rest/user.rest.ts
 import { HTTPException } from '@hono/hono/http-exception';
-import { NotFoundException, DomainException } from '../domain/exceptions.ts';
+import { DomainException, NotFoundException } from '../domain/exceptions.ts';
 
 /**
  * Converts domain exceptions to HTTP exceptions
@@ -503,18 +532,18 @@ this.routes.put('/:id', async (c) => {
 
     return c.json({ data: result });
   } catch (error) {
-    handleDomainException(error);  // Converts to HTTP response
+    handleDomainException(error); // Converts to HTTP response
   }
 });
 ```
 
 #### HTTP Status Code Mapping
 
-| Domain Exception | HTTP Status | Use Case |
-|------------------|-------------|----------|
-| `NotFoundException` | 404 Not Found | Entity not found (update/delete missing record) |
-| `DomainException` | 500 Internal Server Error | General domain errors, business rule violations |
-| Unknown errors | Re-thrown | Handled by Hono's global error handler |
+| Domain Exception    | HTTP Status               | Use Case                                        |
+| ------------------- | ------------------------- | ----------------------------------------------- |
+| `NotFoundException` | 404 Not Found             | Entity not found (update/delete missing record) |
+| `DomainException`   | 500 Internal Server Error | General domain errors, business rule violations |
+| Unknown errors      | Re-thrown                 | Handled by Hono's global error handler          |
 
 #### Transaction Rollback Behavior
 
@@ -527,6 +556,7 @@ this.routes.put('/:id', async (c) => {
 5. Client receives appropriate HTTP status code
 
 **Example Flow:**
+
 ```typescript
 // User attempts to update non-existent record
 PUT /api/user/invalid-id
@@ -601,13 +631,15 @@ app.onError((err, c) => {
 **CRITICAL**: Zod validation is MANDATORY and cannot be disabled.
 
 **Generated Schemas (per model):**
+
 ```typescript
-export const userInsertSchema = createInsertSchema(userTable);  // Create ops
-export const userUpdateSchema = createUpdateSchema(userTable);  // Update ops (partial)
-export const userSelectSchema = createSelectSchema(userTable);  // Select ops
+export const userInsertSchema = createInsertSchema(userTable); // Create ops
+export const userUpdateSchema = createUpdateSchema(userTable); // Update ops (partial)
+export const userSelectSchema = createSelectSchema(userTable); // Select ops
 ```
 
 **Dual Validation Flow:**
+
 1. Initial input validated before pre-hook
 2. Pre-hook output validated before database operation
 
@@ -615,7 +647,8 @@ This prevents hooks from emitting malformed data.
 
 ### Filtering System
 
-COG provides a powerful filtering system for `findMany` endpoints, allowing clients to query data with sophisticated conditions.
+COG provides a powerful filtering system for `findMany` endpoints, allowing clients to query data with sophisticated
+conditions.
 
 #### Query Parameter Format
 
@@ -630,42 +663,46 @@ GET /api/user?where={base64-encoded-json}
 #### Filter Structure
 
 **Single Condition:**
+
 ```typescript
 interface FilterCondition {
-  field: string;      // Field name to filter on
+  field: string; // Field name to filter on
   op: FilterOperator; // Operator (eq, neq, gt, etc.)
-  value: unknown;     // Value to compare against
+  value: unknown; // Value to compare against
 }
 ```
 
 **Logical Groups (AND/OR):**
+
 ```typescript
 interface FilterGroup {
-  and?: (FilterCondition | FilterGroup)[];  // All conditions must match
-  or?: (FilterCondition | FilterGroup)[];   // Any condition must match
+  and?: (FilterCondition | FilterGroup)[]; // All conditions must match
+  or?: (FilterCondition | FilterGroup)[]; // Any condition must match
 }
 ```
 
 #### Operators by Field Type
 
-| Type | Operators | Notes |
-|------|-----------|-------|
-| `string`, `text` | `eq`, `neq`, `like`, `ilike`, `in`, `nin`, `isNull` | `like`/`ilike` require user to provide `%` wildcards |
-| `integer`, `bigint`, `decimal`, `date` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `isNull` | Date values are EPOCH milliseconds |
-| `boolean` | `eq`, `isNull` | |
-| `uuid`, `enum` | `eq`, `neq`, `in`, `nin`, `isNull` | |
-| `json`, `jsonb` | `isNull` | No deep querying |
-| Array fields (`array: true`) | `contains`, `overlaps`, `isNull` | |
-| PostGIS types | `isNull` | Spatial queries not supported via filter |
+| Type                                   | Operators                                                    | Notes                                                |
+| -------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| `string`, `text`                       | `eq`, `neq`, `like`, `ilike`, `in`, `nin`, `isNull`          | `like`/`ilike` require user to provide `%` wildcards |
+| `integer`, `bigint`, `decimal`, `date` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `isNull` | Date values are EPOCH milliseconds                   |
+| `boolean`                              | `eq`, `isNull`                                               |                                                      |
+| `uuid`, `enum`                         | `eq`, `neq`, `in`, `nin`, `isNull`                           |                                                      |
+| `json`, `jsonb`                        | `isNull`                                                     | No deep querying                                     |
+| Array fields (`array: true`)           | `contains`, `overlaps`, `isNull`                             |                                                      |
+| PostGIS types                          | `isNull`                                                     | Spatial queries not supported via filter             |
 
 #### Example Filters
 
 **Simple equality:**
+
 ```json
 { "field": "status", "op": "eq", "value": "active" }
 ```
 
 **Range query (numeric):**
+
 ```json
 {
   "and": [
@@ -676,11 +713,13 @@ interface FilterGroup {
 ```
 
 **Pattern matching (user provides % wildcards):**
+
 ```json
 { "field": "email", "op": "ilike", "value": "%@gmail.com" }
 ```
 
 **Nested AND/OR:**
+
 ```json
 {
   "and": [
@@ -696,11 +735,13 @@ interface FilterGroup {
 ```
 
 **Array contains:**
+
 ```json
 { "field": "tags", "op": "contains", "value": ["urgent"] }
 ```
 
 **IN operator (multiple values):**
+
 ```json
 { "field": "status", "op": "in", "value": ["active", "pending", "review"] }
 ```
@@ -709,13 +750,14 @@ interface FilterGroup {
 
 Fields can control their visibility using the `expose` property with three possible values:
 
-| Value | POST Response | GET/PUT/DELETE Response | Filterable |
-|-------|---------------|-------------------------|------------|
-| `"default"` (or omit) | ✓ Visible | ✓ Visible | ✓ Yes |
-| `"hidden"` | ✗ Stripped | ✗ Stripped | ✗ No |
-| `"create"` | ✓ Visible | ✗ Stripped | ✗ No |
+| Value                 | POST Response | GET/PUT/DELETE Response | Filterable |
+| --------------------- | ------------- | ----------------------- | ---------- |
+| `"default"` (or omit) | ✓ Visible     | ✓ Visible               | ✓ Yes      |
+| `"hidden"`            | ✗ Stripped    | ✗ Stripped              | ✗ No       |
+| `"create"`            | ✓ Visible     | ✗ Stripped              | ✗ No       |
 
 **Hidden Field (never visible):**
+
 ```json
 {
   "name": "internalScore",
@@ -725,6 +767,7 @@ Fields can control their visibility using the `expose` property with three possi
 ```
 
 **Create-Only Field (visible once on creation):**
+
 ```json
 {
   "name": "apiSecret",
@@ -735,15 +778,18 @@ Fields can control their visibility using the `expose` property with three possi
 
 **Common Use Cases:**
 
-| Use Case | Configuration | Effect |
-|----------|---------------|--------|
+| Use Case               | Configuration        | Effect                                              |
+| ---------------------- | -------------------- | --------------------------------------------------- |
 | API secret (show once) | `"expose": "create"` | Visible in POST response only, never returned after |
-| Internal field | `"expose": "hidden"` | Completely hidden from REST layer |
-| Normal field | omit `expose` | Visible in all operations (default) |
+| Internal field         | `"expose": "hidden"` | Completely hidden from REST layer                   |
+| Normal field           | omit `expose`        | Visible in all operations (default)                 |
 
-**Included Relationships:** Field exposure is properly enforced for included child objects. When using `?include=department,assignmentList`, each included entity's hidden/create-only fields are stripped according to its own exposure rules.
+**Included Relationships:** Field exposure is properly enforced for included child objects. When using
+`?include=department,assignmentList`, each included entity's hidden/create-only fields are stripped according to its own
+exposure rules.
 
 **OpenAPI Impact:**
+
 - `{Model}` schema: Fields with `"hidden"` or `"create"` are excluded
 - `{Model}Input` schema: Fields with `"hidden"` are excluded
 - `{Model}Update` schema: Fields with `"hidden"` or `"create"` are excluded
@@ -754,13 +800,14 @@ Fields can control their visibility using the `expose` property with three possi
 
 Fields can control input acceptance using the `accept` property with three possible values:
 
-| Value | POST (create) | PUT (update) | Use Case |
-|-------|---------------|--------------|----------|
-| `"default"` (or omit) | ✓ Accepted | ✓ Accepted | Normal editable field |
-| `"create"` | ✓ Accepted | ✗ Stripped | Immutable after creation (e.g., email, username) |
-| `"never"` | ✗ Stripped | ✗ Stripped | Server-managed field (e.g., createdBy, computed) |
+| Value                 | POST (create) | PUT (update) | Use Case                                         |
+| --------------------- | ------------- | ------------ | ------------------------------------------------ |
+| `"default"` (or omit) | ✓ Accepted    | ✓ Accepted   | Normal editable field                            |
+| `"create"`            | ✓ Accepted    | ✗ Stripped   | Immutable after creation (e.g., email, username) |
+| `"never"`             | ✗ Stripped    | ✗ Stripped   | Server-managed field (e.g., createdBy, computed) |
 
 **Immutable Field (set once):**
+
 ```json
 {
   "name": "email",
@@ -771,6 +818,7 @@ Fields can control input acceptance using the `accept` property with three possi
 ```
 
 **Server-Managed Field with default:**
+
 ```json
 {
   "name": "createdBy",
@@ -782,6 +830,7 @@ Fields can control input acceptance using the `accept` property with three possi
 ```
 
 **Server-Managed Field with hook:**
+
 ```json
 {
   "name": "createdBy",
@@ -796,12 +845,13 @@ Fields can control input acceptance using the `accept` property with three possi
 const userDomainWithHooks = new UserDomain({
   beforeCreate: async (input, context) => ({
     ...input,
-    createdBy: context?.userId
-  })
+    createdBy: context?.userId,
+  }),
 });
 ```
 
 **Processing Flow:**
+
 ```
 Input arrives
     ↓
@@ -820,16 +870,17 @@ Database operation
 
 **Relationship with Other Properties:**
 
-| Combination | Valid? | Notes |
-|-------------|--------|-------|
-| `required: true` + `accept: "never"` + `defaultValue` | ✅ | DB provides default |
-| `required: true` + `accept: "never"` + NO default | ⚠️ | `beforeCreate` hook MUST provide value |
-| `required: true` + `accept: "create"` | ✅ | Required on create, immutable after |
-| `required: false` + `accept: "never"` | ✅ | Optional server-managed field |
+| Combination                                           | Valid? | Notes                                  |
+| ----------------------------------------------------- | ------ | -------------------------------------- |
+| `required: true` + `accept: "never"` + `defaultValue` | ✅     | DB provides default                    |
+| `required: true` + `accept: "never"` + NO default     | ⚠️     | `beforeCreate` hook MUST provide value |
+| `required: true` + `accept: "create"`                 | ✅     | Required on create, immutable after    |
+| `required: false` + `accept: "never"`                 | ✅     | Optional server-managed field          |
 
 **Warning:** COG emits a generation-time warning for `required: true` + `accept: "never"` + no `defaultValue`.
 
 **OpenAPI Impact:**
+
 - `{Model}Input` schema: Fields with `accept: "never"` are excluded
 - `{Model}Update` schema: Fields with `accept: "never"` or `"create"` are excluded
 - `{Model}` schema (response): Not affected by `accept`
@@ -857,22 +908,22 @@ const { data: activeUsers } = await userDomain.findMany(tx, {
   where: {
     and: [
       { field: 'status', op: 'eq', value: 'active' },
-      { field: 'createdAt', op: 'gte', value: Date.now() - 86400000 }
-    ]
+      { field: 'createdAt', op: 'gte', value: Date.now() - 86400000 },
+    ],
   },
   limit: 100,
-  include: ['department']  // Include related entities
+  include: ['department'], // Include related entities
 });
 ```
 
 Alternatively, raw Drizzle SQL can be passed directly:
 
 ```typescript
-import { eq, and, gte } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import { userTable } from '../schema/user.schema.ts';
 
 const { data } = await userDomain.findMany(tx, {
-  where: and(eq(userTable.status, 'active'), gte(userTable.age, 18))
+  where: and(eq(userTable.status, 'active'), gte(userTable.age, 18)),
 });
 ```
 
@@ -882,7 +933,7 @@ const { data } = await userDomain.findMany(tx, {
 // Access hidden fields for internal logic
 const { data } = await userDomain.findMany(tx, {
   where: { and: [{ field: 'id', op: 'eq', value: userId }] },
-  skipSanitization: true  // Returns all fields including hidden
+  skipSanitization: true, // Returns all fields including hidden
 });
 ```
 
@@ -897,13 +948,14 @@ COG supports PostgreSQL check constraints via the `"check"` property in model de
 Ensures a minimum number of fields are non-null from a specified list.
 
 **Example:**
+
 ```json
 {
   "name": "AdvancedDemo",
   "fields": [
-    {"name": "optionalField1", "type": "string"},
-    {"name": "optionalField2", "type": "integer"},
-    {"name": "optionalField3", "type": "boolean"}
+    { "name": "optionalField1", "type": "string" },
+    { "name": "optionalField2", "type": "integer" },
+    { "name": "optionalField3", "type": "boolean" }
   ],
   "check": {
     "numNotNulls": [
@@ -917,6 +969,7 @@ Ensures a minimum number of fields are non-null from a specified list.
 ```
 
 **Generated SQL:**
+
 ```sql
 CHECK (num_nonnulls(optional_field1, optional_field2, optional_field3) >= 2)
 ```
@@ -947,7 +1000,8 @@ Control which CRUD endpoints are generated using the `endpoints` property:
 
 **Default Behavior:** All endpoints are enabled by default. Set to `false` to disable specific endpoints.
 
-**Security Approach:** 404 (don't generate) - Disabled endpoints are not generated at all, providing "security by absence".
+**Security Approach:** 404 (don't generate) - Disabled endpoints are not generated at all, providing "security by
+absence".
 
 #### Relationship Endpoint Configuration
 
@@ -960,40 +1014,42 @@ Control which many-to-many relationship endpoints are generated:
   "target": "Skill",
   "through": "employee_skill",
   "endpoints": {
-    "get": true,      // GET /api/employee/:id/skillList (default: true)
-    "add": true,      // POST /api/employee/:id/skillList (default: true)
-    "remove": true,   // DELETE /api/employee/:id/skillList (default: true)
-    "replace": false  // PUT /api/employee/:id/skillList (disabled)
+    "get": true, // GET /api/employee/:id/skillList (default: true)
+    "add": true, // POST /api/employee/:id/skillList (default: true)
+    "remove": true, // DELETE /api/employee/:id/skillList (default: true)
+    "replace": false // PUT /api/employee/:id/skillList (disabled)
   }
 }
 ```
 
-**Note:** Endpoint configuration only applies to many-to-many relationships. oneToMany/manyToOne relationships do not generate dedicated endpoints.
+**Note:** Endpoint configuration only applies to many-to-many relationships. oneToMany/manyToOne relationships do not
+generate dedicated endpoints.
 
 ---
 
 ## Database Compatibility
 
-COG supports both PostgreSQL and CockroachDB as target databases. While most features work identically across both platforms, there are important differences.
+COG supports both PostgreSQL and CockroachDB as target databases. While most features work identically across both
+platforms, there are important differences.
 
 ### PostgreSQL vs CockroachDB Feature Comparison
 
-| Feature | PostgreSQL | CockroachDB | Notes |
-|---------|------------|-------------|-------|
-| **Index Types** | | | |
-| BTREE | Supported | Supported | Default index type |
-| GIN | Supported | Supported | For JSONB, arrays |
-| GIST | Supported | Supported | For spatial data (PostGIS) |
-| HASH | Supported | Not Supported | Use BTREE instead |
-| SPGIST | Supported | Not Supported | Use BTREE or GIST |
-| BRIN | Supported | Not Supported | Use BTREE |
-| **Data Types** | | | |
-| Enums | All versions | v22.2+ only | See enum section |
-| PostGIS Spatial | GEOMETRY + GEOGRAPHY | GEOMETRY only | GEOGRAPHY converted to GEOMETRY |
-| JSONB | Supported | Supported | Full support |
-| Arrays | Supported | Supported | Full support |
-| **Numeric Precision** | | | |
-| Bigint defaults | Limited to 2^53-1 | Limited to 2^53-1 | JavaScript limitation |
+| Feature               | PostgreSQL           | CockroachDB       | Notes                           |
+| --------------------- | -------------------- | ----------------- | ------------------------------- |
+| **Index Types**       |                      |                   |                                 |
+| BTREE                 | Supported            | Supported         | Default index type              |
+| GIN                   | Supported            | Supported         | For JSONB, arrays               |
+| GIST                  | Supported            | Supported         | For spatial data (PostGIS)      |
+| HASH                  | Supported            | Not Supported     | Use BTREE instead               |
+| SPGIST                | Supported            | Not Supported     | Use BTREE or GIST               |
+| BRIN                  | Supported            | Not Supported     | Use BTREE                       |
+| **Data Types**        |                      |                   |                                 |
+| Enums                 | All versions         | v22.2+ only       | See enum section                |
+| PostGIS Spatial       | GEOMETRY + GEOGRAPHY | GEOMETRY only     | GEOGRAPHY converted to GEOMETRY |
+| JSONB                 | Supported            | Supported         | Full support                    |
+| Arrays                | Supported            | Supported         | Full support                    |
+| **Numeric Precision** |                      |                   |                                 |
+| Bigint defaults       | Limited to 2^53-1    | Limited to 2^53-1 | JavaScript limitation           |
 
 ### Index Type Compatibility
 
@@ -1007,7 +1063,7 @@ When defining indexes in your model JSON files, be aware of CockroachDB's limita
     {
       "name": "idx_score_hash",
       "fields": ["score"],
-      "type": "hash"  // Fails on CockroachDB
+      "type": "hash" // Fails on CockroachDB
     }
   ]
 }
@@ -1021,17 +1077,17 @@ When defining indexes in your model JSON files, be aware of CockroachDB's limita
     {
       "name": "idx_score_btree",
       "fields": ["score"],
-      "type": "btree"  // Works on both
+      "type": "btree" // Works on both
     },
     {
       "name": "idx_metadata_gin",
       "fields": ["metadata"],
-      "type": "gin"  // Works on both (for JSONB)
+      "type": "gin" // Works on both (for JSONB)
     },
     {
       "name": "idx_location_gist",
       "fields": ["location"],
-      "type": "gist"  // Works on both (for spatial data)
+      "type": "gist" // Works on both (for spatial data)
     }
   ]
 }
@@ -1041,12 +1097,13 @@ When defining indexes in your model JSON files, be aware of CockroachDB's limita
 
 CockroachDB does NOT support the PostGIS `GEOGRAPHY` type:
 
-| Feature | PostgreSQL | CockroachDB | COG Behavior |
-|---------|------------|-------------|--------------|
-| GEOMETRY | Supported | Supported | Used as-is |
-| GEOGRAPHY | Supported | Not Supported | Auto-converted to GEOMETRY |
+| Feature   | PostgreSQL | CockroachDB   | COG Behavior               |
+| --------- | ---------- | ------------- | -------------------------- |
+| GEOMETRY  | Supported  | Supported     | Used as-is                 |
+| GEOGRAPHY | Supported  | Not Supported | Auto-converted to GEOMETRY |
 
 When `--dbType cockroachdb` is used, COG automatically converts:
+
 - `type: "geography"` → `GEOMETRY` column type
 - `type: "geography", geometryType: "POINT"` → `GEOMETRY(POINT, srid)`
 - Generic geometry/geography fields → `GEOMETRY` (without subtype)
@@ -1056,15 +1113,18 @@ This conversion is transparent - your model definitions remain database-agnostic
 ### Enum Support
 
 **PostgreSQL Enums:**
+
 - Supported in all PostgreSQL versions
 - Generated as `pgEnum()` in Drizzle schemas
 
 **CockroachDB Enums:**
+
 - Supported in CockroachDB v22.2+ (December 2022)
 - Earlier versions do NOT support enum types
 - Alternative: Use `varchar` with `CHECK` constraints for older versions
 
 **Bitwise Integer Operations:**
+
 - Fully supported in all CockroachDB versions
 - Bitwise operators (`&`, `|`, `^`, `~`) work identically to PostgreSQL
 - Recommended approach for multi-value enums on CockroachDB
@@ -1091,14 +1151,14 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated
 
 ### All CLI Options
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--modelsPath <path>` | Path to JSON model files | `./models` |
-| `--outputPath <path>` | Where to generate code | `./generated` |
-| `--dbType <type>` | `postgresql` or `cockroachdb` | `postgresql` |
-| `--schema <name>` | Database schema name | (default) |
-| `--verbose` | Show generated file paths | false |
-| `--help` | Show help message | - |
+| Flag                  | Description                   | Default       |
+| --------------------- | ----------------------------- | ------------- |
+| `--modelsPath <path>` | Path to JSON model files      | `./models`    |
+| `--outputPath <path>` | Where to generate code        | `./generated` |
+| `--dbType <type>`     | `postgresql` or `cockroachdb` | `postgresql`  |
+| `--schema <name>`     | Database schema name          | (default)     |
+| `--verbose`           | Show generated file paths     | false         |
+| `--help`              | Show help message             | -             |
 
 ---
 
@@ -1137,7 +1197,7 @@ await initializeGenerated({
   },
   app,
   api: {
-    basePath: '/api/v1',  // Optional (default: '/api')
+    basePath: '/api/v1', // Optional (default: '/api')
   },
   // Domain hooks (within transaction)
   domainHooks: {
@@ -1192,9 +1252,11 @@ DELETE /api/{model}/:id/{relation}List      # Remove multiple items
 DELETE /api/{model}/:id/{relation}/:targetId # Remove single item
 ```
 
-**Note:** oneToMany/manyToOne relationships do NOT generate dedicated endpoints. Use query parameters or includes instead.
+**Note:** oneToMany/manyToOne relationships do NOT generate dedicated endpoints. Use query parameters or includes
+instead.
 
 **Query Parameters:**
+
 - `limit` - Pagination limit (default: 10)
 - `offset` - Pagination offset (default: 0)
 - `orderBy` - Sort field
@@ -1204,7 +1266,8 @@ DELETE /api/{model}/:id/{relation}/:targetId # Remove single item
 
 ### Exposing API Documentation
 
-COG generates an OpenAPI specification builder that creates runtime specs with your basePath. You control where and how to expose documentation:
+COG generates an OpenAPI specification builder that creates runtime specs with your basePath. You control where and how
+to expose documentation:
 
 ```typescript
 import { buildOpenAPISpec } from './generated/rest/openapi.ts';
@@ -1217,12 +1280,16 @@ const openAPISpec = buildOpenAPISpec('/api');
 app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
 
 // Expose interactive API documentation with Scalar
-app.get('/docs/reference', Scalar({
-  url: '/docs/openapi.json',
-}) as any);
+app.get(
+  '/docs/reference',
+  Scalar({
+    url: '/docs/openapi.json',
+  }) as any,
+);
 ```
 
 **Key Features:**
+
 - `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
 - `basePath` parameter is required (throws `DomainException` if missing)
 - Full control over documentation URLs
@@ -1253,6 +1320,7 @@ app.get('/docs/reference', Scalar({
 ### Modifying Generated Code Structure
 
 Edit the specific generator:
+
 - **Schema structure**: `drizzle-schema.generator.ts`
 - **Domain API**: `domain-api.generator.ts`
 - **REST endpoints**: `rest-api.generator.ts`
@@ -1278,19 +1346,20 @@ curl http://localhost:3000/docs/openapi.json
 
 ## File Naming Conventions
 
-| Type | Pattern | Example |
-|------|---------|---------|
-| Models | `[name].json` | `user.json` |
-| Schemas | `[name].schema.ts` | `user.schema.ts` |
-| Domain | `[name].domain.ts` | `user.domain.ts` |
-| REST | `[name].rest.ts` | `user.rest.ts` |
-| Tables | `[tableName]` (snake_case, singular) | `user`, `user_role` |
-| Columns | `snake_case` | `created_at`, `user_id` |
-| Model names | `PascalCase` | `User`, `UserProfile` |
-| Field names | `camelCase` | `userId`, `createdAt` |
-| Relationship names | `camelCase` with `List` suffix | `postList`, `skillList` |
+| Type               | Pattern                              | Example                 |
+| ------------------ | ------------------------------------ | ----------------------- |
+| Models             | `[name].json`                        | `user.json`             |
+| Schemas            | `[name].schema.ts`                   | `user.schema.ts`        |
+| Domain             | `[name].domain.ts`                   | `user.domain.ts`        |
+| REST               | `[name].rest.ts`                     | `user.rest.ts`          |
+| Tables             | `[tableName]` (snake_case, singular) | `user`, `user_role`     |
+| Columns            | `snake_case`                         | `created_at`, `user_id` |
+| Model names        | `PascalCase`                         | `User`, `UserProfile`   |
+| Field names        | `camelCase`                          | `userId`, `createdAt`   |
+| Relationship names | `camelCase` with `List` suffix       | `postList`, `skillList` |
 
-**Important**: Table names should be **singular** (e.g., `user`, not `users`). Relationship endpoints automatically add the "List" suffix for collections.
+**Important**: Table names should be **singular** (e.g., `user`, not `users`). Relationship endpoints automatically add
+the "List" suffix for collections.
 
 ---
 
@@ -1299,12 +1368,13 @@ curl http://localhost:3000/docs/openapi.json
 ### 1. Junction Table Naming
 
 Many-to-many relationships require `through` field with explicit junction table name:
+
 ```json
 {
   "type": "manyToMany",
   "name": "roleList",
   "target": "Role",
-  "through": "user_role",        // ← REQUIRED
+  "through": "user_role", // ← REQUIRED
   "foreignKey": "user_id",
   "targetForeignKey": "role_id"
 }
@@ -1313,6 +1383,7 @@ Many-to-many relationships require `through` field with explicit junction table 
 ### 3. Self-Referential Relationships
 
 Model can reference itself:
+
 ```json
 {
   "name": "Employee",
@@ -1336,20 +1407,22 @@ Model can reference itself:
 ### 4. Foreign Key References
 
 When using `references` in fields, ensure target model exists:
+
 ```json
 {
   "name": "authorId",
   "type": "uuid",
   "required": true,
   "references": {
-    "model": "User",           // ← Must match existing model name
-    "field": "id",             // ← Must match field in User model
-    "onDelete": "CASCADE"      // ← Optional: CASCADE, SET NULL, RESTRICT, NO ACTION
+    "model": "User", // ← Must match existing model name
+    "field": "id", // ← Must match field in User model
+    "onDelete": "CASCADE" // ← Optional: CASCADE, SET NULL, RESTRICT, NO ACTION
   }
 }
 ```
 
 **Supported Foreign Key Actions:**
+
 - `CASCADE` - Delete/update child records when parent is deleted/updated
 - `SET NULL` - Set foreign key to NULL when parent is deleted/updated
 - `RESTRICT` - Prevent deletion/update of parent if children exist
@@ -1358,28 +1431,31 @@ When using `references` in fields, ensure target model exists:
 ### 5. PostGIS SRID
 
 For spatial fields, optionally specify SRID:
+
 ```json
 {
   "name": "location",
   "type": "point",
-  "srid": 4326,        // ← WGS 84 (GPS coordinates)
+  "srid": 4326, // ← WGS 84 (GPS coordinates)
   "required": true
 }
 ```
 
 Common SRIDs:
+
 - `4326` - WGS 84 (GPS coordinates, lat/long)
 - `3857` - Web Mercator (used by Google Maps, OpenStreetMap)
 
 ### 6. Index Types and Database Compatibility
 
 GIST indexes work with PostGIS spatial types:
+
 ```json
 {
   "indexes": [
     {
       "fields": ["location"],
-      "type": "gist"        // ← For spatial fields
+      "type": "gist" // ← For spatial fields
     }
   ]
 }
@@ -1395,7 +1471,7 @@ For CockroachDB: HASH, SPGIST, and BRIN index types are not supported. Use BTREE
 {
   "name": "bigintField",
   "type": "bigint",
-  "defaultValue": 9007199254740991  // ✓ Maximum safe value
+  "defaultValue": 9007199254740991 // ✓ Maximum safe value
 }
 ```
 
@@ -1403,7 +1479,7 @@ For CockroachDB: HASH, SPGIST, and BRIN index types are not supported. Use BTREE
 {
   "name": "bigintField",
   "type": "bigint",
-  "defaultValue": 9223372036854775807  // ✗ Too large - will lose precision
+  "defaultValue": 9223372036854775807 // ✗ Too large - will lose precision
 }
 ```
 
@@ -1439,9 +1515,26 @@ Projects using generated code need these in `deno.json`:
 ## Related Documentation
 
 - [README.md](./README.md) - User-facing documentation with visual guides
-- [CLAUDE.md](./CLAUDE.md) - Brief reference (points to this document)
 - [example/README.md](./example/README.md) - Example project walkthrough
 - [src/types/model.types.ts](./src/types/model.types.ts) - TypeScript type definitions with comments
+
+---
+
+## Agent rules
+
+- Always add packages using `deno add <package spec>`, never add packages directly into deno.json or example/deno.json
+- avoid code duplication at all costs
+
+- multiple code of very similar patterns must be factored into a unit, eg. a function
+- complexity is not tolerated, the simplest elegant solution is the only good solution
+- follow separation-of-concerns, single responsibility and KISS
+- no component, not even the Firebase Authentication can store any data permanently, the session storage is the only
+  acceptable level of persistence except the cookies used by 3rd parties.
+- all colors and text styles must use what's available in Theme's colorScheme and textTheme (hurting this rule will
+  affetc dark/light theming)
+- for HTTP communication with the backend, use QCApiService
+- do not use WASM incompatible libraries, eg dart:html
+- do not use underscore methods and fields in private classes, eg in stateful widgets's state
 
 ---
 
@@ -1449,4 +1542,5 @@ Projects using generated code need these in `deno.json`:
 
 Generated: 2025-12-05
 
-**NOTE**: This file should be updated whenever major architectural changes, new features, or important patterns are added to the codebase.
+**NOTE**: This file should be updated whenever major architectural changes, new features, or important patterns are
+added to the codebase.

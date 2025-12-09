@@ -1,10 +1,10 @@
 import {
-  ModelDefinition,
-  ValidationError,
-  FieldDefinition,
+  AcceptType,
   EnumDefinition,
   ExposeType,
-  AcceptType,
+  FieldDefinition,
+  ModelDefinition,
+  ValidationError,
 } from '../types/model.types.ts';
 
 /**
@@ -19,7 +19,7 @@ export class ModelParser {
    */
   async parseModelsFromDirectory(dirPath: string): Promise<{
     models: ModelDefinition[];
-    errors: ValidationError[]
+    errors: ValidationError[];
   }> {
     this.models.clear();
     this.errors = [];
@@ -38,16 +38,16 @@ export class ModelParser {
 
       return {
         models: Array.from(this.models.values()),
-        errors: this.errors
+        errors: this.errors,
       };
     } catch (error) {
       this.errors.push({
         message: `Failed to parse models directory: ${error instanceof Error ? error.message : String(error)}`,
-        severity: 'error'
+        severity: 'error',
       });
       return {
         models: [],
-        errors: this.errors
+        errors: this.errors,
       };
     }
   }
@@ -59,14 +59,14 @@ export class ModelParser {
     try {
       const content = await Deno.readTextFile(filePath);
       const modelData = JSON.parse(content);
-      
+
       const model = this.validateAndTransformModel(modelData, filePath);
       if (model) {
         if (this.models.has(model.name)) {
           this.errors.push({
             model: model.name,
             message: `Duplicate model name: ${model.name}`,
-            severity: 'error'
+            severity: 'error',
           });
         } else {
           this.models.set(model.name, model);
@@ -75,7 +75,7 @@ export class ModelParser {
     } catch (error) {
       this.errors.push({
         message: `Failed to parse file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        severity: 'error'
+        severity: 'error',
       });
     }
   }
@@ -88,7 +88,7 @@ export class ModelParser {
     if (typeof data !== 'object' || data === null) {
       this.errors.push({
         message: `Model in ${filePath} is not a valid object`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -100,7 +100,7 @@ export class ModelParser {
     if (!modelData.name || typeof modelData.name !== 'string') {
       this.errors.push({
         message: `Model in ${filePath} is missing a valid 'name' field`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -109,7 +109,7 @@ export class ModelParser {
       this.errors.push({
         model: modelData.name,
         message: `Model '${modelData.name}' is missing a valid 'tableName' field`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -118,7 +118,7 @@ export class ModelParser {
       this.errors.push({
         model: modelData.name,
         message: `Model '${modelData.name}' must have at least one field`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -128,12 +128,12 @@ export class ModelParser {
     if (!fields) return null;
 
     // Ensure there's at least one primary key
-    const hasPrimaryKey = fields.some(f => f.primaryKey);
+    const hasPrimaryKey = fields.some((f) => f.primaryKey);
     if (!hasPrimaryKey) {
       this.errors.push({
         model: modelData.name,
         message: `Model '${modelData.name}' must have at least one primary key field`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -164,7 +164,7 @@ export class ModelParser {
       timestamps: modelData.timestamps as boolean | undefined,
       description: modelData.description as string | undefined,
       hooks: modelData.hooks as ModelDefinition['hooks'],
-      endpoints: modelData.endpoints as ModelDefinition['endpoints']
+      endpoints: modelData.endpoints as ModelDefinition['endpoints'],
     };
 
     return model;
@@ -183,7 +183,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Field is not a valid object`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -196,7 +196,7 @@ export class ModelParser {
           model: modelName,
           field: field.name,
           message: `Duplicate field name: ${field.name}`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -209,7 +209,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Field is missing a valid 'name'`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -219,7 +219,7 @@ export class ModelParser {
           model: modelName,
           field: field.name,
           message: `Field '${field.name}' is missing a valid 'type'`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -230,7 +230,7 @@ export class ModelParser {
           model: modelName,
           field: field.name,
           message: `Field '${field.name}' has invalid type: ${field.type}`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -241,7 +241,7 @@ export class ModelParser {
           model: modelName,
           field: field.name,
           message: `Field '${field.name}' has invalid maxLength: ${field.maxLength}`,
-          severity: 'warning'
+          severity: 'warning',
         });
       }
 
@@ -251,7 +251,7 @@ export class ModelParser {
             model: modelName,
             field: field.name,
             message: `Field '${field.name}' has invalid precision: ${field.precision}`,
-            severity: 'warning'
+            severity: 'warning',
           });
         }
         if (field.scale && (typeof field.scale !== 'number' || field.scale < 0)) {
@@ -259,7 +259,7 @@ export class ModelParser {
             model: modelName,
             field: field.name,
             message: `Field '${field.name}' has invalid scale: ${field.scale}`,
-            severity: 'warning'
+            severity: 'warning',
           });
         }
       }
@@ -271,7 +271,7 @@ export class ModelParser {
             model: modelName,
             field: field.name,
             message: `Field '${field.name}' has invalid SRID: ${field.srid}`,
-            severity: 'warning'
+            severity: 'warning',
           });
         }
       }
@@ -283,7 +283,7 @@ export class ModelParser {
             model: modelName,
             field: field.name,
             message: `Enum field '${field.name}' must have either 'enumName' or 'enumValues'`,
-            severity: 'error'
+            severity: 'error',
           });
           return null;
         }
@@ -292,7 +292,7 @@ export class ModelParser {
             model: modelName,
             field: field.name,
             message: `Enum field '${field.name}' cannot have both 'enumName' and 'enumValues'`,
-            severity: 'error'
+            severity: 'error',
           });
           return null;
         }
@@ -302,7 +302,7 @@ export class ModelParser {
               model: modelName,
               field: field.name,
               message: `Enum field '${field.name}' must have at least one value`,
-              severity: 'error'
+              severity: 'error',
             });
             return null;
           }
@@ -313,7 +313,7 @@ export class ModelParser {
               model: modelName,
               field: field.name,
               message: `Enum field '${field.name}' has duplicate values`,
-              severity: 'error'
+              severity: 'error',
             });
             return null;
           }
@@ -338,8 +338,9 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             field: field.name as string,
-            message: `Field '${field.name}' is required with accept: "never" but has no defaultValue. A beforeCreate hook MUST provide this value.`,
-            severity: 'warning'
+            message:
+              `Field '${field.name}' is required with accept: "never" but has no defaultValue. A beforeCreate hook MUST provide this value.`,
+            severity: 'warning',
           });
         }
       }
@@ -366,7 +367,7 @@ export class ModelParser {
               model: modelName,
               relationship: rel.name,
               message: `Relationship '${rel.name}' references non-existent model: ${rel.target}`,
-              severity: 'error'
+              severity: 'error',
             });
           }
         }
@@ -377,19 +378,19 @@ export class ModelParser {
             model: modelName,
             relationship: rel.name,
             message: `Many-to-many relationship '${rel.name}' requires a 'through' table`,
-            severity: 'error'
+            severity: 'error',
           });
         }
 
         // Validate foreign key references
         if (rel.foreignKey) {
-          const hasField = model.fields.some(f => f.name === rel.foreignKey);
+          const hasField = model.fields.some((f) => f.name === rel.foreignKey);
           if (!hasField && rel.type === 'manyToOne') {
             this.errors.push({
               model: modelName,
               relationship: rel.name,
               message: `Foreign key field '${rel.foreignKey}' not found in model`,
-              severity: 'warning'
+              severity: 'warning',
             });
           }
         }
@@ -405,7 +406,7 @@ export class ModelParser {
       this.errors.push({
         model: modelName,
         message: `Enums must be an array`,
-        severity: 'error'
+        severity: 'error',
       });
       return null;
     }
@@ -419,7 +420,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Enum definition is not a valid object`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -430,7 +431,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Enum definition is missing a valid 'name'`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -440,7 +441,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Duplicate enum name: ${enumDef.name}`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -450,7 +451,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Enum '${enumDef.name}' must have at least one value`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -461,7 +462,7 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             message: `Enum '${enumDef.name}' has invalid value: ${value}`,
-            severity: 'error'
+            severity: 'error',
           });
           return null;
         }
@@ -473,7 +474,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Enum '${enumDef.name}' has duplicate values`,
-          severity: 'error'
+          severity: 'error',
         });
         return null;
       }
@@ -489,8 +490,25 @@ export class ModelParser {
    */
   private isValidDataType(type: string): boolean {
     const validTypes = [
-      'text', 'string', 'integer', 'bigint', 'decimal', 'boolean', 'date', 'uuid', 'json', 'jsonb', 'enum',
-      'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
+      'text',
+      'string',
+      'integer',
+      'bigint',
+      'decimal',
+      'boolean',
+      'date',
+      'uuid',
+      'json',
+      'jsonb',
+      'enum',
+      'point',
+      'linestring',
+      'polygon',
+      'multipoint',
+      'multilinestring',
+      'multipolygon',
+      'geometry',
+      'geography',
     ];
     return validTypes.includes(type);
   }
@@ -500,7 +518,14 @@ export class ModelParser {
    */
   private isPostGISType(type: string): boolean {
     const postgisTypes = [
-      'point', 'linestring', 'polygon', 'multipoint', 'multilinestring', 'multipolygon', 'geometry', 'geography'
+      'point',
+      'linestring',
+      'polygon',
+      'multipoint',
+      'multilinestring',
+      'multipolygon',
+      'geometry',
+      'geography',
     ];
     return postgisTypes.includes(type);
   }
@@ -511,13 +536,13 @@ export class ModelParser {
   private validateCheckConstraints(
     checkConstraints: unknown,
     modelName: string,
-    fields: FieldDefinition[]
+    fields: FieldDefinition[],
   ): boolean {
     if (typeof checkConstraints !== 'object' || checkConstraints === null) {
       this.errors.push({
         model: modelName,
         message: `Check constraints must be an object`,
-        severity: 'error'
+        severity: 'error',
       });
       return false;
     }
@@ -532,7 +557,7 @@ export class ModelParser {
         this.errors.push({
           model: modelName,
           message: `Check constraint 'numNotNulls' must be an array`,
-          severity: 'error'
+          severity: 'error',
         });
         return false;
       }
@@ -543,7 +568,7 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             message: `Check constraint 'numNotNulls' must contain objects with 'fields' and 'num' properties`,
-            severity: 'error'
+            severity: 'error',
           });
           return false;
         }
@@ -553,7 +578,7 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             message: `Check constraint 'numNotNulls' must have non-empty 'fields' array`,
-            severity: 'error'
+            severity: 'error',
           });
           return false;
         }
@@ -563,7 +588,7 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             message: `Check constraint 'numNotNulls' must have 'num' as a positive integer`,
-            severity: 'error'
+            severity: 'error',
           });
           return false;
         }
@@ -572,8 +597,9 @@ export class ModelParser {
         if (constraintDef.num > constraintDef.fields.length) {
           this.errors.push({
             model: modelName,
-            message: `Check constraint 'numNotNulls' 'num' (${constraintDef.num}) cannot exceed field count (${constraintDef.fields.length})`,
-            severity: 'error'
+            message:
+              `Check constraint 'numNotNulls' 'num' (${constraintDef.num}) cannot exceed field count (${constraintDef.fields.length})`,
+            severity: 'error',
           });
           return false;
         }
@@ -584,20 +610,20 @@ export class ModelParser {
             this.errors.push({
               model: modelName,
               message: `Check constraint 'numNotNulls' must contain valid field name strings`,
-              severity: 'error'
+              severity: 'error',
             });
             return false;
           }
         }
 
         // Validate that all referenced fields exist in the model
-        const modelFieldNames = new Set(fields.map(f => f.name));
+        const modelFieldNames = new Set(fields.map((f) => f.name));
         for (const fieldName of constraintDef.fields) {
           if (!modelFieldNames.has(fieldName)) {
             this.errors.push({
               model: modelName,
               message: `Check constraint 'numNotNulls' references non-existent field: ${fieldName}`,
-              severity: 'error'
+              severity: 'error',
             });
             return false;
           }
@@ -609,7 +635,7 @@ export class ModelParser {
           this.errors.push({
             model: modelName,
             message: `Check constraint 'numNotNulls' has duplicate field names`,
-            severity: 'error'
+            severity: 'error',
           });
           return false;
         }
@@ -626,7 +652,7 @@ export class ModelParser {
   private validateExposeField(
     expose: unknown,
     modelName: string,
-    fieldName: string
+    fieldName: string,
   ): boolean {
     const validValues: ExposeType[] = ['default', 'hidden', 'create'];
 
@@ -635,7 +661,7 @@ export class ModelParser {
         model: modelName,
         field: fieldName,
         message: `Field '${fieldName}' has invalid 'expose' value: must be one of "default", "hidden", or "create"`,
-        severity: 'error'
+        severity: 'error',
       });
       return false;
     }
@@ -644,8 +670,9 @@ export class ModelParser {
       this.errors.push({
         model: modelName,
         field: fieldName,
-        message: `Field '${fieldName}' has invalid 'expose' value: "${expose}". Must be one of "default", "hidden", or "create"`,
-        severity: 'error'
+        message:
+          `Field '${fieldName}' has invalid 'expose' value: "${expose}". Must be one of "default", "hidden", or "create"`,
+        severity: 'error',
       });
       return false;
     }
@@ -660,7 +687,7 @@ export class ModelParser {
   private validateAcceptField(
     accept: unknown,
     modelName: string,
-    fieldName: string
+    fieldName: string,
   ): boolean {
     const validValues: AcceptType[] = ['default', 'create', 'never'];
 
@@ -669,7 +696,7 @@ export class ModelParser {
         model: modelName,
         field: fieldName,
         message: `Field '${fieldName}' has invalid 'accept' value: must be one of "default", "create", or "never"`,
-        severity: 'error'
+        severity: 'error',
       });
       return false;
     }
@@ -678,8 +705,9 @@ export class ModelParser {
       this.errors.push({
         model: modelName,
         field: fieldName,
-        message: `Field '${fieldName}' has invalid 'accept' value: "${accept}". Must be one of "default", "create", or "never"`,
-        severity: 'error'
+        message:
+          `Field '${fieldName}' has invalid 'accept' value: "${accept}". Must be one of "default", "create", or "never"`,
+        severity: 'error',
       });
       return false;
     }

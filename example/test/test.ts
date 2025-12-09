@@ -13,7 +13,16 @@
  * Cleanup: deno task test:clean
  */
 
-import { AcceptanceTestEntity, Assignment, Department, Employee, ExposureTestEntity, IDCard, Project, Skill } from '../generated/index.ts';
+import {
+  AcceptanceTestEntity,
+  Assignment,
+  Department,
+  Employee,
+  ExposureTestEntity,
+  IDCard,
+  Project,
+  Skill,
+} from '../generated/index.ts';
 import {
   assert,
   assertArray,
@@ -29,7 +38,7 @@ import {
   POST,
   PUT,
   REQUEST,
-} from './http-client.ts';
+} from './utils.ts';
 
 // Extended types for responses with included relationships
 type EmployeeWithRelations = Employee & {
@@ -327,7 +336,9 @@ async function main() {
     logData('John with relationships', johnFull);
 
     logStep('Getting department with employee list');
-    const engWithEmployees = await GET(`/api/department/${engineering.id}?include=employeeList`) as DepartmentWithRelations;
+    const engWithEmployees = await GET(
+      `/api/department/${engineering.id}?include=employeeList`,
+    ) as DepartmentWithRelations;
 
     assertArray(engWithEmployees.employeeList, 'engWithEmployees.employeeList');
     assertEqual(engWithEmployees.employeeList!.length, 2, 'Engineering should have 2 employees');
@@ -633,8 +644,12 @@ async function main() {
 
     // 13.9 Filter with Pagination
     logStep('13.9 Filter with pagination');
-    const filteredWithPagination = await GET<{ data: Employee[]; pagination: { total: number; limit: number; offset: number } }>(
-      `/api/employee?where=${encodeFilter({ field: 'departmentId', op: 'eq', value: engineering.id })}&limit=1&offset=0`,
+    const filteredWithPagination = await GET<
+      { data: Employee[]; pagination: { total: number; limit: number; offset: number } }
+    >(
+      `/api/employee?where=${
+        encodeFilter({ field: 'departmentId', op: 'eq', value: engineering.id })
+      }&limit=1&offset=0`,
     );
     assertArray(filteredWithPagination.data, 'filteredWithPagination.data');
     assertEqual(filteredWithPagination.data.length, 1, 'Should return 1 employee (limit=1)');
@@ -645,7 +660,9 @@ async function main() {
     // 13.10 Filter with Include
     logStep('13.10 Filter with include');
     const filteredWithInclude = await GET<{ data: EmployeeWithRelations[]; pagination: { total: number } }>(
-      `/api/employee?where=${encodeFilter({ field: 'firstName', op: 'eq', value: 'Jane' })}&include=department,skillList`,
+      `/api/employee?where=${
+        encodeFilter({ field: 'firstName', op: 'eq', value: 'Jane' })
+      }&include=department,skillList`,
     );
     assertArray(filteredWithInclude.data, 'filteredWithInclude.data');
     assertEqual(filteredWithInclude.data.length, 1, 'Should find Jane');
@@ -661,7 +678,8 @@ async function main() {
     );
     assertEqual(invalidFieldResult.status, 400, 'Invalid field should return 400');
     assert(
-      (invalidFieldResult.error?.toLowerCase().includes('unknown') || invalidFieldResult.error?.toLowerCase().includes('field')) ?? false,
+      (invalidFieldResult.error?.toLowerCase().includes('unknown') ||
+        invalidFieldResult.error?.toLowerCase().includes('field')) ?? false,
       'Error should mention unknown field',
     );
     logSuccess('✓ Invalid field returns 400');
@@ -705,7 +723,11 @@ async function main() {
     assertEqual(exposureEntity.normalField, 'Normal Value', 'normalField should be present');
     assert(!('hiddenField' in exposureEntity), 'hiddenField should be stripped from POST response');
     assert('createOnlyField' in exposureEntity, 'createOnlyField should be visible in POST response');
-    assertEqual((exposureEntity as Record<string, unknown>).createOnlyField, 'This should be visible on create only', 'createOnlyField value should match');
+    assertEqual(
+      (exposureEntity as Record<string, unknown>).createOnlyField,
+      'This should be visible on create only',
+      'createOnlyField value should match',
+    );
     createdIds.exposureTestEntities.push(exposureEntity.id);
     logSuccess('✓ POST: hiddenField stripped, createOnlyField visible');
 
@@ -735,7 +757,10 @@ async function main() {
     assert(exposureList.data.length >= 1, 'Should have at least 1 entity');
     for (const item of exposureList.data) {
       assert(!('hiddenField' in (item as Record<string, unknown>)), 'hiddenField should be stripped from list items');
-      assert(!('createOnlyField' in (item as Record<string, unknown>)), 'createOnlyField should be stripped from list items');
+      assert(
+        !('createOnlyField' in (item as Record<string, unknown>)),
+        'createOnlyField should be stripped from list items',
+      );
     }
     logSuccess('✓ List: both hiddenField and createOnlyField stripped from all items');
 
@@ -760,7 +785,9 @@ async function main() {
     // 14.7 Filter on normalField - should succeed
     logStep('14.7 Filter on normalField - should succeed');
     const filterNormalResult = await GET<{ data: ExposureTestEntity[]; pagination: { total: number } }>(
-      `/api/exposuretestentity?where=${encodeFilter({ field: 'normalField', op: 'eq', value: 'Updated Normal Value' })}`,
+      `/api/exposuretestentity?where=${
+        encodeFilter({ field: 'normalField', op: 'eq', value: 'Updated Normal Value' })
+      }`,
     );
     assertArray(filterNormalResult.data, 'filterNormalResult.data');
     assert(filterNormalResult.data.length >= 1, 'Should find at least 1 entity');
@@ -882,12 +909,14 @@ async function main() {
     // 16.3 Test complex filter combination
     logStep('16.3 Complex filter with hook (AND group + hook condition)');
     const complexFilterResult = await GET<{ data: Employee[]; pagination: { total: number } }>(
-      `/api/employee?where=${encodeFilter({
-        and: [
-          { field: 'firstName', op: 'in', value: ['Jane', 'Bob', 'Alice'] },
-          { field: 'email', op: 'ilike', value: '%@example.com' },
-        ],
-      })}`,
+      `/api/employee?where=${
+        encodeFilter({
+          and: [
+            { field: 'firstName', op: 'in', value: ['Jane', 'Bob', 'Alice'] },
+            { field: 'email', op: 'ilike', value: '%@example.com' },
+          ],
+        })
+      }`,
     );
     assertArray(complexFilterResult.data, 'complexFilterResult.data');
     // All results should match the REST filter AND have departmentId

@@ -128,7 +128,7 @@ export function geoJsonToWKT(geojson: GeoJSON, srid?: number): string {
       break;
 
     default:
-      throw new Error(\`Unsupported GeoJSON type: \${(geojson as any).type}\`);
+      throw new Error(\`Unsupported GeoJSON type: \${(geojson as unknown as { type: string }).type}\`);
   }
 
   // Add SRID prefix if provided
@@ -148,7 +148,7 @@ export function geoJsonToWKT(geojson: GeoJSON, srid?: number): string {
 export function wktToGeoJSON(value: string | Buffer): GeoJSON {
   // Handle Buffer (from database binary format)
   if (value instanceof Buffer || (typeof value === 'object' && value !== null && 'buffer' in value)) {
-    const hex = value instanceof Buffer ? value.toString('hex') : Buffer.from(value as any).toString('hex');
+    const hex = value instanceof Buffer ? value.toString('hex') : Buffer.from(value as unknown as Uint8Array).toString('hex');
     return parseEWKB(hex);
   }
 

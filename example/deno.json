@@ -19,7 +19,10 @@
     "cog:psql:generate": "deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated --dbType postgresql",
     "db:init": "deno run -A ./db-init.ts",
     "db:clean": "deno run -A ./db-clean.ts",
-    "run": "deno run -A ./src/main.ts",
+    "fmt": "deno fmt --ignore=generated",
+    "lint": "deno lint src/ && deno lint generated/ --rules-exclude=no-unused-vars",
+    "check": "deno check src/ && deno check generated/",
+    "start": "deno run -A ./src/main.ts",
     "test": "deno run -A ./test/test.ts",
     "test:clean": "deno run -A ./test/clean.ts"
   },

@@ -1,4 +1,11 @@
-import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition, ExposeType, AcceptType } from '../types/model.types.ts';
+import {
+  AcceptType,
+  DataType,
+  ExposeType,
+  FieldDefinition,
+  ModelDefinition,
+  RelationshipDefinition,
+} from '../types/model.types.ts';
 
 /**
  * Helper function to normalize expose config to a consistent object format

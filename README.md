@@ -135,7 +135,8 @@ DELETE /api/department/:id   # Delete department
 | **Arrays**     | Any type with `"array": true`                                                                                                               |
 
 **Note:** `date` fields are stored as EPOCH millisecond integers (`bigint`) in the database. The API accepts and returns
-numeric timestamps (e.g., `1704067200000`). Use `Date.getTime()` in JavaScript/TypeScript. OpenAPI documents these as `type: integer, format: int64`.
+numeric timestamps (e.g., `1704067200000`). Use `Date.getTime()` in JavaScript/TypeScript. OpenAPI documents these as
+`type: integer, format: int64`.
 
 ### Relationship Support
 
@@ -181,9 +182,12 @@ HTTP Request
 → HTTP Response
 ```
 
-**Available Hooks:** beforeCreate, preCreate, postCreate, afterCreate, beforeUpdate, preUpdate, postUpdate, afterUpdate, beforeDelete, preDelete, postDelete, afterDelete, beforeFindById, beforeFindMany, and junction hooks for many-to-many relationships.
+**Available Hooks:** beforeCreate, preCreate, postCreate, afterCreate, beforeUpdate, preUpdate, postUpdate, afterUpdate,
+beforeDelete, preDelete, postDelete, afterDelete, beforeFindById, beforeFindMany, and junction hooks for many-to-many
+relationships.
 
-**Hook Parameters:** `input` (validated data), `rawInput` (original request body), `result` (database response), `tx` (transaction), `context` (shared state). See [WARP.md](./WARP.md#hook-signatures-reference) for complete signatures.
+**Hook Parameters:** `input` (validated data), `rawInput` (original request body), `result` (database response), `tx`
+(transaction), `context` (shared state). See [WARP.md](./WARP.md#hook-signatures-reference) for complete signatures.
 
 **HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead.
 
@@ -275,7 +279,8 @@ Documentation: http://localhost:3000/docs/reference
 
 ## OpenAPI Documentation
 
-COG generates an OpenAPI 3.1.0 specification builder that creates runtime specs with your API basePath. You control where and how to expose documentation:
+COG generates an OpenAPI 3.1.0 specification builder that creates runtime specs with your API basePath. You control
+where and how to expose documentation:
 
 ```typescript
 import { buildOpenAPISpec } from './generated/rest/openapi.ts';
@@ -292,6 +297,7 @@ app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as any);
 ```
 
 **Key Features:**
+
 - `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
 - `basePath` parameter is required (throws `DomainException` if missing)
 - Merge with custom endpoints using `mergeOpenAPISpec(basePath, customSpec)`
@@ -354,11 +360,11 @@ Control field visibility in API responses:
 }
 ```
 
-| Value | Effect |
-|-------|--------|
-| `"default"` (or omit) | Visible in all responses |
-| `"hidden"` | Never visible in responses |
-| `"create"` | Visible only in POST response |
+| Value                 | Effect                        |
+| --------------------- | ----------------------------- |
+| `"default"` (or omit) | Visible in all responses      |
+| `"hidden"`            | Never visible in responses    |
+| `"create"`            | Visible only in POST response |
 
 Works with `?include=` - included child objects respect their own exposure rules.
 
@@ -382,22 +388,22 @@ Control which fields are accepted as input:
 }
 ```
 
-| Value | Effect |
-|-------|--------|
-| `"default"` (or omit) | Accepted on create and update |
-| `"create"` | Accepted on create only (immutable after) |
-| `"never"` | Never accepted (server-managed) |
+| Value                 | Effect                                    |
+| --------------------- | ----------------------------------------- |
+| `"default"` (or omit) | Accepted on create and update             |
+| `"create"`            | Accepted on create only (immutable after) |
+| `"never"`             | Never accepted (server-managed)           |
 
-**Important:** For `required` fields with `accept: "never"` and no `defaultValue`,
-the `beforeCreate` hook MUST provide the value before Zod validation runs.
+**Important:** For `required` fields with `accept: "never"` and no `defaultValue`, the `beforeCreate` hook MUST provide
+the value before Zod validation runs.
 
 ```typescript
 // Example: Server-managed createdBy field
 const employeeDomainWithHooks = new EmployeeDomain({
   beforeCreate: async (input, context) => ({
     ...input,
-    createdBy: context?.userId  // Inject before Zod validation
-  })
+    createdBy: context?.userId, // Inject before Zod validation
+  }),
 });
 ```
 

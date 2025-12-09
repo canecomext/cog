@@ -221,7 +221,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async create(input: New${modelName}, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Strip unaccepted fields from input (before any hooks)
-    let strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}CreateUnacceptedFields);
+    const strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}CreateUnacceptedFields);
 
     // Before-create hook (outside transaction, before validation)
     // Hook can inject server-managed fields that were stripped
@@ -425,7 +425,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async update(id: string, input: Partial<New${modelName}>, tx: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>): Promise<${modelName}> {
     // Strip unaccepted fields from input (before any hooks)
-    let strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}UpdateUnacceptedFields);
+    const strippedInput = stripUnacceptedFields(input as unknown as Record<string, unknown>, ${modelNameLower}UpdateUnacceptedFields);
 
     // Before-update hook (outside transaction, before validation)
     // Hook can inject server-managed fields that were stripped
@@ -611,7 +611,7 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       return '// No relationships to include';
     }
 
-    const modelNameLower = model.name.toLowerCase();
+    // const modelNameLower = model.name.toLowerCase();
 
     // Generate the include logic for relationships
     let code = '\n    // Handle relationship includes\n';
@@ -629,7 +629,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         const foreignKey = rel.foreignKey || rel.target.toLowerCase() + 'Id';
         code += `          // Load ${rel.name} (manyToOne) via domain\n`;
         code += `          if (found.${foreignKey}) {\n`;
-        code += `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
+        code +=
+          `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
         code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
         code += `          } else {\n`;
         code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
@@ -671,7 +672,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
           const foreignKey = rel.foreignKey!;
           code += `          // Load ${rel.name} (oneToOne - owned) via domain\n`;
           code += `          if (found.${foreignKey}) {\n`;
-          code += `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
+          code +=
+            `            const ${rel.name} = await ${targetDomain}.findById(found.${foreignKey}, tx, { skipSanitization: options.skipSanitization });\n`;
           code += `            (found as unknown as Record<string, unknown>).${rel.name} = ${rel.name};\n`;
           code += `          } else {\n`;
           code += `            (found as unknown as Record<string, unknown>).${rel.name} = null;\n`;
@@ -767,7 +769,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
         code += `        // Load ${rel.name} (manyToMany) for all results via domain\n`;
         code += `        const resultIds = results.map(r => r.id);\n`;
         code += `        const ${rel.name}JunctionData = await db\n`;
-        code += `          .select({ sourceId: ${junctionTable}Table.${sourceFK}, targetId: ${junctionTable}Table.${targetFK} })\n`;
+        code +=
+          `          .select({ sourceId: ${junctionTable}Table.${sourceFK}, targetId: ${junctionTable}Table.${targetFK} })\n`;
         code += `          .from(${junctionTable}Table)\n`;
         code += `          .where(inArray(${junctionTable}Table.${sourceFK}, resultIds));\n`;
         code += `        const ${rel.name}TargetIds = [...new Set(${rel.name}JunctionData.map(j => j.targetId))];\n`;
@@ -908,7 +911,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   async add${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Before-add hook (outside transaction, before validation)
-    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${
+          this.toCamelCase(targetFK)
+        }: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.beforeAddJunction) {
       ids = await this.${relName}JunctionHooks.beforeAddJunction(ids, rawInput, context);
     }
@@ -960,7 +965,9 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
    */
   async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
     // Before-remove hook (outside transaction, before validation)
-    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${this.toCamelCase(targetFK)}: ${targetNameLower}Id };
+    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${
+          this.toCamelCase(targetFK)
+        }: ${targetNameLower}Id };
     if (this.${relName}JunctionHooks.beforeRemoveJunction) {
       ids = await this.${relName}JunctionHooks.beforeRemoveJunction(ids, rawInput, context);
     }

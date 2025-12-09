@@ -503,10 +503,10 @@ app.use('*', async (c, next) => {
 });
 
 // Access in domain hooks via context
-preCreate: async (input, tx, context) => {
+preCreate: (async (input, tx, context) => {
   const value = context.someString;
   // ...
-};
+});
 ```
 
 ---

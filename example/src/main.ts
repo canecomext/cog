@@ -217,7 +217,7 @@ await initializeGenerated({
       },
 
       postFindMany: (
-        options: QueryOptions,
+        _options: QueryOptions,
         results: Employee[],
         _tx: DbTransaction,
         _context?: DomainHookContext<ExampleEnv['Variables']>,

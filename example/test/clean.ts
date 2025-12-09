@@ -10,7 +10,7 @@
  * Usage: deno task test:clean
  */
 
-import { DELETE, GET, logSection, logStep, logSuccess } from './http-client.ts';
+import { DELETE, GET, logSection, logStep, logSuccess } from './utils.ts';
 
 /**
  * Safely delete a resource, ignoring 404 errors

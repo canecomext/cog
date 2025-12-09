@@ -1,10 +1,10 @@
 import {
+  AcceptType,
+  ExposeType,
   FieldDefinition,
   IndexDefinition,
   ModelDefinition,
   RelationshipDefinition,
-  ExposeType,
-  AcceptType
 } from '../types/model.types.ts';
 
 /**
@@ -82,7 +82,7 @@ export class DrizzleSchemaGenerator {
     }
 
     // Generate spatial utilities if PostGIS is enabled and any model has PostGIS fields
-    if (this.postgis && this.models.some(model => this.hasPostGISFields(model))) {
+    if (this.postgis && this.models.some((model) => this.hasPostGISFields(model))) {
       const spatialUtilsGenerator = new SpatialUtilsGenerator();
       const spatialUtilsContent = spatialUtilsGenerator.generate();
       schemas.set('schema/spatial-utils.ts', spatialUtilsContent);
@@ -240,16 +240,16 @@ export class DrizzleSchemaGenerator {
     }
 
     let code = '// Enum definitions\n';
-    
+
     // Add CockroachDB compatibility note
     if (this.isCockroachDB) {
       code += '// Note: CockroachDB supports enums from v22.2+\n';
       code += '// For earlier versions, consider using varchar with CHECK constraints\n';
     }
-    
+
     for (const enumDef of model.enums) {
       const enumName = `${enumDef.name.toLowerCase()}Enum`;
-      const values = enumDef.values.map(v => `'${v}'`).join(', ');
+      const values = enumDef.values.map((v) => `'${v}'`).join(', ');
       code += `export const ${enumName} = pgEnum('${this.toSnakeCase(enumDef.name)}', [${values}]);\n`;
     }
     code += '\n';
@@ -344,7 +344,7 @@ export class DrizzleSchemaGenerator {
         // Generate numbered constraint name (1-indexed)
         const checkName = `check_${model.name.toLowerCase()}_numNotNulls${index + 1}`;
         // Convert field names to snake_case for SQL
-        const columnNames = constraint.fields.map(f => this.toSnakeCase(f)).join(', ');
+        const columnNames = constraint.fields.map((f) => this.toSnakeCase(f)).join(', ');
         // Use the specified count from constraint.num
         const checkSql = `num_nonnulls(${columnNames}) = ${constraint.num}`;
 
@@ -492,14 +492,14 @@ export class DrizzleSchemaGenerator {
    */
   private generateEnumField(field: FieldDefinition, model: ModelDefinition): string {
     const fieldName = this.toSnakeCase(field.name);
-    
+
     // Check if using named enum from model.enums
     if (field.enumName) {
-      const enumDef = model.enums?.find(e => e.name === field.enumName);
+      const enumDef = model.enums?.find((e) => e.name === field.enumName);
       if (!enumDef) {
         throw new Error(`Enum '${field.enumName}' not found in model '${model.name}'`);
       }
-      
+
       // Check if using bitwise storage
       if (enumDef.useBitwise) {
         // Store as integer for bitwise operations
@@ -510,18 +510,18 @@ export class DrizzleSchemaGenerator {
         return `${enumName}('${fieldName}')`;
       }
     }
-    
+
     // Inline enum values (create inline pgEnum)
     if (field.enumValues) {
       // For inline enums, create an inline pgEnum - not recommended but supported
-      const _values = field.enumValues.map(v => `'${v}'`).join(', ');
+      const _values = field.enumValues.map((v) => `'${v}'`).join(', ');
       const _enumName = `${field.name.toLowerCase()}Enum`;
       // This would need to be defined earlier - for now throw error
       throw new Error(
-        `Field '${field.name}' uses inline enumValues. Please define enums in model.enums instead.`
+        `Field '${field.name}' uses inline enumValues. Please define enums in model.enums instead.`,
       );
     }
-    
+
     throw new Error(`Enum field '${field.name}' must have either enumName or enumValues`);
   }
 
@@ -561,7 +561,9 @@ export class DrizzleSchemaGenerator {
   /**
    * Generate timestamp fields
    */
-  private generateTimestampFields(timestamps: boolean | { createdAt?: string | boolean; updatedAt?: string | boolean }): string[] {
+  private generateTimestampFields(
+    timestamps: boolean | { createdAt?: string | boolean; updatedAt?: string | boolean },
+  ): string[] {
     const fields: string[] = [];
 
     // Timestamps are stored as EPOCH milliseconds (bigint)
@@ -737,7 +739,8 @@ export class DrizzleSchemaGenerator {
     // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
     const hasTimestamps = sourceModel.timestamps || targetModel.timestamps;
     if (hasTimestamps) {
-      code += `,\n  createdAt: bigint('created_at', { mode: 'number' }).default(sql\`(extract(epoch from now()) * 1000)::bigint\`).notNull()`;
+      code +=
+        `,\n  createdAt: bigint('created_at', { mode: 'number' }).default(sql\`(extract(epoch from now()) * 1000)::bigint\`).notNull()`;
     }
 
     code += `\n}, (table) => [\n`;
@@ -760,9 +763,12 @@ export class DrizzleSchemaGenerator {
 
     // Add Zod schemas
     code += `// Zod schemas for validation\n`;
-    code += `export const ${tableName.toLowerCase()}InsertSchema = createInsertSchema(${tableName.toLowerCase()}Table);\n`;
-    code += `export const ${tableName.toLowerCase()}UpdateSchema = createUpdateSchema(${tableName.toLowerCase()}Table);\n`;
-    code += `export const ${tableName.toLowerCase()}SelectSchema = createSelectSchema(${tableName.toLowerCase()}Table);`;
+    code +=
+      `export const ${tableName.toLowerCase()}InsertSchema = createInsertSchema(${tableName.toLowerCase()}Table);\n`;
+    code +=
+      `export const ${tableName.toLowerCase()}UpdateSchema = createUpdateSchema(${tableName.toLowerCase()}Table);\n`;
+    code +=
+      `export const ${tableName.toLowerCase()}SelectSchema = createSelectSchema(${tableName.toLowerCase()}Table);`;
 
     return code;
   }
@@ -774,10 +780,10 @@ export class DrizzleSchemaGenerator {
     columnName: string,
     pkField: FieldDefinition,
     tableName: string,
-    pkName: string
+    pkName: string,
   ): string {
     let columnDef = '';
-    
+
     // Generate the appropriate column type based on the primary key type
     switch (pkField.type) {
       case 'uuid':
@@ -798,11 +804,11 @@ export class DrizzleSchemaGenerator {
         // Fallback to text for unknown types
         columnDef = `  ${columnName}: text('${columnName}')`;
     }
-    
+
     // Add the not null and references modifiers
     columnDef += `\n    .notNull()`;
     columnDef += `\n    .references(() => ${tableName}Table.${pkName}, { onDelete: 'cascade' })`;
-    
+
     return columnDef;
   }
 
@@ -918,25 +924,25 @@ export class DrizzleSchemaGenerator {
     code += entries.join(',\n') + '\n]);\n\n';
 
     // Generate read-exposed fields set (for filtering)
-    const readExposedFields = allFields.filter(f => normalizeExpose(f.expose).read);
+    const readExposedFields = allFields.filter((f) => normalizeExpose(f.expose).read);
     code += `export const ${modelNameLower}ExposedFields: Set<string> = new Set([\n`;
-    code += readExposedFields.map(f => `  '${f.name}'`).join(',\n') + '\n]);\n\n';
+    code += readExposedFields.map((f) => `  '${f.name}'`).join(',\n') + '\n]);\n\n';
 
     // Generate unexposed field arrays per operation
-    const createUnexposed = allFields.filter(f => !normalizeExpose(f.expose).create);
-    const readUnexposed = allFields.filter(f => !normalizeExpose(f.expose).read);
+    const createUnexposed = allFields.filter((f) => !normalizeExpose(f.expose).create);
+    const readUnexposed = allFields.filter((f) => !normalizeExpose(f.expose).read);
 
     // Create unexposed fields (POST response) - fields with expose: "hidden"
     code += `export const ${modelNameLower}CreateUnexposedFields: string[] = [\n`;
     if (createUnexposed.length > 0) {
-      code += createUnexposed.map(f => `  '${f.name}'`).join(',\n') + '\n';
+      code += createUnexposed.map((f) => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n\n';
 
     // Read unexposed fields (GET/PUT/DELETE response) - fields with expose: "hidden" or "create"
     code += `export const ${modelNameLower}ReadUnexposedFields: string[] = [\n`;
     if (readUnexposed.length > 0) {
-      code += readUnexposed.map(f => `  '${f.name}'`).join(',\n') + '\n';
+      code += readUnexposed.map((f) => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n\n';
 
@@ -948,20 +954,20 @@ export class DrizzleSchemaGenerator {
       if (f.primaryKey) return 'create' as const; // Primary key defaults to create-only
       return undefined; // All other fields use default behavior
     };
-    const createUnaccepted = allFields.filter(f => !normalizeAccept(getEffectiveAccept(f)).create);
-    const updateUnaccepted = allFields.filter(f => !normalizeAccept(getEffectiveAccept(f)).update);
+    const createUnaccepted = allFields.filter((f) => !normalizeAccept(getEffectiveAccept(f)).create);
+    const updateUnaccepted = allFields.filter((f) => !normalizeAccept(getEffectiveAccept(f)).update);
 
     // Create unaccepted fields (POST body) - fields with accept: "never"
     code += `export const ${modelNameLower}CreateUnacceptedFields: string[] = [\n`;
     if (createUnaccepted.length > 0) {
-      code += createUnaccepted.map(f => `  '${f.name}'`).join(',\n') + '\n';
+      code += createUnaccepted.map((f) => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n\n';
 
     // Update unaccepted fields (PUT body) - fields with accept: "never" or "create"
     code += `export const ${modelNameLower}UpdateUnacceptedFields: string[] = [\n`;
     if (updateUnaccepted.length > 0) {
-      code += updateUnaccepted.map(f => `  '${f.name}'`).join(',\n') + '\n';
+      code += updateUnaccepted.map((f) => `  '${f.name}'`).join(',\n') + '\n';
     }
     code += '];\n';
 
@@ -1004,7 +1010,6 @@ export class DrizzleSchemaGenerator {
     code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table);\n`;
     code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table);\n`;
     code += `export const ${modelNameLower}SelectSchema = createSelectSchema(${modelNameLower}Table);`;
-
 
     return code;
   }
@@ -1069,20 +1074,20 @@ export class DrizzleSchemaGenerator {
   private addForeignKeyFields(model: ModelDefinition): ModelDefinition {
     // Create a copy of the model to avoid mutations
     const enhancedModel = { ...model, fields: [...model.fields] };
-    
+
     // Find all models that have oneToMany relationships pointing to this model
     for (const sourceModel of this.models) {
       if (!sourceModel.relationships) continue;
-      
+
       for (const rel of sourceModel.relationships) {
         if (rel.type === 'oneToMany' && rel.target === model.name) {
           // Check if the foreign key field already exists
           const foreignKeyField = rel.foreignKey || this.toSnakeCase(sourceModel.name) + 'Id';
-          const fieldExists = enhancedModel.fields.some(f => f.name === foreignKeyField);
-          
+          const fieldExists = enhancedModel.fields.some((f) => f.name === foreignKeyField);
+
           if (!fieldExists) {
             // Find the primary key of the source model
-            const sourcePK = sourceModel.fields.find(f => f.primaryKey);
+            const sourcePK = sourceModel.fields.find((f) => f.primaryKey);
             if (sourcePK) {
               // Add the foreign key field
               const fkField: FieldDefinition = {
@@ -1091,20 +1096,20 @@ export class DrizzleSchemaGenerator {
                 required: false, // Usually nullable for oneToMany
                 references: {
                   model: sourceModel.name,
-                  field: sourcePK.name
-                }
+                  field: sourcePK.name,
+                },
               };
-              
+
               // Add index for the foreign key for better performance
               fkField.index = true;
-              
+
               enhancedModel.fields.push(fkField);
             }
           }
         }
       }
     }
-    
+
     return enhancedModel;
   }
 }

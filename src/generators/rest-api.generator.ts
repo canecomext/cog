@@ -362,8 +362,8 @@ export function handleDomainException(error: unknown): never {
       if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
         const RelName = this.capitalize(relName);
-        const targetNameLower = rel.target.toLowerCase();
-        const targetName = rel.target;
+        // const targetNameLower = rel.target.toLowerCase();
+        // const targetName = rel.target;
 
         // Derive singular form by removing "List" suffix if present
         const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;

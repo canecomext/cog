@@ -2,6 +2,9 @@
   "imports": {
   },
   "tasks": {
+    "fmt": "deno fmt --ignore=example",
+    "lint": "deno lint src/",
+    "check": "deno check src/"
   },
   "fmt": {
     "useTabs": false,
