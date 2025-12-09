@@ -1,5 +1,7 @@
 # COG - CRUD Operations Generator
 
+[![CI](https://github.com/canecomext/cog/actions/workflows/ci.yml/badge.svg)](https://github.com/canecomext/cog/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/canecomext/cog/graph/badge.svg)](https://codecov.io/gh/canecomext/cog)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Deno](https://img.shields.io/badge/Deno-000000?style=flat&logo=deno&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)
@@ -488,6 +490,18 @@ Add to your `deno.json`:
 - **[WARP.md](./WARP.md)** - Complete technical reference
 - **[CLAUDE.md](./CLAUDE.md)** - Quick AI assistant reference
 - **[example/README.md](./example/README.md)** - Example walkthrough
+
+---
+
+## For COG Developers
+
+Before starting development, set up git hooks:
+
+```bash
+deno task setup:hooks
+```
+
+This installs a pre-commit hook that automatically formats code before each commit.
 
 ---
 

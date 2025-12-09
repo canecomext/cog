@@ -9,7 +9,5 @@ console.log(`DB_SSL_CA_FILE: ${env.DB_SSL_CA_FILE}`);
 
 initializeDatabase({
   connectionString: env.DB_URL,
-  ssl: {
-    ca: Deno.readTextFileSync(join(Deno.cwd(), env.DB_SSL_CA_FILE)),
-  },
+  ssl: env.DB_SSL_CA_FILE ? { ca: Deno.readTextFileSync(join(Deno.cwd(), env.DB_SSL_CA_FILE)) } : undefined,
 });

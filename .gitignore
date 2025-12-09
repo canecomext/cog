@@ -1,4 +1,6 @@
 .DS_Store
-**/generated
-**/*.pem
-**/.env
+generated
+*.pem
+.env
+cov/
+lcov.info

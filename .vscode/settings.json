@@ -18,5 +18,13 @@
   },
   "[markdown]": {
     "editor.defaultFormatter": "denoland.vscode-deno"
-  }
+  },
+  "coverage-gutters.coverageFileNames": [
+    "lcov.info",
+    "example/lcov.info"
+  ],
+  "coverage-gutters.showGutterCoverage": true,
+  "coverage-gutters.showLineCoverage": false,
+  "coverage-gutters.showRulerCoverage": false,
+  "coverage-gutters.watchOnActivate": true
 }

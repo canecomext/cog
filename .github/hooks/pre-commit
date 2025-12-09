@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-commit hook: format, lint, and type check
+
+set -e  # Exit on first error
+
+# Root: format, lint, check
+deno task fmt
+deno task lint
+deno task check
+
+# Example: regenerate from scratch, format, lint, check
+cd example
+rm -rf generated
+deno task cog:psql:generate
+deno task fmt
+deno task lint
+deno task check
+
+# Stage any formatting/generation changes
+cd ..
+git add -u

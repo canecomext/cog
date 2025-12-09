@@ -452,7 +452,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
       .update(${modelNameLower}Table)
       .set({
         ...processedInput,
-        ${model.timestamps ? 'updatedAt: Date.now(),' : ''}
+        ${model.timestamps ? 'updatedAt: sql`(extract(epoch from now()) * 1000)::bigint`,' : ''}
       })
       .where(eq(${modelNameLower}Table.${primaryKeyField}, id))
       .returning();
