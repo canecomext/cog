@@ -1,43 +1,7 @@
-import {
-  AcceptType,
-  ExposeType,
-  FieldDefinition,
-  IndexDefinition,
-  ModelDefinition,
-  RelationshipDefinition,
-} from '../types/model.types.ts';
-
-/**
- * Helper function to normalize expose config to a consistent object format
- * Handles string enum values: "default", "hidden", "create"
- */
-function normalizeExpose(expose?: ExposeType): { create: boolean; read: boolean } {
-  if (expose === undefined || expose === 'default') {
-    return { create: true, read: true };
-  }
-  if (expose === 'hidden') {
-    return { create: false, read: false };
-  }
-  if (expose === 'create') {
-    return { create: true, read: false };
-  }
-  // fallback (should never happen with proper validation)
-  return { create: true, read: true };
-}
-
-/**
- * Helper function to normalize accept config to a consistent object format
- * Handles string enum values: "default", "create", "never"
- */
-function normalizeAccept(accept?: AcceptType): { create: boolean; update: boolean } {
-  if (accept === 'create') {
-    return { create: true, update: false };
-  }
-  if (accept === 'never') {
-    return { create: false, update: false };
-  }
-  return { create: true, update: true };
-}
+import { FieldDefinition, IndexDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import { normalizeAccept, normalizeExpose } from '../utils/field.utils.ts';
+import { capitalize, toSnakeCase } from '../utils/string.utils.ts';
+import { isPostGISType } from '../constants.ts';
 import { SpatialUtilsGenerator } from './spatial-utils.generator.ts';
 
 /**
@@ -175,8 +139,8 @@ export class DrizzleSchemaGenerator {
     // Add drizzle-zod imports for schema validation
     imports += `import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod';\n`;
 
-    // Add filter utilities import for field metadata
-    imports += `import type { FieldMeta } from '../utils/filter.utils.ts';\n`;
+    // Add field metadata utilities import
+    imports += `import type { FieldMeta } from '../utils/field-meta.utils.ts';\n`;
 
     // Import spatial utilities if PostGIS fields exist
     if (this.postgis && this.hasPostGISFields(model)) {
@@ -250,7 +214,7 @@ export class DrizzleSchemaGenerator {
     for (const enumDef of model.enums) {
       const enumName = `${enumDef.name.toLowerCase()}Enum`;
       const values = enumDef.values.map((v) => `'${v}'`).join(', ');
-      code += `export const ${enumName} = pgEnum('${this.toSnakeCase(enumDef.name)}', [${values}]);\n`;
+      code += `export const ${enumName} = pgEnum('${toSnakeCase(enumDef.name)}', [${values}]);\n`;
     }
     code += '\n';
     return code;
@@ -303,12 +267,10 @@ export class DrizzleSchemaGenerator {
     // Field-level indexes
     for (const field of model.fields) {
       if (field.index) {
-        const isPostGISField = ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(
-          field.type,
-        );
+        const isPostGISFieldType = isPostGISType(field.type);
         const indexName = `idx_${model.name.toLowerCase()}_${field.name}`;
 
-        if (isPostGISField) {
+        if (isPostGISFieldType) {
           tableConstraints.push(`  index('${indexName}').using('gist', table.${field.name})`);
         } else {
           tableConstraints.push(`  index('${indexName}').on(table.${field.name})`);
@@ -325,10 +287,9 @@ export class DrizzleSchemaGenerator {
 
         // Check if the first field is a PostGIS field
         const firstField = model.fields.find((f) => f.name === idx.fields[0]);
-        const isPostGISField = firstField &&
-          ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
+        const isPostGISIdx = firstField && isPostGISType(firstField.type);
 
-        if (isPostGISField) {
+        if (isPostGISIdx) {
           tableConstraints.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
         } else {
           tableConstraints.push(`  ${indexType}('${indexName}').on(${fields})`);
@@ -344,7 +305,7 @@ export class DrizzleSchemaGenerator {
         // Generate numbered constraint name (1-indexed)
         const checkName = `check_${model.name.toLowerCase()}_numNotNulls${index + 1}`;
         // Convert field names to snake_case for SQL
-        const columnNames = constraint.fields.map((f) => this.toSnakeCase(f)).join(', ');
+        const columnNames = constraint.fields.map((f) => toSnakeCase(f)).join(', ');
         // Use the specified count from constraint.num
         const checkSql = `num_nonnulls(${columnNames}) = ${constraint.num}`;
 
@@ -370,19 +331,19 @@ export class DrizzleSchemaGenerator {
     // Generate the field type
     switch (field.type) {
       case 'text':
-        definition += `text('${this.toSnakeCase(field.name)}')`;
+        definition += `text('${toSnakeCase(field.name)}')`;
         break;
       case 'string':
-        definition += `varchar('${this.toSnakeCase(field.name)}'${
+        definition += `varchar('${toSnakeCase(field.name)}'${
           field.maxLength ? `, { length: ${field.maxLength} }` : ''
         })`;
         break;
       case 'integer':
-        definition += `integer('${this.toSnakeCase(field.name)}')`;
+        definition += `integer('${toSnakeCase(field.name)}')`;
         break;
       case 'bigint':
         // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
-        definition += `bigint('${this.toSnakeCase(field.name)}', { mode: 'number' })`;
+        definition += `bigint('${toSnakeCase(field.name)}', { mode: 'number' })`;
         break;
       case 'decimal': {
         const decimalOpts = [];
@@ -390,27 +351,27 @@ export class DrizzleSchemaGenerator {
         if (field.scale !== undefined) {
           decimalOpts.push(`scale: ${field.scale}`);
         }
-        definition += `decimal('${this.toSnakeCase(field.name)}'${
+        definition += `decimal('${toSnakeCase(field.name)}'${
           decimalOpts.length ? `, { ${decimalOpts.join(', ')} }` : ''
         })`;
         break;
       }
       case 'boolean':
-        definition += `boolean('${this.toSnakeCase(field.name)}')`;
+        definition += `boolean('${toSnakeCase(field.name)}')`;
         break;
       case 'date':
         // Store dates as EPOCH milliseconds (bigint)
         // mode: 'number' returns JavaScript numbers (safe for EPOCH milliseconds)
-        definition += `bigint('${this.toSnakeCase(field.name)}', { mode: 'number' })`;
+        definition += `bigint('${toSnakeCase(field.name)}', { mode: 'number' })`;
         break;
       case 'uuid':
-        definition += `uuid('${this.toSnakeCase(field.name)}')`;
+        definition += `uuid('${toSnakeCase(field.name)}')`;
         break;
       case 'json':
-        definition += `json('${this.toSnakeCase(field.name)}')`;
+        definition += `json('${toSnakeCase(field.name)}')`;
         break;
       case 'jsonb':
-        definition += `jsonb('${this.toSnakeCase(field.name)}')`;
+        definition += `jsonb('${toSnakeCase(field.name)}')`;
         break;
       case 'enum':
         definition += this.generateEnumField(field, model);
@@ -427,11 +388,11 @@ export class DrizzleSchemaGenerator {
           definition += this.generatePostGISField(field);
         } else {
           // Fall back to JSONB when PostGIS is disabled
-          definition += `jsonb('${this.toSnakeCase(field.name)}')`;
+          definition += `jsonb('${toSnakeCase(field.name)}')`;
         }
         break;
       default:
-        definition += `text('${this.toSnakeCase(field.name)}')`;
+        definition += `text('${toSnakeCase(field.name)}')`;
     }
 
     // Add modifiers
@@ -491,7 +452,7 @@ export class DrizzleSchemaGenerator {
    * Generate enum field definition
    */
   private generateEnumField(field: FieldDefinition, model: ModelDefinition): string {
-    const fieldName = this.toSnakeCase(field.name);
+    const fieldName = toSnakeCase(field.name);
 
     // Check if using named enum from model.enums
     if (field.enumName) {
@@ -529,7 +490,7 @@ export class DrizzleSchemaGenerator {
    * Generate PostGIS field definition
    */
   private generatePostGISField(field: FieldDefinition): string {
-    const fieldName = this.toSnakeCase(field.name);
+    const fieldName = toSnakeCase(field.name);
     const geometryType = field.geometryType || field.type.toUpperCase();
     const srid = field.srid || 4326;
     const isGeography = field.type === 'geography';
@@ -606,13 +567,12 @@ export class DrizzleSchemaGenerator {
     // Check if any of the fields is a PostGIS type
     const model = this.models.find((m) => m.name.toLowerCase() === tableName);
     const firstField = model?.fields.find((f) => f.name === idx.fields[0]);
-    const isPostGISField = firstField &&
-      ['point', 'linestring', 'polygon', 'multipolygon', 'geometry', 'geography'].includes(firstField.type);
+    const isPostGISIdx = firstField && isPostGISType(firstField.type);
 
     let definition = `export const ${indexName} = ${indexType}('${indexName}')`;
 
     // For PostGIS fields, use GiST index method
-    if (isPostGISField) {
+    if (isPostGISIdx) {
       definition += `\n  .using('gist', ${fields.join(', ')})`;
     } else {
       // For normal fields, use the new .on() API
@@ -688,8 +648,8 @@ export class DrizzleSchemaGenerator {
     }
 
     // Determine the foreign key column names
-    const sourceFKColumn = relationship.foreignKey || this.toSnakeCase(sourceModel.name) + '_id';
-    const targetFKColumn = relationship.targetForeignKey || this.toSnakeCase(targetModel.name) + '_id';
+    const sourceFKColumn = relationship.foreignKey || toSnakeCase(sourceModel.name) + '_id';
+    const targetFKColumn = relationship.targetForeignKey || toSnakeCase(targetModel.name) + '_id';
 
     // Determine what imports we need based on the primary key types
     // Note: timestamps are stored as EPOCH milliseconds using bigint
@@ -757,8 +717,8 @@ export class DrizzleSchemaGenerator {
 
     // Add type exports
     code += `// Type exports\n`;
-    code += `export type ${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
-    code += `export type New${this.capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;\n`;
+    code += `export type ${capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferSelect;\n`;
+    code += `export type New${capitalize(tableName)} = typeof ${tableName.toLowerCase()}Table.$inferInsert;\n`;
     code += `\n`;
 
     // Add Zod schemas
@@ -810,13 +770,6 @@ export class DrizzleSchemaGenerator {
     columnDef += `\n    .references(() => ${tableName}Table.${pkName}, { onDelete: 'cascade' })`;
 
     return columnDef;
-  }
-
-  /**
-   * Capitalize first letter
-   */
-  private capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   /**
@@ -902,74 +855,38 @@ export class DrizzleSchemaGenerator {
   }
 
   /**
-   * Generate field metadata for filtering
+   * Generate field metadata for filtering and response sanitization
+   * Uses enhanced FieldMeta with all visibility/acceptance flags
    */
   private generateFieldMetadata(model: ModelDefinition): string {
     const modelNameLower = model.name.toLowerCase();
-    let code = `\n// Field metadata for filtering\n`;
+    let code = `\n// Field metadata for filtering and response sanitization\n`;
 
-    // Generate field metadata map (using read exposure for filtering)
+    // Get all fields including timestamps
+    const allFields = this.getAllFieldsWithTimestamps(model);
+
+    // Helper to get effective accept config (primary key defaults to 'create')
+    const getEffectiveAccept = (f: FieldDefinition) => {
+      if (f.accept) return f.accept;
+      if (f.primaryKey) return 'create' as const;
+      return undefined;
+    };
+
+    // Build fieldMeta map with enhanced metadata
     code += `export const ${modelNameLower}FieldMeta: Map<string, FieldMeta> = new Map([\n`;
 
-    const allFields = this.getAllFieldsWithTimestamps(model);
     const entries: string[] = [];
-
     for (const field of allFields) {
       const exposeConfig = normalizeExpose(field.expose);
+      const acceptConfig = normalizeAccept(getEffectiveAccept(field));
       const isArray = field.array === true;
-      // FieldMeta uses 'expose' for read exposure (used for filtering)
-      entries.push(`  ['${field.name}', { type: '${field.type}', expose: ${exposeConfig.read}, array: ${isArray} }]`);
+
+      entries.push(
+        `  ['${field.name}', { type: '${field.type}', array: ${isArray}, exposeCreate: ${exposeConfig.create}, exposeRead: ${exposeConfig.read}, acceptCreate: ${acceptConfig.create}, acceptUpdate: ${acceptConfig.update} }]`,
+      );
     }
 
-    code += entries.join(',\n') + '\n]);\n\n';
-
-    // Generate read-exposed fields set (for filtering)
-    const readExposedFields = allFields.filter((f) => normalizeExpose(f.expose).read);
-    code += `export const ${modelNameLower}ExposedFields: Set<string> = new Set([\n`;
-    code += readExposedFields.map((f) => `  '${f.name}'`).join(',\n') + '\n]);\n\n';
-
-    // Generate unexposed field arrays per operation
-    const createUnexposed = allFields.filter((f) => !normalizeExpose(f.expose).create);
-    const readUnexposed = allFields.filter((f) => !normalizeExpose(f.expose).read);
-
-    // Create unexposed fields (POST response) - fields with expose: "hidden"
-    code += `export const ${modelNameLower}CreateUnexposedFields: string[] = [\n`;
-    if (createUnexposed.length > 0) {
-      code += createUnexposed.map((f) => `  '${f.name}'`).join(',\n') + '\n';
-    }
-    code += '];\n\n';
-
-    // Read unexposed fields (GET/PUT/DELETE response) - fields with expose: "hidden" or "create"
-    code += `export const ${modelNameLower}ReadUnexposedFields: string[] = [\n`;
-    if (readUnexposed.length > 0) {
-      code += readUnexposed.map((f) => `  '${f.name}'`).join(',\n') + '\n';
-    }
-    code += '];\n\n';
-
-    // Generate unaccepted field arrays per operation (for input stripping)
-    // Primary key fields get implicit accept: "create" (can be set on create, not on update)
-    // unless explicitly overridden
-    const getEffectiveAccept = (f: FieldDefinition) => {
-      if (f.accept) return f.accept; // Explicit accept takes precedence
-      if (f.primaryKey) return 'create' as const; // Primary key defaults to create-only
-      return undefined; // All other fields use default behavior
-    };
-    const createUnaccepted = allFields.filter((f) => !normalizeAccept(getEffectiveAccept(f)).create);
-    const updateUnaccepted = allFields.filter((f) => !normalizeAccept(getEffectiveAccept(f)).update);
-
-    // Create unaccepted fields (POST body) - fields with accept: "never"
-    code += `export const ${modelNameLower}CreateUnacceptedFields: string[] = [\n`;
-    if (createUnaccepted.length > 0) {
-      code += createUnaccepted.map((f) => `  '${f.name}'`).join(',\n') + '\n';
-    }
-    code += '];\n\n';
-
-    // Update unaccepted fields (PUT body) - fields with accept: "never" or "create"
-    code += `export const ${modelNameLower}UpdateUnacceptedFields: string[] = [\n`;
-    if (updateUnaccepted.length > 0) {
-      code += updateUnaccepted.map((f) => `  '${f.name}'`).join(',\n') + '\n';
-    }
-    code += '];\n';
+    code += entries.join(',\n') + '\n]);\n';
 
     return code;
   }
@@ -1046,26 +963,7 @@ export class DrizzleSchemaGenerator {
    * Check if model has PostGIS fields
    */
   private hasPostGISFields(model: ModelDefinition): boolean {
-    const postgisTypes = [
-      'point',
-      'linestring',
-      'polygon',
-      'multipoint',
-      'multilinestring',
-      'multipolygon',
-      'geometry',
-      'geography',
-    ];
-
-    return model.fields.some((f) => postgisTypes.includes(f.type));
-  }
-
-  /**
-   * Convert string to snake_case
-   */
-  private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-      .replace(/^_/, '');
+    return model.fields.some((f) => isPostGISType(f.type));
   }
 
   /**
@@ -1082,7 +980,7 @@ export class DrizzleSchemaGenerator {
       for (const rel of sourceModel.relationships) {
         if (rel.type === 'oneToMany' && rel.target === model.name) {
           // Check if the foreign key field already exists
-          const foreignKeyField = rel.foreignKey || this.toSnakeCase(sourceModel.name) + 'Id';
+          const foreignKeyField = rel.foreignKey || toSnakeCase(sourceModel.name) + 'Id';
           const fieldExists = enhancedModel.fields.some((f) => f.name === foreignKeyField);
 
           if (!fieldExists) {

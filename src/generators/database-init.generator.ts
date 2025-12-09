@@ -1,4 +1,5 @@
 import { FieldDefinition, ModelDefinition } from '../types/model.types.ts';
+import { toSnakeCase } from '../utils/string.utils.ts';
 
 /**
  * Generates database initialization code
@@ -452,8 +453,8 @@ export async function healthCheck(): Promise<boolean> {
 
           // Generate the junction table name and columns
           const tableName = rel.through.toLowerCase();
-          const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
-          const targetFKColumn = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+          const sourceFKColumn = rel.foreignKey || toSnakeCase(model.name) + '_id';
+          const targetFKColumn = rel.targetForeignKey || toSnakeCase(rel.target) + '_id';
 
           let tableSQL = `    await sql\`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
@@ -526,7 +527,7 @@ export async function healthCheck(): Promise<boolean> {
         continue;
       }
 
-      const columnName = this.toSnakeCase(field.name);
+      const columnName = toSnakeCase(field.name);
       const columnType = this.getColumnType(field);
       const constraints = this.getColumnConstraints(field);
       columns.push(`"${columnName}" ${columnType}${constraints}`);
@@ -552,7 +553,7 @@ export async function healthCheck(): Promise<boolean> {
     // Unique constraints
     for (const field of model.fields) {
       if (field.unique) {
-        const columnName = this.toSnakeCase(field.name);
+        const columnName = toSnakeCase(field.name);
         constraints.push(`CONSTRAINT "${model.name.toLowerCase()}_${columnName}_unique" UNIQUE("${columnName}")`);
       }
     }
@@ -575,8 +576,8 @@ export async function healthCheck(): Promise<boolean> {
 
       for (const field of model.fields) {
         if (field.references) {
-          const columnName = this.toSnakeCase(field.name);
-          const refTable = this.toSnakeCase(field.references.model);
+          const columnName = toSnakeCase(field.name);
+          const refTable = toSnakeCase(field.references.model);
           const refColumn = field.references.field || 'id';
           const onDelete = field.references.onDelete || 'NO ACTION';
           const onUpdate = field.references.onUpdate || 'NO ACTION';
@@ -611,15 +612,15 @@ export async function healthCheck(): Promise<boolean> {
           if (!sourcePK || !targetPK) continue;
 
           const tableName = rel.through.toLowerCase();
-          const sourceFKColumn = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
-          const targetFKColumn = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+          const sourceFKColumn = rel.foreignKey || toSnakeCase(model.name) + '_id';
+          const targetFKColumn = rel.targetForeignKey || toSnakeCase(rel.target) + '_id';
 
           // Add FK constraint for source table
           constraints.push(
             `    await sql\`ALTER TABLE "${tableName}" ` +
               `ADD CONSTRAINT "${tableName}_${sourceFKColumn}_fk" ` +
               `FOREIGN KEY (${sourceFKColumn}) REFERENCES "${
-                this.toSnakeCase(model.name)
+                toSnakeCase(model.name)
               }"(${sourcePK.name}) ON DELETE CASCADE;\`;\n` +
               `    logger.info?.('Added FK constraint: ${tableName}_${sourceFKColumn}_fk');`,
           );
@@ -629,7 +630,7 @@ export async function healthCheck(): Promise<boolean> {
             `    await sql\`ALTER TABLE "${tableName}" ` +
               `ADD CONSTRAINT "${tableName}_${targetFKColumn}_fk" ` +
               `FOREIGN KEY (${targetFKColumn}) REFERENCES "${
-                this.toSnakeCase(targetModel.name)
+                toSnakeCase(targetModel.name)
               }"(${targetPK.name}) ON DELETE CASCADE;\`;\n` +
               `    logger.info?.('Added FK constraint: ${tableName}_${targetFKColumn}_fk');`,
           );
@@ -670,7 +671,7 @@ export async function healthCheck(): Promise<boolean> {
     // Field-level indexes
     for (const field of model.fields) {
       if (field.index) {
-        const columnName = this.toSnakeCase(field.name);
+        const columnName = toSnakeCase(field.name);
         const method = this.getIndexMethod(field);
         const methodClause = method ? `USING ${method}` : '';
         const indexName = `idx_${tableName}_${columnName}`;
@@ -687,8 +688,8 @@ export async function healthCheck(): Promise<boolean> {
     // Model-level indexes
     if (model.indexes) {
       for (const idx of model.indexes) {
-        const columns = idx.fields.map((f) => `"${this.toSnakeCase(f)}"`).join(', ');
-        const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => this.toSnakeCase(f)).join('_')}`;
+        const columns = idx.fields.map((f) => `"${toSnakeCase(f)}"`).join(', ');
+        const indexName = idx.name || `idx_${tableName}_${idx.fields.map((f) => toSnakeCase(f)).join('_')}`;
 
         // Determine index method, respecting postgis setting
         let method = idx.type || this.getDefaultIndexMethod();
@@ -898,13 +899,5 @@ export async function healthCheck(): Promise<boolean> {
     } else {
       return field.defaultValue?.toString() || '';
     }
-  }
-
-  /**
-   * Convert string to snake_case
-   */
-  private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-      .replace(/^_/, '');
   }
 }

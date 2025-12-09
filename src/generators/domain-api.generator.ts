@@ -1,4 +1,5 @@
 import { FieldDefinition, ModelDefinition } from '../types/model.types.ts';
+import { capitalize, toCamelCase, toSnakeCase } from '../utils/string.utils.ts';
 
 /**
  * Generates domain API layer with CRUD operations and hooks
@@ -195,14 +196,28 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     }
     drizzleImports += " } from 'drizzle-orm';";
 
+    // Junction utility imports for many-to-many relationships
+    const junctionUtilImports = hasManyToMany
+      ? `import { addJunctionWithHooks, removeJunctionWithHooks, addManyJunctions, removeManyJunctions, setJunctions, getJunctionTargets, hasJunction } from './junction.utils.ts';`
+      : '';
+
     return `${drizzleImports}
 import { NotFoundException } from './exceptions.ts';
 import { withoutTransaction, type DbTransaction } from '../db/database.ts';
-import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}ExposedFields, ${modelNameLower}CreateUnexposedFields, ${modelNameLower}ReadUnexposedFields, ${modelNameLower}CreateUnacceptedFields, ${modelNameLower}UpdateUnacceptedFields } from '../schema/${modelNameLower}.schema.ts';
+import { ${modelNameLower}Table, type ${modelName}, type New${modelName}, ${modelNameLower}InsertSchema, ${modelNameLower}UpdateSchema, ${modelNameLower}FieldMeta } from '../schema/${modelNameLower}.schema.ts';
 ${this.generateRelationImports(model)}
 ${this.generateJunctionTableImports(model)}
 import { DomainHooks, JunctionTableHooks, DomainHookContext, QueryOptions } from './hooks.types.ts';
 import { buildWhereSQL, isWhereFilter, stripUnexposedFields, stripUnacceptedFields, type SQL } from '../utils/filter.utils.ts';
+import { getExposedFields, getCreateUnexposedFields, getReadUnexposedFields, getCreateUnacceptedFields, getUpdateUnacceptedFields } from '../utils/field-meta.utils.ts';
+${junctionUtilImports}
+
+// Derive field arrays from metadata at module load
+const ${modelNameLower}ExposedFields = getExposedFields(${modelNameLower}FieldMeta);
+const ${modelNameLower}CreateUnexposedFields = getCreateUnexposedFields(${modelNameLower}FieldMeta);
+const ${modelNameLower}ReadUnexposedFields = getReadUnexposedFields(${modelNameLower}FieldMeta);
+const ${modelNameLower}CreateUnacceptedFields = getCreateUnacceptedFields(${modelNameLower}FieldMeta);
+const ${modelNameLower}UpdateUnacceptedFields = getUpdateUnacceptedFields(${modelNameLower}FieldMeta);
 
 export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = Record<string, unknown>> {
   private hooks: DomainHooks<${modelName}, New${modelName}, Partial<New${modelName}>, DomainEnvVars>;
@@ -647,8 +662,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       } else if (rel.type === 'manyToMany' && rel.through) {
         // For manyToMany, get IDs from junction table then fetch via domain
         const junctionTable = rel.through.toLowerCase();
-        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
-        const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+        const sourceFK = rel.foreignKey || toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || toSnakeCase(rel.target) + '_id';
         code += `          // Load ${rel.name} (manyToMany) via domain\n`;
         code += `          const ${rel.name}JunctionData = await db\n`;
         code += `            .select({ targetId: ${junctionTable}Table.${targetFK} })\n`;
@@ -764,8 +779,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
       } else if (rel.type === 'manyToMany' && rel.through) {
         // For manyToMany, get IDs from junction table then batch fetch via domain
         const junctionTable = rel.through.toLowerCase();
-        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
-        const targetFK = rel.targetForeignKey || this.toSnakeCase(rel.target) + '_id';
+        const sourceFK = rel.foreignKey || toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || toSnakeCase(rel.target) + '_id';
         code += `        // Load ${rel.name} (manyToMany) for all results via domain\n`;
         code += `        const resultIds = results.map(r => r.id);\n`;
         code += `        const ${rel.name}JunctionData = await db\n`;
@@ -876,173 +891,130 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
     for (const rel of model.relationships) {
       if (rel.type === 'manyToMany' && rel.through) {
-        // Generate manyToMany methods
+        // Generate manyToMany methods using junction utilities
         const targetName = rel.target;
         const targetNameLower = targetName.toLowerCase();
         const relName = rel.name;
-        const RelName = this.capitalize(relName);
+        const RelName = capitalize(relName);
         const junctionTable = rel.through.toLowerCase();
-        const sourceFK = rel.foreignKey || this.toSnakeCase(model.name) + '_id';
-        const targetFK = rel.targetForeignKey || this.toSnakeCase(targetName) + '_id';
-        const _sourcePK = model.fields.find((f) => f.primaryKey)?.name || 'id';
+        const sourceFK = rel.foreignKey || toSnakeCase(model.name) + '_id';
+        const targetFK = rel.targetForeignKey || toSnakeCase(targetName) + '_id';
 
         // Derive singular form by removing "List" suffix if present
         const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
-        const SingularRelName = this.capitalize(singularRelName);
+        const SingularRelName = capitalize(singularRelName);
+
+        // Junction config object for this relationship
+        const junctionConfigVar = `${relName}JunctionConfig`;
 
         methods.push(`
+  // Junction config for ${relName}
+  private ${junctionConfigVar} = {
+    junctionTable: ${junctionTable}Table,
+    targetTable: ${targetNameLower}Table,
+    sourceColumn: '${sourceFK}' as const,
+    targetColumn: '${targetFK}' as const,
+    sourceIdKey: '${toCamelCase(sourceFK)}',
+    targetIdKey: '${toCamelCase(targetFK)}',
+    targetTableName: '${targetNameLower}',
+  };
+
   /**
    * Get ${relName} for ${model.name}
    */
   async get${RelName}(id: string, tx?: DbTransaction): Promise<Array<${targetName}>> {
-    const db = tx || withoutTransaction();
-
-    const result = await db
-      .select()
-      .from(${junctionTable}Table)
-      .innerJoin(${targetNameLower}Table, eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Table.id))
-      .where(eq(${junctionTable}Table.${sourceFK}, id));
-
-    return result.map(r => r.${targetNameLower});
+    return await getJunctionTargets<typeof ${junctionTable}Table, typeof ${targetNameLower}Table, ${targetName}>(
+      this.${junctionConfigVar},
+      id,
+      tx,
+    );
   }
 
   /**
    * Add ${singularRelName} to ${model.name}
    */
   async add${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
-    // Before-add hook (outside transaction, before validation)
-    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${
-          this.toCamelCase(targetFK)
-        }: ${targetNameLower}Id };
-    if (this.${relName}JunctionHooks.beforeAddJunction) {
-      ids = await this.${relName}JunctionHooks.beforeAddJunction(ids, rawInput, context);
-    }
-
-    // Pre-add hook
-    if (this.${relName}JunctionHooks.preAddJunction) {
-      const preResult = await this.${relName}JunctionHooks.preAddJunction(ids, rawInput, tx, context);
-      ids = preResult.ids as typeof ids;
-    }
-
-    // Perform add operation
-    await tx.insert(${junctionTable}Table).values({
-      ${sourceFK}: ids.${this.toCamelCase(sourceFK)},
-      ${targetFK}: ids.${this.toCamelCase(targetFK)}
-    } as New${
-          (() => {
-            const parts = rel.through.split('_');
-            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + '_' + parts.slice(1).join('_');
-          })()
-        });
-
-    // Post-add hook
-    if (this.${relName}JunctionHooks.postAddJunction) {
-      await this.${relName}JunctionHooks.postAddJunction(ids, rawInput, tx, context);
-    }
-
-    // After-add hook (outside transaction, async)
-    if (this.${relName}JunctionHooks.afterAddJunction) {
-      setTimeout(() => {
-        this.${relName}JunctionHooks.afterAddJunction!(ids, rawInput, context).catch(console.error);
-      }, 0);
-    }
+    return await addJunctionWithHooks(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Id,
+      rawInput,
+      tx,
+      this.${relName}JunctionHooks,
+      context,
+    );
   }
 
   /**
    * Add multiple ${relName} to ${model.name}
    */
   async add${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
-    if (${targetNameLower}Ids.length === 0) return;
-
-    // Call singular add method for each item to trigger hooks
-    for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
-      await this.add${SingularRelName}(id, ${targetNameLower}Id, rawInput, tx, context);
-    }
+    return await addManyJunctions(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Ids,
+      rawInput,
+      tx,
+      this.${relName}JunctionHooks,
+      context,
+    );
   }
 
   /**
    * Remove ${singularRelName} from ${model.name}
    */
   async remove${SingularRelName}(id: string, ${targetNameLower}Id: string, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
-    // Before-remove hook (outside transaction, before validation)
-    let ids: Record<string, string> = { ${this.toCamelCase(sourceFK)}: id, ${
-          this.toCamelCase(targetFK)
-        }: ${targetNameLower}Id };
-    if (this.${relName}JunctionHooks.beforeRemoveJunction) {
-      ids = await this.${relName}JunctionHooks.beforeRemoveJunction(ids, rawInput, context);
-    }
-
-    // Pre-remove hook
-    if (this.${relName}JunctionHooks.preRemoveJunction) {
-      const preResult = await this.${relName}JunctionHooks.preRemoveJunction(ids, rawInput, tx, context);
-      ids = preResult.ids as typeof ids;
-    }
-
-    // Perform remove operation
-    await tx.delete(${junctionTable}Table)
-      .where(
-        and(
-          eq(${junctionTable}Table.${sourceFK}, ids.${this.toCamelCase(sourceFK)}),
-          eq(${junctionTable}Table.${targetFK}, ids.${this.toCamelCase(targetFK)})
-        )
-      );
-
-    // Post-remove hook
-    if (this.${relName}JunctionHooks.postRemoveJunction) {
-      await this.${relName}JunctionHooks.postRemoveJunction(ids, rawInput, tx, context);
-    }
-
-    // After-remove hook (outside transaction, async)
-    if (this.${relName}JunctionHooks.afterRemoveJunction) {
-      setTimeout(() => {
-        this.${relName}JunctionHooks.afterRemoveJunction!(ids, rawInput, context).catch(console.error);
-      }, 0);
-    }
+    return await removeJunctionWithHooks(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Id,
+      rawInput,
+      tx,
+      this.${relName}JunctionHooks,
+      context,
+    );
   }
 
   /**
    * Remove multiple ${relName} from ${model.name}
    */
   async remove${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
-    if (${targetNameLower}Ids.length === 0) return;
-
-    // Call singular remove method for each item to trigger hooks
-    for (const ${targetNameLower}Id of ${targetNameLower}Ids) {
-      await this.remove${SingularRelName}(id, ${targetNameLower}Id, rawInput, tx, context);
-    }
+    return await removeManyJunctions(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Ids,
+      rawInput,
+      tx,
+      this.${relName}JunctionHooks,
+      context,
+    );
   }
 
   /**
    * Set ${relName} for ${model.name} (replace all)
    */
   async set${RelName}(id: string, ${targetNameLower}Ids: string[], rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>): Promise<void> {
-    // Delete all existing relationships
-    await tx.delete(${junctionTable}Table)
-      .where(eq(${junctionTable}Table.${sourceFK}, id));
-
-    // Add new relationships (hooks will be called for each item)
-    if (${targetNameLower}Ids.length > 0) {
-      await this.add${RelName}(id, ${targetNameLower}Ids, rawInput, tx, context);
-    }
+    return await setJunctions(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Ids,
+      rawInput,
+      tx,
+      this.${relName}JunctionHooks,
+      context,
+    );
   }
 
   /**
    * Check if ${model.name} has a specific ${singularRelName}
    */
   async has${SingularRelName}(id: string, ${targetNameLower}Id: string, tx?: DbTransaction): Promise<boolean> {
-    const db = tx || withoutTransaction();
-
-    const result = await db
-      .select({ count: sql<number>\`count(*)\` })
-      .from(${junctionTable}Table)
-      .where(
-        and(
-          eq(${junctionTable}Table.${sourceFK}, id),
-          eq(${junctionTable}Table.${targetFK}, ${targetNameLower}Id)
-        )
-      );
-
-    return result[0].count > 0;
+    return await hasJunction(
+      this.${junctionConfigVar},
+      id,
+      ${targetNameLower}Id,
+      tx,
+    );
   }`);
       }
     }
@@ -1063,28 +1035,6 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     code += `export * from './hooks.types.ts';\n`;
 
     return code;
-  }
-
-  /**
-   * Capitalize first letter
-   */
-  private capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-
-  /**
-   * Convert to snake_case
-   */
-  private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-      .replace(/^_/, '');
-  }
-
-  /**
-   * Convert snake_case to camelCase
-   */
-  private toCamelCase(str: string): string {
-    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
   }
 
   /**

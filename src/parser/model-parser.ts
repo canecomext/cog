@@ -6,6 +6,7 @@ import {
   ModelDefinition,
   ValidationError,
 } from '../types/model.types.ts';
+import { isPostGISType } from '../constants.ts';
 
 /**
  * Parser for reading and validating model definitions from JSON files
@@ -265,7 +266,7 @@ export class ModelParser {
       }
 
       // Validate PostGIS fields
-      if (this.isPostGISType(field.type)) {
+      if (isPostGISType(field.type)) {
         if (field.srid && (typeof field.srid !== 'number')) {
           this.errors.push({
             model: modelName,
@@ -511,23 +512,6 @@ export class ModelParser {
       'geography',
     ];
     return validTypes.includes(type);
-  }
-
-  /**
-   * Check if a type is PostGIS type
-   */
-  private isPostGISType(type: string): boolean {
-    const postgisTypes = [
-      'point',
-      'linestring',
-      'polygon',
-      'multipoint',
-      'multilinestring',
-      'multipolygon',
-      'geometry',
-      'geography',
-    ];
-    return postgisTypes.includes(type);
   }
 
   /**

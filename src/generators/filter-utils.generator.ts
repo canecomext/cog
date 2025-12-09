@@ -117,14 +117,9 @@ export interface FilterGroup {
  */
 export type WhereFilter = FilterCondition | FilterGroup;
 
-/**
- * Field metadata for filter validation
- */
-export interface FieldMeta {
-  type: string;
-  expose: boolean;
-  array: boolean;
-}
+// Import FieldMeta for use in this file and re-export for convenience
+import type { FieldMeta } from './field-meta.utils.ts';
+export type { FieldMeta };
 
 /**
  * Filter validation result
@@ -311,8 +306,8 @@ function validateFilterRecursive(
     throw new Error(\`Invalid filter: unknown field '\${condition.field}'\`);
   }
 
-  // Validate field is exposed
-  if (!meta.expose) {
+  // Validate field is exposed (can be filtered)
+  if (!meta.exposeRead) {
     throw new Error(\`Invalid filter: field '\${condition.field}' is not filterable\`);
   }
 

@@ -1,4 +1,5 @@
 import { ModelDefinition } from '../types/model.types.ts';
+import { capitalize } from '../utils/string.utils.ts';
 
 /**
  * Generates REST API endpoints for Hono
@@ -40,15 +41,22 @@ export class RestAPIGenerator {
   private generateModelRestAPI(model: ModelDefinition): string {
     const modelName = model.name;
     const modelNameLower = model.name.toLowerCase();
+    const hasRelationshipEndpoints = this.hasRelationshipEndpoints(model);
 
-    return `import { Hono, type Context } from '@hono/hono';
-import { HTTPException } from '@hono/hono/http-exception';
-import { NotFoundException, DomainException } from '../domain/exceptions.ts';
+    // Build imports
+    let imports = `import { Hono } from '@hono/hono';
 import { ${modelNameLower}Domain } from '../domain/${modelNameLower}.domain.ts';
-import { withTransaction } from '../db/database.ts'; // Only used for write operations
-import { ${modelName}, New${modelName}, ${modelNameLower}FieldMeta } from '../schema/${modelNameLower}.schema.ts';
-import type { DefaultEnv } from './types.ts';
-import { convertBigIntToNumber, handleDomainException, parseWhereParam, validateFilter } from './helpers.ts';
+import { type ${modelName}, type New${modelName}, ${modelNameLower}FieldMeta } from '../schema/${modelNameLower}.schema.ts';
+import { registerCrudRoutes, type CrudConfig } from './crud.factory.ts';`;
+
+    // Add imports needed for relationship endpoints
+    if (hasRelationshipEndpoints) {
+      imports += `
+import { withTransaction } from '../db/database.ts';
+import { convertBigIntToNumber, handleDomainException } from './helpers.ts';`;
+    }
+
+    return `${imports}
 
 /**
  * ${modelName} REST Routes
@@ -63,184 +71,22 @@ class ${modelName}RestRoutes<RestEnvVars extends Record<string, unknown> = Recor
   }
 
   private registerRoutes() {
-${
-      model.endpoints?.readMany !== false
-        ? `    /**
-     * GET /${modelNameLower}
-     * List all ${modelNameLower} with pagination and filtering
-     */
-    this.routes.get('/', async (c) => {
-      try {
-        const context = c.var as RestEnvVars;
-        const { limit = '10', offset = '0', orderBy, orderDirection = 'asc', include, where } = c.req.query();
+    // CRUD configuration
+    const config: CrudConfig<${modelName}, New${modelName}> = {
+      domain: ${modelNameLower}Domain,
+      fieldMeta: ${modelNameLower}FieldMeta,
+      modelName: '${modelName}',
+      endpoints: {
+        readMany: ${model.endpoints?.readMany !== false},
+        readOne: ${model.endpoints?.readOne !== false},
+        create: ${model.endpoints?.create !== false},
+        update: ${model.endpoints?.update !== false},
+        delete: ${model.endpoints?.delete !== false},
+      },
+    };
 
-        // Parse include parameter
-        const includeArray = include ? include.split(',') : undefined;
-
-        // Parse and validate filter parameter
-        let whereFilter;
-        if (where) {
-          try {
-            whereFilter = parseWhereParam(where);
-            if (whereFilter) {
-              const validation = validateFilter(whereFilter, ${modelNameLower}FieldMeta);
-              if (!validation.valid) {
-                throw new HTTPException(400, { message: validation.error });
-              }
-            }
-          } catch (error) {
-            if (error instanceof HTTPException) throw error;
-            throw new HTTPException(400, { message: (error as Error).message });
-          }
-        }
-
-        // No transaction needed for read operations
-        const result = await ${modelNameLower}Domain.findMany(
-          undefined, // No transaction
-          {
-            where: whereFilter,
-            include: includeArray,
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            orderBy,
-            orderDirection: orderDirection as 'asc' | 'desc'
-          },
-          context // Pass all context variables to domain hooks
-        );
-
-        return c.json({
-          data: convertBigIntToNumber(result.data),
-          pagination: {
-            total: result.total,
-            limit: parseInt(limit),
-            offset: parseInt(offset)
-          }
-        });
-      } catch (error) {
-        handleDomainException(error);
-      }
-    });
-`
-        : ''
-    }
-${
-      model.endpoints?.readOne !== false
-        ? `    /**
-     * GET /${modelNameLower}/:id
-     * Get a single ${modelName} by ID
-     */
-    this.routes.get('/:id', async (c) => {
-      try {
-        const id = c.req.param('id');
-        const context = c.var as RestEnvVars;
-        const include = c.req.query('include')?.split(',');
-
-        // No transaction needed for read operations
-        const result = await ${modelNameLower}Domain.findById(
-          id,
-          undefined, // No transaction
-          { include },
-          context // Pass all context variables to domain hooks
-        );
-
-        if (!result) {
-          throw new HTTPException(404, { message: '${modelName} not found' });
-        }
-
-        return c.json({ data: convertBigIntToNumber(result) });
-      } catch (error) {
-        handleDomainException(error);
-      }
-    });
-`
-        : ''
-    }
-${
-      model.endpoints?.create !== false
-        ? `    /**
-     * POST /${modelNameLower}
-     * Create a new ${modelName}
-     */
-    this.routes.post('/', async (c) => {
-      try {
-        const body = await c.req.json();
-        const context = c.var as RestEnvVars;
-
-        const result = await withTransaction(async (tx) => {
-          return await ${modelNameLower}Domain.create(
-            body,
-            tx,
-            {}, // QueryOptions
-            context // Pass all context variables to domain hooks
-          );
-        });
-
-        return c.json({ data: convertBigIntToNumber(result) }, 201);
-      } catch (error) {
-        handleDomainException(error);
-      }
-    });
-`
-        : ''
-    }
-${
-      model.endpoints?.update !== false
-        ? `    /**
-     * PUT /${modelNameLower}/:id
-     * Update a ${modelName}
-     */
-    this.routes.put('/:id', async (c) => {
-      try {
-        const id = c.req.param('id');
-        const body = await c.req.json();
-        const context = c.var as RestEnvVars;
-
-        const result = await withTransaction(async (tx) => {
-          return await ${modelNameLower}Domain.update(
-            id,
-            body,
-            tx,
-            {}, // QueryOptions
-            context // Pass all context variables to domain hooks
-          );
-        });
-
-        return c.json({ data: convertBigIntToNumber(result) });
-      } catch (error) {
-        handleDomainException(error);
-      }
-    });
-`
-        : ''
-    }
-${
-      model.endpoints?.delete !== false
-        ? `    /**
-     * DELETE /${modelNameLower}/:id
-     * Delete a ${modelName}
-     */
-    this.routes.delete('/:id', async (c) => {
-      try {
-        const id = c.req.param('id');
-        const context = c.var as RestEnvVars;
-
-        const result = await withTransaction(async (tx) => {
-          return await ${modelNameLower}Domain.delete(
-            id,
-            tx,
-            {}, // QueryOptions
-            context // Pass all context variables to domain hooks
-          );
-        });
-
-        return c.json({ data: convertBigIntToNumber(result) });
-      } catch (error) {
-        handleDomainException(error);
-      }
-    });
-`
-        : ''
-    }
+    // Register standard CRUD routes
+    registerCrudRoutes<${modelName}, New${modelName}, RestEnvVars>(this.routes, config);
 ${this.generateRelationshipEndpointsWithHooks(model)}
   }
 }
@@ -255,6 +101,16 @@ export function initialize${modelName}RestRoutes<RestEnvVars extends Record<stri
   return instance.routes;
 }
 `;
+  }
+
+  /**
+   * Check if model has any relationship endpoints
+   */
+  private hasRelationshipEndpoints(model: ModelDefinition): boolean {
+    if (!model.relationships || model.relationships.length === 0) {
+      return false;
+    }
+    return model.relationships.some((rel) => rel.type === 'manyToMany' && rel.through);
   }
 
   /**
@@ -361,13 +217,13 @@ export function handleDomainException(error: unknown): never {
     for (const rel of model.relationships) {
       if (rel.type === 'manyToMany' && rel.through) {
         const relName = rel.name;
-        const RelName = this.capitalize(relName);
+        const RelName = capitalize(relName);
         // const targetNameLower = rel.target.toLowerCase();
         // const targetName = rel.target;
 
         // Derive singular form by removing "List" suffix if present
         const singularRelName = relName.endsWith('List') ? relName.slice(0, -4) : relName;
-        const SingularRelName = this.capitalize(singularRelName);
+        const SingularRelName = capitalize(singularRelName);
 
         // GET relationship list
         if (rel.endpoints?.get !== false) {
@@ -638,13 +494,6 @@ export function extractRoutes<E extends Env = Env>(app: Hono<E>): ExtractedRoute
     code += `export type { DefaultEnv } from './types.ts';\n`;
 
     return code;
-  }
-
-  /**
-   * Capitalize first letter
-   */
-  private capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   /**

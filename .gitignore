@@ -4,3 +4,4 @@ generated
 .env
 cov/
 lcov.info
+.cog-agent-plan.md

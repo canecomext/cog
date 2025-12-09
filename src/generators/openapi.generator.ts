@@ -1,45 +1,6 @@
-import {
-  AcceptType,
-  DataType,
-  ExposeType,
-  FieldDefinition,
-  ModelDefinition,
-  RelationshipDefinition,
-} from '../types/model.types.ts';
-
-/**
- * Helper function to normalize expose config to a consistent object format
- * Handles string enum values: "default", "hidden", "create"
- */
-function normalizeExpose(expose?: ExposeType): { create: boolean; read: boolean } {
-  if (expose === undefined || expose === 'default') {
-    return { create: true, read: true };
-  }
-  if (expose === 'hidden') {
-    return { create: false, read: false };
-  }
-  if (expose === 'create') {
-    // Include in response schema - POST responses include this field
-    // Runtime controls per-endpoint visibility (GET won't return it)
-    return { create: true, read: true };
-  }
-  // fallback (should never happen with proper validation)
-  return { create: true, read: true };
-}
-
-/**
- * Helper function to normalize accept config to a consistent object format
- * Handles string enum values: "default", "create", "never"
- */
-function normalizeAccept(accept?: AcceptType): { create: boolean; update: boolean } {
-  if (accept === 'create') {
-    return { create: true, update: false };
-  }
-  if (accept === 'never') {
-    return { create: false, update: false };
-  }
-  return { create: true, update: true };
-}
+import { DataType, FieldDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
+import { normalizeAccept, normalizeExpose } from '../utils/field.utils.ts';
+import { capitalize } from '../utils/string.utils.ts';
 
 /**
  * Generates OpenAPI 3.1.0 specification from model definitions
@@ -936,7 +897,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         tags: [model.name],
         summary: `Get ${rel.name} for ${model.name}`,
         description: `Retrieve all ${rel.name} associated with a ${model.name}`,
-        operationId: `get${model.name}${this.capitalize(rel.name)}`,
+        operationId: `get${model.name}${capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         responses: {
           '200': {
@@ -958,7 +919,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         tags: [model.name],
         summary: `Add ${rel.name} to ${model.name}`,
         description: `Add multiple ${rel.name} to a ${model.name}`,
-        operationId: `add${model.name}${this.capitalize(rel.name)}`,
+        operationId: `add${model.name}${capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
           required: true,
@@ -1000,7 +961,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         tags: [model.name],
         summary: `Replace ${rel.name} for ${model.name}`,
         description: `Replace all ${rel.name} for a ${model.name}`,
-        operationId: `set${model.name}${this.capitalize(rel.name)}`,
+        operationId: `set${model.name}${capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
           required: true,
@@ -1042,7 +1003,7 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         tags: [model.name],
         summary: `Remove ${rel.name} from ${model.name}`,
         description: `Remove multiple ${rel.name} from a ${model.name}`,
-        operationId: `remove${model.name}${this.capitalize(rel.name)}`,
+        operationId: `remove${model.name}${capitalize(rel.name)}`,
         parameters: [{ $ref: '#/components/parameters/IdParameter' }],
         requestBody: {
           required: true,
@@ -1154,13 +1115,6 @@ export function getOpenAPIJSON(basePath: string, customSpec?: Partial<OpenAPI.Do
         },
       },
     };
-  }
-
-  /**
-   * Capitalize first letter
-   */
-  private capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   /**

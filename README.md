@@ -14,8 +14,24 @@ COG is a code generator that creates complete CRUD backends from simple JSON mod
 generate everything else.
 
 ```
-JSON Models → COG → REST API + Domain Logic + Database Schema + OpenAPI Docs
+JSON Models --> COG --> REST API + Domain Logic + Database Schema + OpenAPI Docs
 ```
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Features](#features)
+- [CLI Reference](#cli-reference)
+- [Generated REST Endpoints](#generated-rest-endpoints)
+- [Model Definition Reference](#model-definition-reference)
+- [Advanced Features](#advanced-features)
+- [Example Project](#example)
+- [Development Setup](#development-setup)
+- [Requirements](#requirements)
+- [Documentation](#documentation)
 
 ---
 
@@ -94,33 +110,57 @@ DELETE /api/department/:id   # Delete department
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   HTTP Request                      │
-└────────────────┬────────────────────────────────────┘
-                 │
-        ┌────────▼─────────┐
-        │   REST Layer     │  HTTP/JSON Interface
-        │  (Hono Routes)   │  • Request validation
-        │                  │  • REST hooks
-        └────────┬─────────┘  • Error handling
-                 │
-        ┌────────▼─────────┐
-        │  Domain Layer    │  Business Logic
-        │ (Pure Functions) │  • CRUD operations
-        │                  │  • Domain hooks
-        └────────┬─────────┘  • Validation
-                 │
-        ┌────────▼─────────┐
-        │  Schema Layer    │  Type Definitions
-        │  (Drizzle ORM)   │  • Table schemas
-        │                  │  • Relations
-        └────────┬─────────┘  • Zod validation
-                 │
-        ┌────────▼─────────┐
-        │ Database Layer   │  PostgreSQL/CockroachDB
-        │  (Connection)    │  • Transactions
-        │                  │  • PostGIS
-        └──────────────────┘
++---------------------------------------------------------+
+|                     HTTP Request                         |
++-----------------------------+---------------------------+
+                              |
+                    +---------v----------+
+                    |    REST Layer      |  HTTP/JSON Interface
+                    |   (Hono Routes)    |  - Request validation
+                    |                    |  - REST hooks
+                    +---------+----------+  - Error handling
+                              |
+                    +---------v----------+
+                    |   Domain Layer     |  Business Logic
+                    |  (Pure Functions)  |  - CRUD operations
+                    |                    |  - Domain hooks
+                    +---------+----------+  - Validation
+                              |
+                    +---------v----------+
+                    |   Schema Layer     |  Type Definitions
+                    |   (Drizzle ORM)    |  - Table schemas
+                    |                    |  - Relations
+                    +---------+----------+  - Zod validation
+                              |
+                    +---------v----------+
+                    |  Database Layer    |  PostgreSQL/CockroachDB
+                    |   (Connection)     |  - Transactions
+                    |                    |  - PostGIS
+                    +--------------------+
+```
+
+### Generated Code Structure
+
+```
+generated/
++-- index.ts                    # initializeGenerated() entry point
++-- db/
+|   +-- database.ts             # Connection pooling, transactions
+|   +-- initialize-database.ts  # Table creation, PostGIS setup
++-- schema/
+|   +-- [model].schema.ts       # Drizzle tables + Zod schemas
+|   +-- spatial-utils.ts        # GeoJSON <-> WKT conversion
+|   +-- relations.ts            # Drizzle relationships
++-- domain/
+|   +-- [model].domain.ts       # CRUD operations with hooks
+|   +-- exceptions.ts           # DomainException, NotFoundException
+|   +-- hooks.types.ts          # Hook type definitions
++-- utils/
+|   +-- filter.utils.ts         # Filter parsing & SQL building
++-- rest/
+    +-- [model].rest.ts         # Hono REST endpoints
+    +-- openapi.ts              # OpenAPI spec builder
+    +-- helpers.ts              # Shared REST helpers
 ```
 
 ---
@@ -132,7 +172,7 @@ DELETE /api/department/:id   # Delete department
 | Category       | Types                                                                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Primitives** | `string`, `text`, `integer`, `bigint`, `decimal`, `boolean`, `date` (EPOCH milliseconds), `uuid`                                            |
-| **Structured** | `json`, `jsonb`, `enum`                                                                                                                     |
+| **Structured** | `json`, `jsonb`, `enum` (standard or bitwise)                                                                                               |
 | **Spatial**    | `point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`, `geometry`, `geography` (uses GeoJSON in API, WKT in DB) |
 | **Arrays**     | Any type with `"array": true`                                                                                                               |
 
@@ -160,13 +200,13 @@ erDiagram
     Employee }o--o{ Employee : "self-referential manyToMany (mentors/mentees)"
 ```
 
-| Type                 | Description       | Example                                       |
-| -------------------- | ----------------- | --------------------------------------------- |
-| **oneToMany**        | Parent → Children | Department → Employees, Project → Assignments |
-| **manyToOne**        | Child → Parent    | Employee → Department, Assignment → Project   |
-| **manyToMany**       | Junction table    | Employee ↔ Skills (via employee_skill)        |
-| **oneToOne**         | Direct link       | Employee → IDCard                             |
-| **Self-referential** | Model → Self      | Employee ↔ Employee (mentors/mentees)         |
+| Type                 | Description        | Example                                         |
+| -------------------- | ------------------ | ----------------------------------------------- |
+| **oneToMany**        | Parent -> Children | Department -> Employees, Project -> Assignments |
+| **manyToOne**        | Child -> Parent    | Employee -> Department, Assignment -> Project   |
+| **manyToMany**       | Junction table     | Employee <-> Skills (via employee_skill)        |
+| **oneToOne**         | Direct link        | Employee -> IDCard                              |
+| **Self-referential** | Model -> Self      | Employee <-> Employee (mentors/mentees)         |
 
 ### Hook System
 
@@ -174,14 +214,14 @@ Extend generated code without modification:
 
 ```
 HTTP Request
-  → Domain Before-hook (auth, input transformation - outside transaction)
-  → Transaction Start
-    → Domain Pre-hook (business logic)
-    → Database Operation
-    → Domain Post-hook (transform output)
-  → Transaction Commit
-  → Domain After-hook (async side effects)
-→ HTTP Response
+  -> Domain Before-hook (auth, input transformation - outside transaction)
+  -> Transaction Start
+    -> Domain Pre-hook (business logic)
+    -> Database Operation
+    -> Domain Post-hook (transform output)
+  -> Transaction Commit
+  -> Domain After-hook (async side effects)
+-> HTTP Response
 ```
 
 **Available Hooks:** beforeCreate, preCreate, postCreate, afterCreate, beforeUpdate, preUpdate, postUpdate, afterUpdate,
@@ -189,7 +229,7 @@ beforeDelete, preDelete, postDelete, afterDelete, beforeFindById, beforeFindMany
 relationships.
 
 **Hook Parameters:** `input` (validated data), `rawInput` (original request body), `result` (database response), `tx`
-(transaction), `context` (shared state). See [WARP.md](./WARP.md#hook-signatures-reference) for complete signatures.
+(transaction), `context` (shared state). See [AGENTS.md](./AGENTS.md#hook-system) for complete signatures.
 
 **HTTP-layer concerns (auth, headers, logging):** Use Hono middleware instead.
 
@@ -198,13 +238,31 @@ relationships.
 | Feature            | PostgreSQL |  CockroachDB   |
 | ------------------ | :--------: | :------------: |
 | **Index Types**    |            |                |
-| BTREE, GIN, GIST   |     ✓      |       ✓        |
-| HASH, SPGIST, BRIN |     ✓      |   Use BTREE    |
+| BTREE, GIN, GIST   |     Y      |       Y        |
+| HASH, SPGIST, BRIN |     Y      |   Use BTREE    |
 | **Data Types**     |            |                |
-| Enums              |     ✓      |   ✓ (v22.2+)   |
-| GEOMETRY           |     ✓      |       ✓        |
-| GEOGRAPHY          |     ✓      | Auto-converted |
-| JSONB, Arrays      |     ✓      |       ✓        |
+| Enums              |     Y      |   Y (v22.2+)   |
+| GEOMETRY           |     Y      |       Y        |
+| GEOGRAPHY          |     Y      | Auto-converted |
+| JSONB, Arrays      |     Y      |       Y        |
+
+### Filtering
+
+Filters passed via `where` query parameter as base64-encoded JSON.
+
+```json
+{ "field": "status", "op": "eq", "value": "active" }
+{ "and": [{ "field": "age", "op": "gte", "value": 18 }, { "field": "active", "op": "eq", "value": true }] }
+```
+
+| Type         | Operators                                                    |
+| ------------ | ------------------------------------------------------------ |
+| String       | `eq`, `neq`, `like`, `ilike`, `in`, `nin`, `isNull`          |
+| Numeric/Date | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `isNull` |
+| Boolean      | `eq`, `isNull`                                               |
+| Array        | `contains`, `overlaps`, `isNull`                             |
+
+**Domain filtering**: Use `skipSanitization: true` to access hidden fields in internal calls.
 
 ---
 
@@ -258,51 +316,34 @@ DELETE /api/{model}/:id/{relation}/:targetId # Remove single
 
 ---
 
-## Example
+## Model Definition Reference
 
-See the `/example` directory for a complete Corporate ORM demonstration featuring:
-
-- 9 interconnected models (Employee, Department, Project, etc.)
-- All relationship types
-- PostGIS spatial data
-- Hook implementations
-- Check constraints
-- Self-referential relationships
-
-```bash
-cd example
-deno run -A ../src/cli.ts --modelsPath ./models --outputPath ./generated
-deno run -A src/main.ts
+```json
+{
+  "name": "User",
+  "tableName": "user",
+  "schema": "public",
+  "enums": [{ "name": "AccountType", "values": ["free", "premium"] }],
+  "fields": [
+    { "name": "id", "type": "uuid", "primaryKey": true, "defaultValue": "gen_random_uuid()", "required": true },
+    { "name": "email", "type": "string", "maxLength": 255, "required": true, "unique": true }
+  ],
+  "relationships": [{ "type": "oneToMany", "name": "postList", "target": "Post", "foreignKey": "authorId" }],
+  "indexes": [{ "fields": ["email", "isActive"], "unique": true }],
+  "check": { "numNotNulls": [{ "fields": ["field1", "field2"], "num": 1 }] },
+  "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
+  "timestamps": true
+}
 ```
 
-Documentation: http://localhost:3000/docs/reference
+### Naming Conventions
 
----
-
-## OpenAPI Documentation
-
-COG generates an OpenAPI 3.1.0 specification builder that creates runtime specs with your API basePath. You control
-where and how to expose documentation:
-
-```typescript
-import { buildOpenAPISpec } from './generated/rest/openapi.ts';
-import { Scalar } from '@scalar/hono-api-reference';
-
-// Build OpenAPI spec with your API basePath (required)
-const openAPISpec = buildOpenAPISpec('/api');
-
-// Expose spec
-app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
-
-// Interactive docs
-app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as any);
-```
-
-**Key Features:**
-
-- `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
-- `basePath` parameter is required (throws `DomainException` if missing)
-- Merge with custom endpoints using `mergeOpenAPISpec(basePath, customSpec)`
+| Type               | Convention              | Example                 |
+| ------------------ | ----------------------- | ----------------------- |
+| Model names        | PascalCase              | `User`, `UserProfile`   |
+| Table names        | snake_case, singular    | `user`, `user_role`     |
+| Field/Column names | camelCase / snake_case  | `userId` / `user_id`    |
+| Relationship names | camelCase + List suffix | `postList`, `skillList` |
 
 ---
 
@@ -446,23 +487,159 @@ Control which many-to-many relationship endpoints are generated:
 
 **Default:** All endpoints enabled if not specified.
 
+### OpenAPI Documentation
+
+COG generates an OpenAPI 3.1.0 specification builder that creates runtime specs with your API basePath. You control
+where and how to expose documentation:
+
+```typescript
+import { buildOpenAPISpec } from './generated/rest/openapi.ts';
+import { Scalar } from '@scalar/hono-api-reference';
+
+// Build OpenAPI spec with your API basePath (required)
+const openAPISpec = buildOpenAPISpec('/api');
+
+// Expose spec
+app.get('/docs/openapi.json', (c) => c.json(openAPISpec));
+
+// Interactive docs
+app.get('/docs/reference', Scalar({ url: '/docs/openapi.json' }) as any);
+```
+
+**Key Features:**
+
+- `buildOpenAPISpec(basePath)` generates spec at runtime with correct server URLs
+- `basePath` parameter is required (throws `DomainException` if missing)
+- Merge with custom endpoints using `mergeOpenAPISpec(basePath, customSpec)`
+
 ---
 
-## Important Notes
+## Example
 
-**Table Naming:** Use singular names (`employee`, not `employees`)
+See the `/example` directory for a complete Corporate ORM demonstration featuring:
 
-**Numeric Limits:** Default values limited to `Number.MAX_SAFE_INTEGER` (2^53-1)
+- 12 interconnected models (Employee, Department, Project, Skill, etc.)
+- All relationship types including self-referential
+- PostGIS spatial data
+- Hook implementations
+- Check constraints
+- Field exposure and acceptance control
 
-**Validation:** Zod validation is always enabled and cannot be disabled
+```bash
+cd example
+deno task cog:psql:generate
+deno task db:init
+deno run -A src/main.ts
+```
 
-**CockroachDB:** GEOGRAPHY types auto-convert to GEOMETRY, HASH indexes to BTREE
+Documentation: http://localhost:3000/docs/reference
+
+### Environment Configuration
+
+Copy `.env.template` to `.env` and configure:
+
+```bash
+# Database connection string
+DB_URL=postgresql://username:password@localhost:5432/example_db
+
+# Server certificate path relative from project root (optional)
+DB_SSL_CA_FILE=path/to/ca-cert.pem
+```
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+- **Deno** 2.x or higher
+- **PostgreSQL** 12+ with PostGIS extension, or **CockroachDB**
+
+### Getting Started
+
+```bash
+# Clone and install git hooks
+git clone https://github.com/canecomext/cog.git
+cd cog
+deno task setup:hooks
+```
+
+The pre-commit hook automatically:
+
+1. Formats code in root and example directories
+2. Regenerates example code from models
+3. Runs lint and type checks
+4. Stages any formatting changes
+
+### Development Tasks
+
+**Root (`deno.json`):**
+
+| Task          | Description              |
+| ------------- | ------------------------ |
+| `setup:hooks` | Install pre-commit hook  |
+| `fmt`         | Format code              |
+| `fmt:check`   | Check formatting         |
+| `lint`        | Lint src/                |
+| `check`       | Type check src/          |
+| `test`        | Run generator unit tests |
+| `cov`         | Generate coverage report |
+
+**Example (`example/deno.json`):**
+
+| Task                | Description               |
+| ------------------- | ------------------------- |
+| `cog:psql:generate` | Generate for PostgreSQL   |
+| `cog:crdb:generate` | Generate for CockroachDB  |
+| `db:init`           | Initialize database       |
+| `db:clean`          | Clean database            |
+| `fmt` / `fmt:check` | Format / check formatting |
+| `lint` / `check`    | Lint / type check         |
+| `test:integration`  | Run integration tests     |
+| `cov`               | Generate coverage report  |
+
+### Code Style
+
+Configured in `deno.json`:
+
+- **Indentation:** 2 spaces (no tabs)
+- **Line width:** 120 characters
+- **Semicolons:** Required
+- **Quotes:** Single quotes
+- **Linting:** Recommended rules
+
+### IDE Setup (VSCode)
+
+The project includes VSCode configuration in `.vscode/`:
+
+- **Recommended extension:** `denoland.vscode-deno`
+- **Format on save:** Enabled
+- **Coverage gutters:** Configured for lcov.info
+
+Open the project in VSCode to automatically use these settings.
+
+### CI Pipeline
+
+The GitHub Actions CI pipeline runs on push/PR to `main` and `develop`:
+
+1. **Lint & Type Check Job:**
+   - Format check (root + example)
+   - Lint (root + example)
+   - Type check (root + example)
+   - Generate code to verify generators work
+
+2. **Tests Job:**
+   - Spins up PostGIS container
+   - Generates code and initializes database
+   - Runs generator unit tests
+   - Runs integration tests
+   - Uploads coverage to Codecov
 
 ---
 
 ## Requirements
 
-- **Deno** 1.37 or higher
+- **Deno** 2.x or higher
 - **PostgreSQL** 12+ or **CockroachDB**
 - **PostGIS** (optional, for spatial data)
 
@@ -487,21 +664,20 @@ Add to your `deno.json`:
 
 ## Documentation
 
-- **[WARP.md](./WARP.md)** - Complete technical reference
-- **[CLAUDE.md](./CLAUDE.md)** - Quick AI assistant reference
+- **[AGENTS.md](./AGENTS.md)** - Complete technical reference for AI agents/developers
 - **[example/README.md](./example/README.md)** - Example walkthrough
 
 ---
 
-## For COG Developers
+## Important Notes
 
-Before starting development, set up git hooks:
+**Table Naming:** Use singular names (`employee`, not `employees`)
 
-```bash
-deno task setup:hooks
-```
+**Numeric Limits:** Default values limited to `Number.MAX_SAFE_INTEGER` (2^53-1)
 
-This installs a pre-commit hook that automatically formats code before each commit.
+**Validation:** Zod validation is always enabled and cannot be disabled
+
+**CockroachDB:** GEOGRAPHY types auto-convert to GEOMETRY, HASH indexes to BTREE
 
 ---
 

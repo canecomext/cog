@@ -8,8 +8,13 @@ import { DatabaseInitGenerator } from './generators/database-init.generator.ts';
 import { DomainAPIGenerator } from './generators/domain-api.generator.ts';
 import { DomainExceptionsGenerator } from './generators/domain-exceptions.generator.ts';
 import { RestAPIGenerator } from './generators/rest-api.generator.ts';
-import { OpenAPIGenerator } from './generators/openapi.generator.ts';
+import { RestCrudFactoryGenerator } from './generators/rest-crud-factory.generator.ts';
+import { OpenAPIMetadataGenerator } from './generators/openapi-metadata.generator.ts';
+import { OpenAPIBuilderGenerator } from './generators/openapi-builder.generator.ts';
 import { FilterUtilsGenerator } from './generators/filter-utils.generator.ts';
+import { JunctionUtilsGenerator } from './generators/junction-utils.generator.ts';
+import { FieldMetaUtilsGenerator } from './generators/field-meta-utils.generator.ts';
+import { BaseDomainGenerator } from './generators/base-domain.generator.ts';
 import { GeneratorConfig, ModelDefinition } from './types/model.types.ts';
 
 export * from './types/model.types.ts';
@@ -98,22 +103,46 @@ export async function generateFromModels(
   // Generate filter utilities
   const filterUtilsGenerator = new FilterUtilsGenerator();
   files.set('utils/filter.utils.ts', filterUtilsGenerator.generate());
+
+  // Generate field metadata utilities
+  const fieldMetaUtilsGenerator = new FieldMetaUtilsGenerator();
+  files.set('utils/field-meta.utils.ts', fieldMetaUtilsGenerator.generate());
+
   files.set('utils/index.ts', generateUtilsIndex());
+
+  // Generate junction utilities (for many-to-many relationships)
+  const hasManyToMany = models.some(
+    (m) => m.relationships?.some((r) => r.type === 'manyToMany'),
+  );
+  if (hasManyToMany) {
+    const junctionUtilsGenerator = new JunctionUtilsGenerator();
+    files.set('domain/junction.utils.ts', junctionUtilsGenerator.generate());
+  }
+
+  // Generate base domain class
+  const baseDomainGenerator = new BaseDomainGenerator();
+  files.set('domain/base.domain.ts', baseDomainGenerator.generate());
 
   // Generate domain APIs
   const domainGenerator = new DomainAPIGenerator(models);
   const domainFiles = domainGenerator.generateDomainAPIs();
   domainFiles.forEach((content, path) => files.set(path, content));
 
+  // Generate REST CRUD factory
+  const restCrudFactoryGenerator = new RestCrudFactoryGenerator();
+  files.set('rest/crud.factory.ts', restCrudFactoryGenerator.generate());
+
   // Generate REST APIs
   const restGenerator = new RestAPIGenerator(models);
   const restFiles = restGenerator.generateRestAPIs();
   restFiles.forEach((content, path) => files.set(path, content));
 
-  // Generate OpenAPI specification
-  const openAPIGenerator = new OpenAPIGenerator(models);
-  const openAPIFiles = openAPIGenerator.generateOpenAPI();
-  openAPIFiles.forEach((content, path) => files.set(path, content));
+  // Generate OpenAPI metadata and dynamic builder
+  const openAPIMetadataGenerator = new OpenAPIMetadataGenerator(models);
+  files.set('rest/openapi-metadata.ts', openAPIMetadataGenerator.generate());
+
+  const openAPIBuilderGenerator = new OpenAPIBuilderGenerator();
+  files.set('rest/openapi.ts', openAPIBuilderGenerator.generate());
 
   // Generate main index file
   files.set('index.ts', generateMainIndex(models));
@@ -139,6 +168,7 @@ function generateUtilsIndex(): string {
  */
 
 export * from './filter.utils.ts';
+export * from './field-meta.utils.ts';
 `;
 }
 
