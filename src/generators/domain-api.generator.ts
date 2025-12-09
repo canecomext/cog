@@ -74,10 +74,6 @@ export interface QueryOptions {
   skipSanitization?: boolean;
 }
 
-/**
- * @deprecated Use QueryOptions instead
- */
-export type FilterOptions = QueryOptions;
 
 /**
  * Domain layer hooks with input validation.
@@ -109,7 +105,7 @@ export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends 
   beforeUpdate?: (id: string, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<unknown>;
   beforeDelete?: (id: string, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   beforeFindById?: (id: string, context?: DomainHookContext<DomainEnvVars>) => Promise<string>;
-  beforeFindMany?: (filter: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<unknown>;
+  beforeFindMany?: (options: QueryOptions, context?: DomainHookContext<DomainEnvVars>) => Promise<QueryOptions>;
 
   // Pre-operation hooks (within transaction)
   // Note: Input is already validated before this hook is called
@@ -120,14 +116,14 @@ export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends 
   preUpdate?: (id: string, input: UpdateInput, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<UpdateInput>;
   preDelete?: (id: string, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<{ id: string }>;
   preFindById?: (id: string, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<{ id: string }>;
-  preFindMany?: (tx?: DbTransaction, filter?: FilterOptions, context?: DomainHookContext<DomainEnvVars>) => Promise<FilterOptions>;
+  preFindMany?: (tx?: DbTransaction, options?: QueryOptions, context?: DomainHookContext<DomainEnvVars>) => Promise<QueryOptions>;
 
   // Post-operation hooks (within transaction)
   postCreate?: (input: CreateInput, result: T, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T>;
   postUpdate?: (id: string, input: UpdateInput, result: T, rawInput: unknown, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T>;
   postDelete?: (id: string, result: T, tx: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T>;
   postFindById?: (id: string, result: T | null, tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T | null>;
-  postFindMany?: (filter: FilterOptions | undefined, results: T[], tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T[]>;
+  postFindMany?: (options: QueryOptions, results: T[], tx?: DbTransaction, context?: DomainHookContext<DomainEnvVars>) => Promise<T[]>;
 
   // After-operation hooks (outside transaction, async)
   afterCreate?: (result: T, rawInput: unknown, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
@@ -135,16 +131,6 @@ export interface DomainHooks<T, CreateInput, UpdateInput, DomainEnvVars extends 
   afterDelete?: (result: T, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   afterFindById?: (result: T | null, context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
   afterFindMany?: (results: T[], context?: DomainHookContext<DomainEnvVars>) => Promise<void>;
-}
-
-/**
- * @deprecated Use QueryOptions instead (pagination fields are now in QueryOptions)
- */
-export interface PaginationOptions {
-  limit?: number;
-  offset?: number;
-  orderBy?: string;
-  orderDirection?: 'asc' | 'desc';
 }
 
 /**
@@ -342,11 +328,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
    */
   async findMany(
     tx?: DbTransaction,
-    options?: QueryOptions,
+    options: QueryOptions = {},
     context?: DomainHookContext<DomainEnvVars>,
   ): Promise<{ data: ${modelName}[]; total: number }> {
     // Convert WhereFilter to SQL first (so hooks receive SQL, not raw filter objects)
-    if (options?.where && isWhereFilter(options.where)) {
+    if (options.where && isWhereFilter(options.where)) {
       options = {
         ...options,
         where: buildWhereSQL(options.where, ${modelNameLower}Table, ${modelNameLower}ExposedFields),
@@ -355,7 +341,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
 
     // Before-find-many hook (outside transaction, receives SQL)
     if (this.hooks.beforeFindMany) {
-      options = await this.hooks.beforeFindMany(options, context) as QueryOptions | undefined;
+      options = await this.hooks.beforeFindMany(options, context);
     }
 
     // Use provided transaction or get database instance
@@ -367,7 +353,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     }
 
     // Extract whereSQL from options (already converted to SQL)
-    const whereSQL = options?.where as SQL | undefined;
+    const whereSQL = options.where as SQL | undefined;
 
     // Build query with chaining to avoid type issues
     let baseQuery = db.select().from(${modelNameLower}Table);
@@ -378,7 +364,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     }
 
     // Apply pagination from options
-    if (options?.orderBy) {
+    if (options.orderBy) {
       const orderFn = options.orderDirection === 'desc' ? desc : asc;
       // Type-safe column access
       const column = ${modelNameLower}Table[options.orderBy as keyof typeof ${modelNameLower}Table] as AnyColumn;
@@ -386,10 +372,10 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
         baseQuery = baseQuery.orderBy(orderFn(column)) as unknown as typeof baseQuery;
       }
     }
-    if (options?.limit) {
+    if (options.limit) {
       baseQuery = baseQuery.limit(options.limit) as unknown as typeof baseQuery;
     }
-    if (options?.offset) {
+    if (options.offset) {
       baseQuery = baseQuery.offset(options.offset) as unknown as typeof baseQuery;
     }
 
@@ -424,7 +410,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     }
 
     // Sanitize response (strip unexposed fields) unless skipped
-    if (!options?.skipSanitization) {
+    if (!options.skipSanitization) {
       finalResults = stripUnexposedFields(finalResults, ${modelNameLower}ReadUnexposedFields) as ${modelName}[];
     }
 

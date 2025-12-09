@@ -5,7 +5,7 @@ import { load } from '@std/dotenv';
 import { join } from '@std/path';
 import { crypto } from '@std/crypto';
 import { and, isNotNull, type SQL } from 'drizzle-orm';
-import { type DbTransaction, extractRoutes, FilterOptions, initializeGenerated, type QueryOptions } from '../generated/index.ts';
+import { type DbTransaction, extractRoutes, initializeGenerated, type QueryOptions } from '../generated/index.ts';
 import type { DomainHookContext } from '../generated/domain/hooks.types.ts';
 import type { Employee, NewEmployee } from '../generated/schema/index.ts';
 import { employeeTable } from '../generated/schema/employee.schema.ts';
@@ -186,14 +186,14 @@ await initializeGenerated({
       },
 
       beforeFindMany: (
-        options: QueryOptions | undefined,
+        options: QueryOptions,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<QueryOptions | undefined> => {
+      ): Promise<QueryOptions> => {
         console.log('Employee.beforeFindMany - outside transaction');
         // Test combining existing filter with additional SQL condition using and()
         // This validates that options.where is already SQL (not raw WhereFilter)
         const additionalCondition = isNotNull(employeeTable.departmentId);
-        if (options?.where) {
+        if (options.where) {
           // Combine existing filter with our condition
           return Promise.resolve({
             ...options,
@@ -209,15 +209,15 @@ await initializeGenerated({
 
       preFindMany: (
         _tx: DbTransaction,
-        filter?: FilterOptions,
+        options?: QueryOptions,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
-      ): Promise<FilterOptions> => {
+      ): Promise<QueryOptions> => {
         console.log('Employee.preFindMany');
-        return Promise.resolve(filter || {});
+        return Promise.resolve(options || {});
       },
 
       postFindMany: (
-        _filter: FilterOptions | undefined,
+        options: QueryOptions,
         results: Employee[],
         _tx: DbTransaction,
         _context?: DomainHookContext<ExampleEnv['Variables']>,
