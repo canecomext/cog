@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-env
 
 import { generateFromModels } from './mod.ts';
+import denoJson from '../deno.json' with { type: 'json' };
 
 /**
  * CLI argument types
@@ -12,6 +13,7 @@ interface CliArgs {
   schema?: string;
   verbose?: boolean;
   help?: boolean;
+  version?: boolean;
 }
 
 /**
@@ -63,6 +65,10 @@ function parseArguments(): CliArgs {
       }
     }
   }
+  if (args.version) {
+    console.log(`COG ${denoJson.version}`);
+    Deno.exit(0);
+  }
   if (args.help) {
     showHelp();
     Deno.exit(0);
@@ -86,6 +92,7 @@ Options:
   --dbType <type>        Database type: postgresql or cockroachdb (default: postgresql)
   --schema <name>        Database schema name
   --verbose              Output the relative paths of generated files
+  --version              Show the COG version
   --help                 Show this help message
 
 Example:

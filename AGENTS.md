@@ -273,7 +273,7 @@ Filters passed via `where` query parameter as base64-encoded JSON.
 ## CLI
 
 ```bash
-deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated [--dbType postgresql|cockroachdb] [--schema name] [--verbose]
+deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated [--dbType postgresql|cockroachdb] [--schema name] [--verbose] [--version] [--help]
 ```
 
 ## Naming Conventions
@@ -290,12 +290,12 @@ deno run -A src/cli.ts --modelsPath ./models --outputPath ./generated [--dbType 
 ```json
 {
   "imports": {
-    "drizzle-orm": "npm:drizzle-orm@^0.44.5",
-    "drizzle-zod": "npm:drizzle-zod@^0.8.0",
-    "@hono/hono": "jsr:@hono/hono@^4.6.0",
-    "postgres": "npm:postgres@^3.4.7",
-    "zod": "npm:zod@^3.23.0",
-    "@scalar/hono-api-reference": "npm:@scalar/hono-api-reference@^0.5.0"
+    "drizzle-orm": "npm:drizzle-orm@^0.45.2",
+    "drizzle-zod": "npm:drizzle-zod@^0.8.3",
+    "@hono/hono": "jsr:@hono/hono@^4.12.26",
+    "postgres": "npm:postgres@^3.4.9",
+    "zod": "npm:zod@^4.4.3",
+    "@scalar/hono-api-reference": "npm:@scalar/hono-api-reference@^0.11.4"
   }
 }
 ```

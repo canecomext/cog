@@ -157,7 +157,7 @@ export const createListHandler = <T, TNew, RestEnvVars extends Record<string, un
 export const createGetByIdHandler = <T, TNew, RestEnvVars extends Record<string, unknown>>(
   config: CrudConfig<T, TNew>,
 ) => {
-  return async (c: Context<{ Variables: RestEnvVars }>) => {
+  return async (c: Context<{ Variables: RestEnvVars }, '/:id'>) => {
     try {
       const id = c.req.param('id');
       const context = c.var as RestEnvVars;
@@ -204,7 +204,7 @@ export const createCreateHandler = <T, TNew, RestEnvVars extends Record<string, 
 export const createUpdateHandler = <T, TNew, RestEnvVars extends Record<string, unknown>>(
   config: CrudConfig<T, TNew>,
 ) => {
-  return async (c: Context<{ Variables: RestEnvVars }>) => {
+  return async (c: Context<{ Variables: RestEnvVars }, '/:id'>) => {
     try {
       const id = c.req.param('id');
       const body = await c.req.json();
@@ -227,7 +227,7 @@ export const createUpdateHandler = <T, TNew, RestEnvVars extends Record<string, 
 export const createDeleteHandler = <T, TNew, RestEnvVars extends Record<string, unknown>>(
   config: CrudConfig<T, TNew>,
 ) => {
-  return async (c: Context<{ Variables: RestEnvVars }>) => {
+  return async (c: Context<{ Variables: RestEnvVars }, '/:id'>) => {
     try {
       const id = c.req.param('id');
       const context = c.var as RestEnvVars;
