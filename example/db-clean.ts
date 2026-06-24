@@ -41,6 +41,22 @@ try {
   await sql`DELETE FROM department`;
   console.log('Cleaned department');
 
+  // Soft-delete test fixtures (child/junction before parents)
+  await sql`DELETE FROM soft_delete_child`;
+  console.log('Cleaned soft_delete_child');
+
+  await sql`DELETE FROM soft_delete_parent_soft_delete_tag`;
+  console.log('Cleaned soft_delete_parent_soft_delete_tag');
+
+  await sql`DELETE FROM soft_delete_tag`;
+  console.log('Cleaned soft_delete_tag');
+
+  await sql`DELETE FROM soft_delete_parent`;
+  console.log('Cleaned soft_delete_parent');
+
+  await sql`DELETE FROM soft_delete_test_entity`;
+  console.log('Cleaned soft_delete_test_entity');
+
   // Demo tables
   await sql`DELETE FROM advanced_demo`;
   console.log('Cleaned advanced_demo');

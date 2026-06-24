@@ -19,6 +19,7 @@ import {
   type Department,
   type Employee,
   type ExposureTestEntity,
+  getSQL,
   type IDCard,
   type Project,
   type Skill,
@@ -187,6 +188,10 @@ const createdIds = {
   idCards: [] as string[],
   exposureTestEntities: [] as string[],
   acceptanceTestEntities: [] as string[],
+  softDeleteTestEntities: [] as string[],
+  softDeleteParents: [] as string[],
+  softDeleteChildren: [] as string[],
+  softDeleteTags: [] as string[],
 };
 
 // ============================================================================
@@ -1074,6 +1079,133 @@ async function runTests(): Promise<void> {
   logSuccess('All beforeFindMany hook tests passed!');
 
   // ========================================
+  // 17. SOFT DELETE
+  // ========================================
+  logSection('17. Soft Delete');
+
+  const rawSql = getSQL();
+
+  // 17.1 Create — deletedAt must not be present (hidden field)
+  logStep('17.1 Create a soft-delete entity');
+  const sd = await POST('/api/softdeletetestentity', { code: 'SD-1', name: 'First' }) as Record<string, unknown>;
+  assertExists(sd.id, 'sd.id');
+  assertEquals('deletedAt' in sd, false, 'deletedAt must be hidden in responses');
+  const sdId = sd.id as string;
+
+  // 17.2 Soft delete — row physically persists with deleted_at set
+  logStep('17.2 Soft delete the entity');
+  await DELETE(`/api/softdeletetestentity/${sdId}`);
+  const rows = await rawSql`SELECT deleted_at FROM soft_delete_test_entity WHERE id = ${sdId}`;
+  assertEquals(rows.length, 1, 'row must still physically exist (soft, not hard, delete)');
+  assert(rows[0].deleted_at !== null, 'deleted_at must be populated');
+
+  // 17.3 List excludes it
+  logStep('17.3 List excludes soft-deleted');
+  const list = await GET<{ data: unknown[]; pagination: { total: number } }>('/api/softdeletetestentity');
+  assertEquals(list.data.some((r) => (r as { id: string }).id === sdId), false, 'soft-deleted row must not be listed');
+
+  // 17.4 Get by id → 404
+  logStep('17.4 Get soft-deleted by id → 404');
+  const getRes = await REQUEST('GET', `/api/softdeletetestentity/${sdId}`);
+  assertEquals(getRes.status, 404, 'GET soft-deleted must be 404');
+
+  // 17.5 Update locked → 404
+  logStep('17.5 Update soft-deleted → 404');
+  const putRes = await REQUEST('PUT', `/api/softdeletetestentity/${sdId}`, { name: 'Nope' });
+  assertEquals(putRes.status, 404, 'PUT soft-deleted must be 404');
+
+  // 17.6 Re-delete → 404
+  logStep('17.6 Re-delete soft-deleted → 404');
+  const delRes = await REQUEST('DELETE', `/api/softdeletetestentity/${sdId}`);
+  assertEquals(delRes.status, 404, 'second DELETE must be 404');
+
+  // 17.7 Partial unique index — same code can be reused after soft delete
+  logStep('17.7 Reuse unique code after soft delete');
+  const reused = await POST('/api/softdeletetestentity', { code: 'SD-1', name: 'Reused' }) as Record<string, unknown>;
+  assertExists(reused.id, 'reused.id — soft-deleted row must not reserve the unique value');
+  createdIds.softDeleteTestEntities = [reused.id as string];
+  // two live rows with the same code must still be rejected
+  const dup = await REQUEST('POST', '/api/softdeletetestentity', { code: 'SD-1', name: 'Dup' });
+  assertEquals(dup.status >= 400, true, 'duplicate live unique code must be rejected');
+
+  // 17.8 Timestamp interaction
+  logStep('17.8 Timestamps: createdAt preserved, deletedAt recent, updatedAt untouched by soft delete');
+  const t = await POST('/api/softdeletetestentity', { code: 'SD-2', name: 'T' }) as Record<string, number | string>;
+  const tId = t.id as string;
+  const beforeRows = await rawSql`SELECT created_at, updated_at FROM soft_delete_test_entity WHERE id = ${tId}`;
+  await DELETE(`/api/softdeletetestentity/${tId}`);
+  const afterRows =
+    await rawSql`SELECT created_at, updated_at, deleted_at FROM soft_delete_test_entity WHERE id = ${tId}`;
+  assertEquals(Number(afterRows[0].created_at), Number(beforeRows[0].created_at), 'createdAt must not change');
+  assertEquals(
+    Number(afterRows[0].updated_at),
+    Number(beforeRows[0].updated_at),
+    'updatedAt must NOT advance on soft delete',
+  );
+  assert(Math.abs(Number(afterRows[0].deleted_at) - Date.now()) < 5000, 'deletedAt must be ~now');
+  createdIds.softDeleteTestEntities.push(tId);
+
+  // 17.9 Include excludes soft-deleted child (oneToMany propagation)
+  logStep('17.9 ?include=childList excludes soft-deleted children');
+  const parent = await POST('/api/softdeleteparent', { name: 'P1' }) as Record<string, unknown>;
+  const parentId = parent.id as string;
+  const childA = await POST('/api/softdeletechild', { parentId, name: 'A' }) as Record<string, unknown>;
+  const childB = await POST('/api/softdeletechild', { parentId, name: 'B' }) as Record<string, unknown>;
+  await DELETE(`/api/softdeletechild/${childA.id}`); // soft-delete one child
+  const withChildren = await GET<Record<string, unknown>>(`/api/softdeleteparent/${parentId}?include=childList`);
+  const childList = withChildren.childList as Array<{ id: string }>;
+  assertEquals(childList.length, 1, 'only the live child must be included');
+  assertEquals(childList[0].id, childB.id, 'the live child is B');
+
+  // 17.10 many-to-many list excludes soft-deleted target (getJunctionTargets propagation)
+  logStep('17.10 GET /:id/tagList excludes soft-deleted tags');
+  const tag1 = await POST('/api/softdeletetag', { label: 'T1' }) as Record<string, unknown>;
+  const tag2 = await POST('/api/softdeletetag', { label: 'T2' }) as Record<string, unknown>;
+  await POST(`/api/softdeleteparent/${parentId}/tag`, { id: tag1.id });
+  await POST(`/api/softdeleteparent/${parentId}/tag`, { id: tag2.id });
+  await DELETE(`/api/softdeletetag/${tag1.id}`); // soft-delete one tag
+  const tagList = await GET<Array<{ id: string }>>(`/api/softdeleteparent/${parentId}/tagList`);
+  assertEquals(tagList.length, 1, 'only the live tag must be returned by the m2m list');
+  assertEquals(tagList[0].id, tag2.id, 'the live tag is T2');
+
+  // 17.11 manyToOne include resolves correctly: live child still resolves its (live) parent
+  logStep('17.11 ?include=parent on a live child returns the parent');
+  const childWithParent = await GET<Record<string, unknown>>(`/api/softdeletechild/${childB.id}?include=parent`);
+  assertExists((childWithParent.parent as { id?: string })?.id, 'live child must resolve its parent');
+
+  // 17.12 manyToOne include resolves to null when parent is soft-deleted
+  logStep('17.12 ?include=parent resolves to null when parent is soft-deleted');
+  // Use a dedicated parent so we do not disturb the parent/child/tag rows used above
+  const orphanParent = await POST('/api/softdeleteparent', { name: 'OrphanParent' }) as Record<string, unknown>;
+  const orphanParentId = orphanParent.id as string;
+  const orphanChild = await POST('/api/softdeletechild', { parentId: orphanParentId, name: 'OrphanChild' }) as Record<
+    string,
+    unknown
+  >;
+  const orphanChildId = orphanChild.id as string;
+  // Soft-delete the parent (UPDATE sets deleted_at; child FK row remains because soft-delete is not CASCADE)
+  await DELETE(`/api/softdeleteparent/${orphanParentId}`);
+  // The child is still live; its ?include=parent must resolve to null (parent is soft-deleted)
+  const orphanChildWithParent = await GET<Record<string, unknown>>(
+    `/api/softdeletechild/${orphanChildId}?include=parent`,
+  );
+  assertEquals(
+    orphanChildWithParent.parent as null | { id?: string },
+    null,
+    'manyToOne include must resolve to null when the parent is soft-deleted',
+  );
+  logSuccess('✓ manyToOne include resolves to null for soft-deleted parent');
+  // Track for cleanup (soft-deleted parent purged by db-clean; live child tracked)
+  createdIds.softDeleteParents.push(orphanParentId);
+  createdIds.softDeleteChildren.push(orphanChildId);
+
+  createdIds.softDeleteParents = [parentId, orphanParentId];
+  createdIds.softDeleteTags = [tag2.id as string];
+  createdIds.softDeleteChildren = [childB.id as string, orphanChildId];
+
+  logSuccess('Soft delete behavior verified');
+
+  // ========================================
   // SUCCESS
   // ========================================
   logSection('All Tests Passed!');
@@ -1086,6 +1218,10 @@ async function runTests(): Promise<void> {
   console.log(`  ID Cards created: ${createdIds.idCards.length}`);
   console.log(`  Exposure Test Entities created: ${createdIds.exposureTestEntities.length}`);
   console.log(`  Acceptance Test Entities created: ${createdIds.acceptanceTestEntities.length}`);
+  console.log(`  Soft Delete Test Entities created: ${createdIds.softDeleteTestEntities.length}`);
+  console.log(`  Soft Delete Parents created: ${createdIds.softDeleteParents.length}`);
+  console.log(`  Soft Delete Children created: ${createdIds.softDeleteChildren.length}`);
+  console.log(`  Soft Delete Tags created: ${createdIds.softDeleteTags.length}`);
 }
 
 // ============================================================================
@@ -1265,6 +1401,37 @@ async function runCleanup(): Promise<number> {
   logSection('10. Deleting Acceptance Test Entities');
   for (const id of acceptanceTestEntityIds) {
     if (await safeDelete(`/api/acceptancetestentity/${id}`, `acceptance test entity ${id.slice(0, 8)}`)) {
+      totalDeleted++;
+    }
+  }
+
+  // 11. DELETE SOFT DELETE TEST ENTITIES (children/tags before parents)
+  logSection('11. Deleting Soft Delete Test Data');
+
+  logStep('Deleting soft-delete children');
+  for (const id of createdIds.softDeleteChildren) {
+    if (await safeDelete(`/api/softdeletechild/${id}`, `soft-delete child ${id.slice(0, 8)}`)) {
+      totalDeleted++;
+    }
+  }
+
+  logStep('Deleting soft-delete tags');
+  for (const id of createdIds.softDeleteTags) {
+    if (await safeDelete(`/api/softdeletetag/${id}`, `soft-delete tag ${id.slice(0, 8)}`)) {
+      totalDeleted++;
+    }
+  }
+
+  logStep('Deleting soft-delete parents');
+  for (const id of createdIds.softDeleteParents) {
+    if (await safeDelete(`/api/softdeleteparent/${id}`, `soft-delete parent ${id.slice(0, 8)}`)) {
+      totalDeleted++;
+    }
+  }
+
+  logStep('Deleting soft-delete test entities');
+  for (const id of createdIds.softDeleteTestEntities) {
+    if (await safeDelete(`/api/softdeletetestentity/${id}`, `soft-delete test entity ${id.slice(0, 8)}`)) {
       totalDeleted++;
     }
   }

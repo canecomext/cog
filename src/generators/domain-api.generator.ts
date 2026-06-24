@@ -73,6 +73,9 @@ export interface QueryOptions {
 
   // Sanitization control (all methods, default: false)
   skipSanitization?: boolean;
+
+  // Soft-delete control (find* methods, default: false): include soft-deleted rows
+  withSoftDeleted?: boolean;
 }
 
 
@@ -189,10 +192,15 @@ export interface JunctionTableHooks<DomainEnvVars extends Record<string, unknown
     // We need inArray for batch fetching in findMany when there are relationships
     // We need AnyColumn for orderBy type casting
     let drizzleImports = 'import { eq, desc, asc, sql, type AnyColumn';
-    if (hasManyToMany) {
-      drizzleImports += ', and, inArray';
-    } else if (hasRelationships) {
+    const needsAnd = hasManyToMany || !!model.softDelete;
+    if (needsAnd) {
+      drizzleImports += ', and';
+    }
+    if (hasManyToMany || hasRelationships) {
       drizzleImports += ', inArray';
+    }
+    if (model.softDelete) {
+      drizzleImports += ', isNull';
     }
     drizzleImports += " } from 'drizzle-orm';";
 
@@ -309,7 +317,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     const query = db
       .select()
       .from(${modelNameLower}Table)
-      .where(eq(${modelNameLower}Table.${primaryKeyField}, id));
+      .where(${
+      model.softDelete
+        ? `options?.withSoftDeleted ? eq(${modelNameLower}Table.${primaryKeyField}, id) : and(eq(${modelNameLower}Table.${primaryKeyField}, id), isNull(${modelNameLower}Table.deletedAt))`
+        : `eq(${modelNameLower}Table.${primaryKeyField}, id)`
+    });
 
     const result = await query;
     const found = result[0] || null;
@@ -368,7 +380,14 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     }
 
     // Extract whereSQL from options (already converted to SQL)
-    const whereSQL = options.where as SQL | undefined;
+    ${
+      model.softDelete
+        ? `let whereSQL = options.where as SQL | undefined;
+    if (!options?.withSoftDeleted) {
+      whereSQL = whereSQL ? and(whereSQL, isNull(${modelNameLower}Table.deletedAt)) : isNull(${modelNameLower}Table.deletedAt);
+    }`
+        : `const whereSQL = options.where as SQL | undefined;`
+    }
 
     // Build query with chaining to avoid type issues
     let baseQuery = db.select().from(${modelNameLower}Table);
@@ -469,7 +488,11 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
         ...processedInput,
         ${model.timestamps ? 'updatedAt: sql`(extract(epoch from now()) * 1000)::bigint`,' : ''}
       })
-      .where(eq(${modelNameLower}Table.${primaryKeyField}, id))
+      .where(${
+      model.softDelete
+        ? `and(eq(${modelNameLower}Table.${primaryKeyField}, id), isNull(${modelNameLower}Table.deletedAt))`
+        : `eq(${modelNameLower}Table.${primaryKeyField}, id)`
+    })
       .returning();
 
     if (!updated) {
@@ -513,7 +536,7 @@ export class ${modelName}Domain<DomainEnvVars extends Record<string, unknown> = 
     }
 
     // Perform delete
-    ${this.generateHardDelete(model, 'tx')}
+    ${this.generateDeleteStatement(model, 'tx')}
 
     if (!deleted) {
       throw new NotFoundException(\`${modelName} with id \${id} not found\`);
@@ -867,16 +890,26 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
   }
 
   /**
-   * Generate hard delete logic
+   * Generate the delete statement: a soft-delete UPDATE when enabled,
+   * otherwise a hard DELETE. Both bind `const [deleted]`.
    */
-  private generateHardDelete(
+  private generateDeleteStatement(
     model: ModelDefinition,
     txVar: string = 'tx',
   ): string {
+    const table = `${model.name.toLowerCase()}Table`;
+    const pk = model.fields.find((f) => f.primaryKey)?.name || 'id';
+    if (model.softDelete) {
+      return `const [deleted] = await ${txVar}
+      .update(${table})
+      .set({ deletedAt: sql\`(extract(epoch from now()) * 1000)::bigint\` })
+      .where(and(eq(${table}.${pk}, id), isNull(${table}.deletedAt)))
+      .returning();`;
+    }
     return `const [deleted] = await ${txVar}
-        .delete(${model.name.toLowerCase()}Table)
-        .where(eq(${model.name.toLowerCase()}Table.${model.fields.find((f) => f.primaryKey)?.name || 'id'}, id))
-        .returning();`;
+      .delete(${table})
+      .where(eq(${table}.${pk}, id))
+      .returning();`;
   }
 
   /**
@@ -906,6 +939,11 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
 
         // Junction config object for this relationship
         const junctionConfigVar = `${relName}JunctionConfig`;
+        const targetModel = this.models.find((m) => m.name === rel.target);
+        const targetHasSoftDelete = !!targetModel?.softDelete;
+        // drizzle keys innerJoin result rows by the SQL table name, so this must
+        // be the target's actual table name (snake_case), not the lowercased model name.
+        const targetTableSqlName = targetModel?.tableName || targetNameLower;
 
         methods.push(`
   // Junction config for ${relName}
@@ -916,7 +954,8 @@ export const ${modelNameLower}Domain = new ${modelName}Domain();
     targetColumn: '${targetFK}' as const,
     sourceIdKey: '${toCamelCase(sourceFK)}',
     targetIdKey: '${toCamelCase(targetFK)}',
-    targetTableName: '${targetNameLower}',
+    targetTableName: '${targetTableSqlName}',
+    targetHasSoftDelete: ${targetHasSoftDelete},
   };
 
   /**

@@ -145,6 +145,9 @@ export interface ModelDefinition {
     createdAt?: string | boolean;
     updatedAt?: string | boolean;
   };
+  softDelete?: boolean | {
+    deletedAt?: string; // custom column name (default: "deleted_at")
+  };
   description?: string;
   endpoints?: ModelEndpointConfig; // Control which CRUD endpoints are generated
   hooks?: {

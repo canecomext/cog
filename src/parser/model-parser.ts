@@ -82,6 +82,13 @@ export class ModelParser {
   }
 
   /**
+   * Parse and validate a single model object (public convenience method)
+   */
+  parseModelData(data: unknown): ModelDefinition | null {
+    return this.validateAndTransformModel(data, '<inline>');
+  }
+
+  /**
    * Validate and transform raw model data
    */
   private validateAndTransformModel(data: unknown, filePath: string): ModelDefinition | null {
@@ -163,6 +170,7 @@ export class ModelParser {
       indexes: (modelData.indexes || []) as ModelDefinition['indexes'],
       check: modelData.check as ModelDefinition['check'],
       timestamps: modelData.timestamps as boolean | undefined,
+      softDelete: modelData.softDelete as boolean | { deletedAt?: string } | undefined,
       description: modelData.description as string | undefined,
       hooks: modelData.hooks as ModelDefinition['hooks'],
       endpoints: modelData.endpoints as ModelDefinition['endpoints'],
@@ -699,3 +707,9 @@ export class ModelParser {
     return true;
   }
 }
+
+/**
+ * Convenience function to parse and validate a single model object.
+ * Returns the parsed ModelDefinition or null if validation fails.
+ */
+export const parseModel = (data: unknown): ModelDefinition | null => new ModelParser().parseModelData(data);

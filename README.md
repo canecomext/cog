@@ -332,7 +332,8 @@ DELETE /api/{model}/:id/{relation}/:targetId # Remove single
   "indexes": [{ "fields": ["email", "isActive"], "unique": true }],
   "check": { "numNotNulls": [{ "fields": ["field1", "field2"], "num": 1 }] },
   "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
-  "timestamps": true
+  "timestamps": true,
+  "softDelete": true
 }
 ```
 
@@ -414,7 +415,7 @@ Works with `?include=` - included child objects respect their own exposure rules
 For internal domain calls needing hidden fields, use `skipSanitization: true`:
 
 ```typescript
-const { data } = await userDomain.findById(id, tx, { skipSanitization: true });
+const user = await userDomain.findById(id, tx, { skipSanitization: true });
 ```
 
 ### Field Accept Control
@@ -486,6 +487,74 @@ Control which many-to-many relationship endpoints are generated:
 ```
 
 **Default:** All endpoints enabled if not specified.
+
+### Soft Delete
+
+Add `"softDelete": true` to any model to enable soft deletion. Records are never physically removed — instead a nullable
+`deleted_at` bigint epoch-ms column is set and the row is hidden from all reads.
+
+```json
+{
+  "name": "User",
+  "tableName": "user",
+  "fields": [...],
+  "timestamps": true,
+  "softDelete": true
+}
+```
+
+Use a custom column name:
+
+```json
+{
+  "softDelete": { "deletedAt": "removed_at" }
+}
+```
+
+**What gets generated:**
+
+- A nullable `deleted_at` (`bigint`, epoch-ms) column — hidden from API responses, never accepted as input.
+- `DELETE /api/{model}/:id` sets `deletedAt` instead of removing the row. Does not touch `updatedAt`.
+- All reads (`GET /api/{model}`, `GET /api/{model}/:id`) automatically exclude soft-deleted rows.
+- `PUT /api/{model}/:id` on a soft-deleted record returns **404**.
+- `DELETE /api/{model}/:id` on an already-deleted record returns **404**.
+- Unique fields become partial unique indexes scoped to live rows, so a soft-deleted record does not block re-creation.
+
+**Relationship behavior:**
+
+- `?include=` of a child collection excludes soft-deleted children.
+- `?include=` of a parent/sibling resolves to `null` when the referenced row is soft-deleted.
+- Many-to-many `GET /:id/{relation}List` excludes soft-deleted targets. Junction rows themselves are hard-deleted.
+
+**Internal domain access:** Pass `{ withSoftDeleted: true }` as a query option to bypass the filter in server-side code.
+This option is not REST-exposed.
+
+```typescript
+const user = await userDomain.findById(id, tx, { withSoftDeleted: true });
+```
+
+**Note:** Restore is not supported in v1. CockroachDB v20.2+ and all supported PostgreSQL versions are compatible.
+
+**Scope & referential integrity (by design).** Soft delete is honored across COG's own feature surface — reads,
+`?include=`, the many-to-many relation-list join, filtering, and the update/delete lock. COG stops at its boundary and
+deliberately does **not** enforce cross-aggregate referential integrity:
+
+- It does **not** prevent creating or updating a child that references a soft-deleted parent. The foreign key still
+  points at the physically-present row, so the database accepts the write.
+- It does **not** cascade soft delete to children — soft-deleting a parent leaves its children untouched.
+
+This is intentional, not an oversight: the right behavior is application-specific (is a soft-deleted parent _archived_
+with editable children, or _trashed_ with a frozen subtree? a child shared between a deleted and a live parent has no
+universal answer). Enforce whatever your data model needs in the `before*`/`pre*` hooks. For example, to reject
+attaching a child to a soft-deleted parent, validate the foreign key in a `preCreate`/`preUpdate` hook:
+
+```typescript
+preCreate: async (input, _raw, tx) => {
+  const parent = await parentDomain.findById(input.parentId, tx); // null if soft-deleted
+  if (!parent) throw new DomainException('Parent is not available');
+  return input;
+},
+```
 
 ### OpenAPI Documentation
 

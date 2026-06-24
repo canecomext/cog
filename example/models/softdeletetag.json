@@ -1,0 +1,12 @@
+{
+  "name": "SoftDeleteTag",
+  "tableName": "soft_delete_tag",
+  "schema": "public",
+  "fields": [
+    { "name": "id", "type": "uuid", "primaryKey": true, "defaultValue": "gen_random_uuid()", "required": true },
+    { "name": "label", "type": "string", "maxLength": 100, "required": true }
+  ],
+  "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
+  "timestamps": true,
+  "softDelete": true
+}

@@ -1,5 +1,5 @@
 import { FieldDefinition, IndexDefinition, ModelDefinition, RelationshipDefinition } from '../types/model.types.ts';
-import { normalizeAccept, normalizeExpose } from '../utils/field.utils.ts';
+import { getSoftDeleteColumn, normalizeAccept, normalizeExpose } from '../utils/field.utils.ts';
 import { capitalize, toSnakeCase } from '../utils/string.utils.ts';
 import { isPostGISType } from '../constants.ts';
 import { SpatialUtilsGenerator } from './spatial-utils.generator.ts';
@@ -88,7 +88,7 @@ export class DrizzleSchemaGenerator {
 
     // Add table import
     drizzleImports.add('pgTable');
-    if (model.schema) {
+    if (this.customSchema(model)) {
       drizzleImports.add('pgSchema');
     }
 
@@ -122,9 +122,8 @@ export class DrizzleSchemaGenerator {
       drizzleImports.add('customType');
     }
 
-    // Ensure bigint is imported when generated timestamp columns are present
-    // (timestamps are stored as EPOCH milliseconds using bigint)
-    if (model.timestamps) {
+    // Ensure bigint is imported when generated timestamp/soft-delete columns are present
+    if (model.timestamps || model.softDelete) {
       drizzleImports.add('bigint');
     }
 
@@ -221,18 +220,30 @@ export class DrizzleSchemaGenerator {
   }
 
   /**
+   * Returns the schema name to wrap in pgSchema(), or null for the default
+   * schema. "public" is Postgres' default schema and drizzle-orm (>=0.45)
+   * forbids pgSchema('public'), so models on "public" (or with no schema) use
+   * pgTable() directly.
+   */
+  private customSchema(model: ModelDefinition): string | null {
+    return model.schema && model.schema !== 'public' ? model.schema : null;
+  }
+
+  /**
    * Generate table definition
    */
   private generateTableDefinition(model: ModelDefinition): string {
     let code = '';
 
-    // Handle schema if specified
-    if (model.schema) {
-      code += `const ${model.schema}Schema = pgSchema('${model.schema}');\n\n`;
+    // Handle schema if specified. "public" is Postgres' default schema, and
+    // drizzle-orm (>=0.45) forbids pgSchema('public') — use pgTable() directly.
+    const customSchema = this.customSchema(model);
+    if (customSchema) {
+      code += `const ${customSchema}Schema = pgSchema('${customSchema}');\n\n`;
     }
 
     // Start table definition (no type annotation needed)
-    const tableFunction = model.schema ? `${model.schema}Schema.table` : 'pgTable';
+    const tableFunction = customSchema ? `${customSchema}Schema.table` : 'pgTable';
     const tableName = model.tableName || model.name.toLowerCase();
     code += `export const ${model.name.toLowerCase()}Table = ${tableFunction}('${tableName}', {\n`;
 
@@ -247,6 +258,12 @@ export class DrizzleSchemaGenerator {
     if (model.timestamps) {
       const timestampFields = this.generateTimestampFields(model.timestamps);
       fieldDefinitions.push(...timestampFields);
+    }
+
+    // Add soft-delete column if enabled (nullable, no default)
+    const softDeleteColumn = getSoftDeleteColumn(model);
+    if (softDeleteColumn) {
+      fieldDefinitions.push(`  deletedAt: bigint('${softDeleteColumn}', { mode: 'number' })`);
     }
 
     code += fieldDefinitions.map((def) => {
@@ -278,6 +295,19 @@ export class DrizzleSchemaGenerator {
       }
     }
 
+    // Field-level unique → partial unique index for soft-delete models
+    const sdCol = getSoftDeleteColumn(model);
+    if (sdCol) {
+      for (const field of model.fields) {
+        if (field.unique) {
+          const idxName = `uq_${model.name.toLowerCase()}_${field.name}`;
+          tableConstraints.push(
+            `  uniqueIndex('${idxName}').on(table.${field.name}).where(sql\`${sdCol} IS NULL\`)`,
+          );
+        }
+      }
+    }
+
     // Model-level indexes
     if (model.indexes) {
       for (const idx of model.indexes) {
@@ -289,10 +319,11 @@ export class DrizzleSchemaGenerator {
         const firstField = model.fields.find((f) => f.name === idx.fields[0]);
         const isPostGISIdx = firstField && isPostGISType(firstField.type);
 
+        const partial = idx.unique && sdCol ? `.where(sql\`${sdCol} IS NULL\`)` : '';
         if (isPostGISIdx) {
-          tableConstraints.push(`  ${indexType}('${indexName}').using('gist', ${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').using('gist', ${fields})${partial}`);
         } else {
-          tableConstraints.push(`  ${indexType}('${indexName}').on(${fields})`);
+          tableConstraints.push(`  ${indexType}('${indexName}').on(${fields})${partial}`);
         }
       }
     }
@@ -402,7 +433,10 @@ export class DrizzleSchemaGenerator {
       modifiers.push('.primaryKey()');
     }
 
-    if (field.unique) {
+    // For soft-delete models, uniqueness is enforced via a partial unique index
+    // (see table-level constraints) so live rows are unique but soft-deleted rows
+    // do not reserve the value. A plain .unique() cannot be partial.
+    if (field.unique && !getSoftDeleteColumn(model)) {
       modifiers.push('.unique()');
     }
 
@@ -909,6 +943,11 @@ export class DrizzleSchemaGenerator {
       if (model.timestamps.updatedAt) {
         fields.push({ name: 'updatedAt', type: 'date', expose: 'default', accept: 'never' });
       }
+    }
+
+    // Soft-delete column: hidden from responses, never accepted from input
+    if (model.softDelete) {
+      fields.push({ name: 'deletedAt', type: 'date', expose: 'hidden', accept: 'never' });
     }
 
     return fields;

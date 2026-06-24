@@ -1,0 +1,13 @@
+{
+  "name": "SoftDeleteTestEntity",
+  "tableName": "soft_delete_test_entity",
+  "schema": "public",
+  "fields": [
+    { "name": "id", "type": "uuid", "primaryKey": true, "defaultValue": "gen_random_uuid()", "required": true },
+    { "name": "code", "type": "string", "maxLength": 100, "required": true, "unique": true },
+    { "name": "name", "type": "string", "maxLength": 100, "required": true }
+  ],
+  "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
+  "timestamps": true,
+  "softDelete": true
+}

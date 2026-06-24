@@ -1,0 +1,21 @@
+{
+  "name": "SoftDeleteChild",
+  "tableName": "soft_delete_child",
+  "schema": "public",
+  "fields": [
+    { "name": "id", "type": "uuid", "primaryKey": true, "defaultValue": "gen_random_uuid()", "required": true },
+    {
+      "name": "parentId",
+      "type": "uuid",
+      "required": true,
+      "references": { "model": "SoftDeleteParent", "field": "id", "onDelete": "CASCADE" }
+    },
+    { "name": "name", "type": "string", "maxLength": 100, "required": true }
+  ],
+  "relationships": [
+    { "type": "manyToOne", "name": "parent", "target": "SoftDeleteParent", "foreignKey": "parentId" }
+  ],
+  "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
+  "timestamps": true,
+  "softDelete": true
+}

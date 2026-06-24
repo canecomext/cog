@@ -163,7 +163,8 @@ OpenAPI spec is built dynamically from metadata at runtime:
   "indexes": [{ "fields": ["email", "isActive"], "unique": true }],
   "check": { "numNotNulls": [{ "fields": ["field1", "field2"], "num": 1 }] },
   "endpoints": { "create": true, "readOne": true, "readMany": true, "update": true, "delete": true },
-  "timestamps": true
+  "timestamps": true,
+  "softDelete": true
 }
 ```
 
@@ -243,6 +244,59 @@ Domain layer throws `DomainException` or `NotFoundException`. REST layer convert
 | `DomainException`   | 500         |
 
 Exceptions in hooks trigger transaction rollback.
+
+## Soft Delete
+
+Opt-in per model. Off by default.
+
+**Configuration:**
+
+```json
+{ "softDelete": true }
+{ "softDelete": { "deletedAt": "custom_column_name" } }
+```
+
+- `true` — use the default `deleted_at` column name
+- `{ "deletedAt": "<name>" }` — use a custom column name (camelCase, snake_case in DB)
+
+Default column: `deleted_at` (camelCase: `deletedAt`). Nullable `bigint` epoch-ms, no default value. `expose: hidden`,
+`accept: never` — never visible in API responses, never accepted as input.
+
+**Behavior:**
+
+| Scenario                                | Result                                                          |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `delete()` on live record               | Sets `deletedAt` to current epoch-ms (no UPDATE to `updatedAt`) |
+| `delete()` on soft-deleted record       | 404 NotFoundException                                           |
+| `update()` on soft-deleted record       | 404 NotFoundException                                           |
+| `findMany()` / `findById()`             | Excludes soft-deleted rows automatically                        |
+| `withSoftDeleted: true` (domain option) | Bypasses the filter — for internal reads only, not REST-exposed |
+| Restore                                 | Not supported in v1                                             |
+
+**Unique constraints with soft delete:** Field-level `unique: true` and model-level `indexes` unique constraints are
+emitted as partial indexes (`WHERE deleted_at IS NULL`) so a soft-deleted row does not reserve its unique value.
+
+**Relationship propagation:**
+
+- `?include=` of a `oneToMany`/`manyToMany` relation excludes soft-deleted children/targets.
+- `?include=` of a `manyToOne`/`oneToOne` relation resolves to `null` when the referenced row is soft-deleted.
+- Many-to-many `GET /:id/{relation}List` endpoint excludes soft-deleted targets.
+- Junction tables themselves are always hard-deleted.
+
+**Database compatibility:** Requires partial index support — CockroachDB v20.2+ and all supported PostgreSQL versions.
+
+**Scope & referential integrity (by design):** Soft delete is honored across COG's own feature surface — reads,
+`?include=`, the m2m relation-list join, filtering, pagination counts, the update/delete 404 lock, and unique indexes.
+COG stops at its own boundary. It deliberately does **not** implement cross-aggregate referential integrity:
+
+- It does **not** prevent creating/updating a child whose foreign key references a soft-deleted parent (the FK still
+  points at the physically-present row, so the database accepts it).
+- It does **not** cascade soft delete to children (soft-deleting a parent leaves children untouched).
+
+This is intentional: the "correct" behavior is application-specific (archived-vs-trashed semantics; a child shared
+between a deleted and a live parent has no universal answer). Implement whatever policy fits your data model in the
+`before*`/`pre*` hooks — e.g. a `preCreate`/`preUpdate` hook can call `parentDomain.findById(fk)` (which returns `null`
+for a soft-deleted parent) and throw to reject the write.
 
 ## Filtering
 

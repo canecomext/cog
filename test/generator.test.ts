@@ -173,3 +173,354 @@ Deno.test('generator - supports cockroachdb option', async () => {
     await cleanup();
   }
 });
+
+Deno.test('parser - parses softDelete property', async () => {
+  const { parseModel } = await import('../src/parser/model-parser.ts');
+  const model = parseModel({
+    name: 'Sd',
+    tableName: 'sd',
+    fields: [{ name: 'id', type: 'uuid', primaryKey: true, required: true }],
+    softDelete: true,
+  });
+  assertEquals(model!.softDelete, true);
+
+  const model2 = parseModel({
+    name: 'Sd2',
+    tableName: 'sd2',
+    fields: [{ name: 'id', type: 'uuid', primaryKey: true, required: true }],
+    softDelete: { deletedAt: 'removed_at' },
+  });
+  assertEquals((model2!.softDelete as { deletedAt?: string }).deletedAt, 'removed_at');
+});
+
+Deno.test('field.utils - getSoftDeleteColumn', async () => {
+  const { getSoftDeleteColumn } = await import('../src/utils/field.utils.ts');
+  const base = { name: 'X', tableName: 'x', fields: [] };
+  assertEquals(getSoftDeleteColumn({ ...base }), null);
+  assertEquals(getSoftDeleteColumn({ ...base, softDelete: true }), 'deleted_at');
+  assertEquals(getSoftDeleteColumn({ ...base, softDelete: { deletedAt: 'removed_at' } }), 'removed_at');
+});
+
+const SD_MODELS = './test/test-sd-models';
+const SD_OUTPUT = './test/test-sd-generated';
+
+async function generateSoftDeleteModel() {
+  await Deno.mkdir(SD_MODELS, { recursive: true });
+  const model = {
+    name: 'SoftDeletedEntity',
+    tableName: 'soft_deleted_entity',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+      { name: 'code', type: 'string', maxLength: 100, required: true, unique: true },
+      { name: 'name', type: 'string', maxLength: 100, required: true },
+    ],
+    indexes: [{ fields: ['code', 'name'], unique: true }],
+    timestamps: true,
+    softDelete: true,
+  };
+  await Deno.writeTextFile(`${SD_MODELS}/sde.json`, JSON.stringify(model, null, 2));
+  await generateFromModels(SD_MODELS, SD_OUTPUT);
+}
+
+async function cleanupSoftDelete() {
+  for (const p of [SD_MODELS, SD_OUTPUT]) {
+    try {
+      await Deno.remove(p, { recursive: true });
+    } catch { /* ignore */ }
+  }
+}
+
+Deno.test('generator - soft delete partial unique indexes', async () => {
+  await cleanupSoftDelete();
+  try {
+    await generateSoftDeleteModel();
+    const schema = await Deno.readTextFile(`${SD_OUTPUT}/schema/softdeletedentity.schema.ts`);
+    // Field-level unique becomes a partial unique index, not an inline .unique() modifier
+    assertEquals(schema.includes('.unique()'), false);
+    assertEquals(/uniqueIndex\([^)]*\)\s*\.on\(table\.code\)\s*\.where\(sql`deleted_at IS NULL`\)/.test(schema), true);
+    // Model-level unique index gains the partial WHERE clause
+    assertEquals(
+      /uniqueIndex\([^)]*\)\.on\(table\.code,\s*table\.name\)\.where\(sql`deleted_at IS NULL`\)/.test(schema),
+      true,
+    );
+  } finally {
+    await cleanupSoftDelete();
+  }
+});
+
+Deno.test('generator - soft delete schema column and field meta', async () => {
+  await cleanupSoftDelete();
+  try {
+    await generateSoftDeleteModel();
+    const schema = await Deno.readTextFile(`${SD_OUTPUT}/schema/softdeletedentity.schema.ts`);
+    // Nullable deletedAt: no .notNull(), no .default()
+    assertEquals(/deletedAt:\s*bigint\('deleted_at',\s*\{\s*mode:\s*'number'\s*\}\)\s*,/.test(schema), true);
+    assertEquals(schema.includes("deletedAt: bigint('deleted_at', { mode: 'number' }).default"), false);
+    // Field meta hidden + never-accept
+    assertEquals(
+      schema.includes(
+        "['deletedAt', { type: 'date', array: false, exposeCreate: false, exposeRead: false, acceptCreate: false, acceptUpdate: false }]",
+      ),
+      true,
+    );
+  } finally {
+    await cleanupSoftDelete();
+  }
+});
+
+Deno.test('generator - soft delete DDL column and partial unique index', async () => {
+  await cleanupSoftDelete();
+  try {
+    await generateSoftDeleteModel();
+    const ddl = await Deno.readTextFile(`${SD_OUTPUT}/db/initialize-database.ts`);
+    // Nullable deleted_at column (no DEFAULT, no NOT NULL)
+    assertEquals(/deleted_at INT8(?!\s+DEFAULT)(?!\s+NOT NULL)/.test(ddl), true);
+    // No plain UNIQUE constraint for the soft-delete table's unique field
+    assertEquals(ddl.includes('"softdeletedentity_code_unique" UNIQUE'), false);
+    // Partial unique index for field-level unique
+    assertEquals(ddl.includes('CREATE UNIQUE INDEX') && ddl.includes('WHERE deleted_at IS NULL'), true);
+  } finally {
+    await cleanupSoftDelete();
+  }
+});
+
+Deno.test('generator - soft delete domain behavior', async () => {
+  await cleanupSoftDelete();
+  try {
+    await generateSoftDeleteModel();
+    const domain = await Deno.readTextFile(`${SD_OUTPUT}/domain/softdeletedentity.domain.ts`);
+    // imports
+    assertEquals(/import \{[^}]*\band\b[^}]*\bisNull\b[^}]*\} from 'drizzle-orm';/.test(domain), true);
+    // delete() is a soft update, not a hard .delete()
+    assertEquals(domain.includes('.delete(softdeletedentityTable)'), false);
+    assertEquals(domain.includes('deletedAt: sql`(extract(epoch from now()) * 1000)::bigint`'), true);
+    // delete + update guard on deletedAt
+    assertEquals(domain.includes('isNull(softdeletedentityTable.deletedAt)'), true);
+    // find filter respects withSoftDeleted
+    assertEquals(domain.includes('options?.withSoftDeleted'), true);
+  } finally {
+    await cleanupSoftDelete();
+  }
+});
+
+Deno.test('generator - non-soft-delete model keeps hard delete', async () => {
+  await cleanup();
+  await setup(); // existing TestEntity has no softDelete
+  try {
+    await generateFromModels(TEST_MODELS_PATH, TEST_OUTPUT_PATH);
+    const domain = await Deno.readTextFile(`${TEST_OUTPUT_PATH}/domain/testentity.domain.ts`);
+    assertEquals(domain.includes('.delete(testentityTable)'), true);
+    assertEquals(domain.includes('deletedAt:'), false);
+  } finally {
+    await cleanup();
+  }
+});
+
+const M2M_MODELS = './test/test-m2m-models';
+const M2M_OUTPUT = './test/test-m2m-generated';
+
+async function generateM2MSoftDelete() {
+  await Deno.mkdir(M2M_MODELS, { recursive: true });
+  const parent = {
+    name: 'SdParent',
+    tableName: 'sd_parent',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+      { name: 'name', type: 'string', maxLength: 100, required: true },
+    ],
+    relationships: [
+      {
+        type: 'manyToMany',
+        name: 'tagList',
+        target: 'SdTag',
+        through: 'sd_parent_sd_tag',
+        foreignKey: 'sd_parent_id',
+        targetForeignKey: 'sd_tag_id',
+        endpoints: { get: true, add: true, remove: true },
+      },
+    ],
+    endpoints: { create: true, readOne: true, readMany: true, update: true, delete: true },
+  };
+  const tag = {
+    name: 'SdTag',
+    tableName: 'sd_tag',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+      { name: 'label', type: 'string', maxLength: 100, required: true },
+    ],
+    softDelete: true,
+    endpoints: { create: true, readOne: true, readMany: true, update: true, delete: true },
+  };
+  await Deno.writeTextFile(`${M2M_MODELS}/sd-parent.json`, JSON.stringify(parent, null, 2));
+  await Deno.writeTextFile(`${M2M_MODELS}/sd-tag.json`, JSON.stringify(tag, null, 2));
+  await generateFromModels(M2M_MODELS, M2M_OUTPUT);
+}
+
+async function cleanupM2M() {
+  for (const p of [M2M_MODELS, M2M_OUTPUT]) {
+    try {
+      await Deno.remove(p, { recursive: true });
+    } catch { /* ignore */ }
+  }
+}
+
+Deno.test('generator - soft delete column is hidden from OpenAPI', async () => {
+  await cleanupSoftDelete();
+  try {
+    await generateSoftDeleteModel();
+    const meta = await Deno.readTextFile(`${SD_OUTPUT}/rest/openapi-metadata.ts`);
+    // deletedAt must not appear as an exposed/advertised property
+    assertEquals(meta.includes('deletedAt'), false);
+  } finally {
+    await cleanupSoftDelete();
+  }
+});
+
+Deno.test('generator - m2m junction config flags soft-deletable target', async () => {
+  await cleanupM2M();
+  try {
+    await generateM2MSoftDelete();
+    const domain = await Deno.readTextFile(`${M2M_OUTPUT}/domain/sdparent.domain.ts`);
+    assertEquals(domain.includes('targetHasSoftDelete: true'), true);
+    // targetTableName must be the SQL table name (how drizzle keys join results),
+    // not the lowercased model name. SdTag -> table "sd_tag".
+    assertEquals(domain.includes("targetTableName: 'sd_tag'"), true);
+    assertEquals(domain.includes("targetTableName: 'sdtag'"), false);
+    const junction = await Deno.readTextFile(`${M2M_OUTPUT}/domain/junction.utils.ts`);
+    // getJunctionTargets honors the flag with an isNull filter on the target's deletedAt
+    assertEquals(junction.includes('targetHasSoftDelete'), true);
+    assertEquals(junction.includes("config.targetTable['deletedAt'"), true);
+    assertEquals(junction.includes('isNull('), true);
+  } finally {
+    await cleanupM2M();
+  }
+});
+
+const SD_UQIDX_MODELS = './test/test-sd-uqidx-models';
+const SD_UQIDX_OUTPUT = './test/test-sd-uqidx-generated';
+
+async function generateSoftDeleteUniqueIndexModel() {
+  await Deno.mkdir(SD_UQIDX_MODELS, { recursive: true });
+  // Model has a field with BOTH index:true AND unique:true — on a soft-delete model
+  const model = {
+    name: 'SdUqIdx',
+    tableName: 'sd_uq_idx',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+      { name: 'code', type: 'string', maxLength: 100, required: true, unique: true, index: true },
+      { name: 'label', type: 'string', maxLength: 100, required: true },
+    ],
+    timestamps: true,
+    softDelete: true,
+  };
+  await Deno.writeTextFile(`${SD_UQIDX_MODELS}/sd-uq-idx.json`, JSON.stringify(model, null, 2));
+  await generateFromModels(SD_UQIDX_MODELS, SD_UQIDX_OUTPUT);
+}
+
+async function cleanupSoftDeleteUniqueIndex() {
+  for (const p of [SD_UQIDX_MODELS, SD_UQIDX_OUTPUT]) {
+    try {
+      await Deno.remove(p, { recursive: true });
+    } catch { /* ignore */ }
+  }
+}
+
+Deno.test('generator - soft delete: field with index+unique emits no non-partial CREATE UNIQUE INDEX', async () => {
+  await cleanupSoftDeleteUniqueIndex();
+  try {
+    await generateSoftDeleteUniqueIndexModel();
+    const ddl = await Deno.readTextFile(`${SD_UQIDX_OUTPUT}/db/initialize-database.ts`);
+
+    // The field-level loop must NOT emit a non-partial CREATE UNIQUE INDEX for `code`
+    // (the only UNIQUE index on `code` must be the partial one with WHERE deleted_at IS NULL)
+    const lines = ddl.split('\n');
+    for (const line of lines) {
+      if (line.includes('CREATE UNIQUE INDEX') && line.includes('"code"') && !line.includes('WHERE')) {
+        throw new Error(
+          `Found a non-partial CREATE UNIQUE INDEX on "code" in a soft-delete model — this is the leak: ${line}`,
+        );
+      }
+    }
+
+    // The partial unique index must still be there
+    assertEquals(
+      ddl.includes('CREATE UNIQUE INDEX') && ddl.includes('WHERE deleted_at IS NULL'),
+      true,
+      'Partial unique index (WHERE deleted_at IS NULL) must exist',
+    );
+
+    // A plain non-unique index (idx_) for code is fine (for query performance)
+    assertEquals(
+      ddl.includes('"idx_sd_uq_idx_code"'),
+      true,
+      'A plain non-unique index for code must still be emitted',
+    );
+  } finally {
+    await cleanupSoftDeleteUniqueIndex();
+  }
+});
+
+const SCHEMA_MODELS = './test/test-schema-models';
+const SCHEMA_OUTPUT = './test/test-schema-generated';
+
+async function cleanupSchemaTest() {
+  for (const p of [SCHEMA_MODELS, SCHEMA_OUTPUT]) {
+    try {
+      await Deno.remove(p, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// Regression: drizzle-orm 0.45+ forbids pgSchema('public'). A model declaring the
+// default "public" schema must emit pgTable() directly, not pgSchema('public').
+// A genuine non-default schema must still emit pgSchema(<name>).
+Deno.test('generator - schema "public" uses pgTable, non-public uses pgSchema', async () => {
+  await cleanupSchemaTest();
+  await Deno.mkdir(SCHEMA_MODELS, { recursive: true });
+  try {
+    const publicModel = {
+      name: 'PublicEntity',
+      tableName: 'public_entity',
+      schema: 'public',
+      fields: [
+        { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+        { name: 'name', type: 'string', maxLength: 100, required: true },
+      ],
+    };
+    const analyticsModel = {
+      name: 'AnalyticsEntity',
+      tableName: 'analytics_entity',
+      schema: 'analytics',
+      fields: [
+        { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+        { name: 'name', type: 'string', maxLength: 100, required: true },
+      ],
+    };
+    await Deno.writeTextFile(`${SCHEMA_MODELS}/public-entity.json`, JSON.stringify(publicModel, null, 2));
+    await Deno.writeTextFile(`${SCHEMA_MODELS}/analytics-entity.json`, JSON.stringify(analyticsModel, null, 2));
+    await generateFromModels(SCHEMA_MODELS, SCHEMA_OUTPUT);
+
+    const publicSchema = await Deno.readTextFile(`${SCHEMA_OUTPUT}/schema/publicentity.schema.ts`);
+    assertEquals(
+      publicSchema.includes("pgSchema('public')"),
+      false,
+      "must NOT emit pgSchema('public') — drizzle 0.45+ forbids it",
+    );
+    assertEquals(
+      publicSchema.includes("publicentityTable = pgTable('public_entity'"),
+      true,
+      'public-schema model must use pgTable() directly',
+    );
+
+    const analyticsSchema = await Deno.readTextFile(`${SCHEMA_OUTPUT}/schema/analyticsentity.schema.ts`);
+    assertEquals(
+      analyticsSchema.includes("pgSchema('analytics')"),
+      true,
+      'genuine non-public schema must still emit pgSchema(<name>)',
+    );
+  } finally {
+    await cleanupSchemaTest();
+  }
+});

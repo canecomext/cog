@@ -2,7 +2,7 @@
  * Shared field utility functions for code generators
  */
 
-import { AcceptType, ExposeType } from '../types/model.types.ts';
+import { AcceptType, ExposeType, ModelDefinition } from '../types/model.types.ts';
 
 /**
  * Normalize expose config to a consistent object format
@@ -34,4 +34,14 @@ export const normalizeAccept = (accept?: AcceptType): { create: boolean; update:
     return { create: false, update: false };
   }
   return { create: true, update: true };
+};
+
+/**
+ * Returns the snake_case DB column name for the soft-delete timestamp,
+ * or null when soft delete is not enabled for the model.
+ */
+export const getSoftDeleteColumn = (model: ModelDefinition): string | null => {
+  if (!model.softDelete) return null;
+  if (model.softDelete === true) return 'deleted_at';
+  return model.softDelete.deletedAt ?? 'deleted_at';
 };

@@ -1,4 +1,5 @@
 import { FieldDefinition, ModelDefinition } from '../types/model.types.ts';
+import { getSoftDeleteColumn } from '../utils/field.utils.ts';
 import { toSnakeCase } from '../utils/string.utils.ts';
 
 /**
@@ -541,6 +542,12 @@ export async function healthCheck(): Promise<boolean> {
       columns.push(`updated_at ${timestampType} DEFAULT ${defaultValue} NOT NULL`);
     }
 
+    // Soft-delete column (nullable, no default)
+    const softDeleteColumn = getSoftDeleteColumn(model);
+    if (softDeleteColumn) {
+      columns.push(`${softDeleteColumn} INT8`);
+    }
+
     return columns.join(',\n        ');
   }
 
@@ -550,9 +557,10 @@ export async function healthCheck(): Promise<boolean> {
   private generateConstraintsSQL(model: ModelDefinition): string {
     const constraints = [];
 
-    // Unique constraints
+    // Unique constraints (suppressed for soft-delete models; they use partial unique indexes instead)
+    const sdCol = getSoftDeleteColumn(model);
     for (const field of model.fields) {
-      if (field.unique) {
+      if (field.unique && !sdCol) {
         const columnName = toSnakeCase(field.name);
         constraints.push(`CONSTRAINT "${model.name.toLowerCase()}_${columnName}_unique" UNIQUE("${columnName}")`);
       }
@@ -667,6 +675,7 @@ export async function healthCheck(): Promise<boolean> {
   private generateIndexes(model: ModelDefinition): Array<{ sql: string; name: string }> {
     const indexes = [];
     const tableName = model.tableName;
+    const sdCol = getSoftDeleteColumn(model);
 
     // Field-level indexes
     for (const field of model.fields) {
@@ -676,12 +685,30 @@ export async function healthCheck(): Promise<boolean> {
         const methodClause = method ? `USING ${method}` : '';
         const indexName = `idx_${tableName}_${columnName}`;
 
-        const createType = field.unique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
+        // For soft-delete models suppress the UNIQUE keyword here: the dedicated partial-unique-index
+        // loop below already emits a correct `WHERE deleted_at IS NULL` unique index for this column.
+        // A plain non-partial UNIQUE INDEX would let soft-deleted rows reserve the value — defeating the fix.
+        const createType = field.unique && !sdCol ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
         indexes.push({
           name: indexName,
           sql: `${createType} IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
             `${methodClause} ("${columnName}")`,
         });
+      }
+    }
+
+    // Soft-delete: field-level unique becomes a partial unique index over live rows
+    if (sdCol) {
+      for (const field of model.fields) {
+        if (field.unique) {
+          const columnName = toSnakeCase(field.name);
+          const indexName = `uq_${tableName}_${columnName}`;
+          indexes.push({
+            name: indexName,
+            sql: `CREATE UNIQUE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
+              `("${columnName}") WHERE ${sdCol} IS NULL`,
+          });
+        }
       }
     }
 
@@ -702,10 +729,11 @@ export async function healthCheck(): Promise<boolean> {
         const methodClause = method ? `USING ${method}` : '';
 
         const createType = idx.unique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
+        const partialClause = idx.unique && sdCol ? ` WHERE ${sdCol} IS NULL` : '';
         indexes.push({
           name: indexName,
           sql: `${createType} IF NOT EXISTS "${indexName}" ON "${tableName}" ` +
-            `${methodClause} (${columns})`,
+            `${methodClause} (${columns})${partialClause}`,
         });
       }
     }
