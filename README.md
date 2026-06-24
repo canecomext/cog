@@ -451,6 +451,29 @@ const employeeDomainWithHooks = new EmployeeDomain({
 });
 ```
 
+### String Length Validation
+
+`string` and `text` fields support `minLength` and `maxLength`:
+
+```json
+{
+  "name": "username",
+  "type": "string",
+  "minLength": 3,
+  "maxLength": 32,
+  "required": true
+}
+```
+
+Both bounds are emitted as Zod refinements on the generated insert/update schemas, so they are enforced at the API layer
+on **both create and update**. A value outside the bounds throws a `ZodError`, which the REST layer returns as **HTTP
+400** with the validation issues in the response body.
+
+- `maxLength` also sets the `varchar` column length for `string` fields; `text` columns stay unbounded but still get the
+  Zod `max` check.
+- `minLength`/`maxLength` are **not** applied to array fields (`"array": true`) — a length check there would constrain
+  the array length, not the element strings.
+
 ### Endpoint Configuration
 
 Control which endpoints are generated for each model:

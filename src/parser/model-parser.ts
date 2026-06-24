@@ -254,6 +254,31 @@ export class ModelParser {
         });
       }
 
+      if (
+        (field.type === 'string' || field.type === 'text') && field.minLength !== undefined &&
+        (typeof field.minLength !== 'number' || field.minLength < 0)
+      ) {
+        this.errors.push({
+          model: modelName,
+          field: field.name,
+          message: `Field '${field.name}' has invalid minLength: ${field.minLength}`,
+          severity: 'warning',
+        });
+      }
+
+      if (
+        typeof field.minLength === 'number' && typeof field.maxLength === 'number' &&
+        field.minLength > field.maxLength
+      ) {
+        this.errors.push({
+          model: modelName,
+          field: field.name,
+          message:
+            `Field '${field.name}' has minLength (${field.minLength}) greater than maxLength (${field.maxLength})`,
+          severity: 'warning',
+        });
+      }
+
       if (field.type === 'decimal') {
         if (field.precision && (typeof field.precision !== 'number' || field.precision <= 0)) {
           this.errors.push({

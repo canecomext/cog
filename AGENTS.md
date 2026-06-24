@@ -186,14 +186,21 @@ OpenAPI spec is built dynamically from metadata at runtime:
 
 ## Field Properties
 
-| Property     | Values                                   | Description                  |
-| ------------ | ---------------------------------------- | ---------------------------- |
-| `expose`     | `default`, `hidden`, `create`            | Controls response visibility |
-| `accept`     | `default`, `create`, `never`             | Controls input acceptance    |
-| `references` | `{ model, field, onDelete?, onUpdate? }` | Foreign key definition       |
+| Property     | Values                                   | Description                        |
+| ------------ | ---------------------------------------- | ---------------------------------- |
+| `expose`     | `default`, `hidden`, `create`            | Controls response visibility       |
+| `accept`     | `default`, `create`, `never`             | Controls input acceptance          |
+| `references` | `{ model, field, onDelete?, onUpdate? }` | Foreign key definition             |
+| `maxLength`  | `number`                                 | String/text max length (see below) |
+| `minLength`  | `number`                                 | String/text min length (Zod check) |
 
 **`expose`**: `hidden` = never visible, `create` = visible only in POST response **`accept`**: `create` = immutable
 after creation, `never` = server-managed (use hook or defaultValue)
+
+**`minLength` / `maxLength`** (string/text only): emitted as Zod refinements on the generated insert/update schemas, so
+both bounds are enforced at the API layer on create and update. A violation throws a `ZodError` → **HTTP 400**.
+`maxLength` additionally sets the `varchar` column length for `string` fields (`text` columns stay unbounded). Not
+applied to array fields (`"array": true`), where a length check would constrain the array, not its elements.
 
 ## Relationships
 
@@ -236,14 +243,17 @@ Same pattern for `Update`, `Delete`, `FindById`, `FindMany`, and junction operat
 
 ## Exceptions
 
-Domain layer throws `DomainException` or `NotFoundException`. REST layer converts to HTTP status codes.
+Domain layer throws `DomainException` or `NotFoundException`. Zod validation (input schema parse) throws `ZodError`.
+REST layer (`handleDomainException`) converts these to HTTP status codes.
 
 | Exception           | HTTP Status |
 | ------------------- | ----------- |
 | `NotFoundException` | 404         |
+| `ZodError`          | 400         |
 | `DomainException`   | 500         |
 
-Exceptions in hooks trigger transaction rollback.
+`ZodError` → 400 carries the Zod issues array as the message, covering all input validation failures (`minLength`,
+`maxLength`, required, enum, type). Exceptions in hooks trigger transaction rollback.
 
 ## Soft Delete
 

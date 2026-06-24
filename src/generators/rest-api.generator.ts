@@ -148,6 +148,7 @@ export type DefaultEnv = {
    */
   private generateRestHelpers(): string {
     return `import { HTTPException } from '@hono/hono/http-exception';
+import { ZodError } from 'zod';
 import { NotFoundException, DomainException } from '../domain/exceptions.ts';
 
 // Re-export filter utilities for use in REST handlers
@@ -197,6 +198,10 @@ export function handleDomainException(error: unknown): never {
   }
   if (error instanceof DomainException) {
     throw new HTTPException(500, { message: error.message });
+  }
+  // Zod validation failures (e.g. minLength/maxLength, required, enum) are client errors
+  if (error instanceof ZodError) {
+    throw new HTTPException(400, { message: JSON.stringify(error.issues) });
   }
   throw error; // Re-throw unknown errors
 }

@@ -963,8 +963,27 @@ export class DrizzleSchemaGenerator {
     // Generate Zod schemas - use default generation
     // Note: Spatial/GeoJSON fields are validated at runtime via customType
     // Type safety is ensured via type assertions in the domain layer
-    code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table);\n`;
-    code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table);\n`;
+    //
+    // String/text length bounds (minLength/maxLength) are emitted as per-column
+    // refinements so they are enforced at the API layer (insert + update). Only
+    // non-array string/text fields are refined: for array fields the element schema
+    // is wrapped in z.array(), where .min()/.max() would constrain array length.
+    const lengthRefinements = model.fields
+      .filter((field) =>
+        (field.type === 'string' || field.type === 'text') && !field.array &&
+        (field.minLength !== undefined || field.maxLength !== undefined)
+      )
+      .map((field) => {
+        const checks: string[] = [];
+        if (field.minLength !== undefined) checks.push(`.min(${field.minLength})`);
+        if (field.maxLength !== undefined) checks.push(`.max(${field.maxLength})`);
+        return `    ${field.name}: (schema) => schema${checks.join('')},`;
+      });
+
+    const refineArg = lengthRefinements.length > 0 ? `, {\n${lengthRefinements.join('\n')}\n  }` : '';
+
+    code += `export const ${modelNameLower}InsertSchema = createInsertSchema(${modelNameLower}Table${refineArg});\n`;
+    code += `export const ${modelNameLower}UpdateSchema = createUpdateSchema(${modelNameLower}Table${refineArg});\n`;
     code += `export const ${modelNameLower}SelectSchema = createSelectSchema(${modelNameLower}Table);`;
 
     return code;

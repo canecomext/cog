@@ -56,7 +56,8 @@ export interface FieldDefinition {
   unique?: boolean;
   required?: boolean;
   defaultValue?: string | number | boolean | null;
-  maxLength?: number; // For string type
+  maxLength?: number; // For string/text type (varchar length for string; Zod max length for both)
+  minLength?: number; // For string/text type (Zod min length validation)
   precision?: number; // For decimal type
   scale?: number; // For decimal type
   array?: boolean; // Support for array types

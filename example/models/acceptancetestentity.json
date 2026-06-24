@@ -14,7 +14,8 @@
       "name": "normalField",
       "type": "string",
       "maxLength": 100,
-      "description": "Normal field - default accept (accepted on both POST and PUT)"
+      "minLength": 3,
+      "description": "Normal field - default accept (accepted on both POST and PUT); minLength 3 for validation testing"
     },
     {
       "name": "createOnlyField",

@@ -201,6 +201,78 @@ Deno.test('field.utils - getSoftDeleteColumn', async () => {
   assertEquals(getSoftDeleteColumn({ ...base, softDelete: { deletedAt: 'removed_at' } }), 'removed_at');
 });
 
+Deno.test('parser - preserves minLength on string/text fields', async () => {
+  const { parseModel } = await import('../src/parser/model-parser.ts');
+  const model = parseModel({
+    name: 'Lm',
+    tableName: 'lm',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true, required: true },
+      { name: 'code', type: 'string', maxLength: 10, minLength: 3, required: true },
+      { name: 'bio', type: 'text', minLength: 1 },
+    ],
+  });
+  assertExists(model);
+  const code = model!.fields.find((f) => f.name === 'code');
+  assertEquals(code!.minLength, 3);
+  assertEquals(code!.maxLength, 10);
+  assertEquals(model!.fields.find((f) => f.name === 'bio')!.minLength, 1);
+});
+
+const LEN_MODELS = './test/test-len-models';
+const LEN_OUTPUT = './test/test-len-generated';
+
+async function cleanupLength() {
+  for (const p of [LEN_MODELS, LEN_OUTPUT]) {
+    try {
+      await Deno.remove(p, { recursive: true });
+    } catch { /* ignore */ }
+  }
+}
+
+Deno.test('generator - emits Zod length refinements for minLength/maxLength', async () => {
+  await cleanupLength();
+  try {
+    await Deno.mkdir(LEN_MODELS, { recursive: true });
+    const model = {
+      name: 'LengthEntity',
+      tableName: 'length_entity',
+      fields: [
+        { name: 'id', type: 'uuid', primaryKey: true, defaultValue: 'gen_random_uuid()', required: true },
+        // string with both bounds -> .min().max()
+        { name: 'code', type: 'string', maxLength: 10, minLength: 3, required: true },
+        // text with only minLength -> .min() (text column stays unbounded)
+        { name: 'bio', type: 'text', minLength: 5 },
+        // string with only maxLength -> .max() (Zod check, not just varchar length)
+        { name: 'name', type: 'string', maxLength: 50, required: true },
+        // array of strings must NOT be refined (refinement would constrain array length)
+        { name: 'tags', type: 'string', array: true, minLength: 2 },
+      ],
+    };
+    await Deno.writeTextFile(`${LEN_MODELS}/length-entity.json`, JSON.stringify(model, null, 2));
+    await generateFromModels(LEN_MODELS, LEN_OUTPUT);
+
+    const schema = await Deno.readTextFile(`${LEN_OUTPUT}/schema/lengthentity.schema.ts`);
+
+    // Refinements are passed to BOTH insert and update schema builders
+    assertEquals(/createInsertSchema\(lengthentityTable,\s*\{/.test(schema), true);
+    assertEquals(/createUpdateSchema\(lengthentityTable,\s*\{/.test(schema), true);
+    // select schema is never refined
+    assertEquals(schema.includes('createSelectSchema(lengthentityTable)'), true);
+
+    // code: both bounds
+    assertEquals(/code:\s*\(schema\)\s*=>\s*schema\.min\(3\)\.max\(10\)/.test(schema), true);
+    // bio (text): min only
+    assertEquals(/bio:\s*\(schema\)\s*=>\s*schema\.min\(5\)\s*,/.test(schema), true);
+    // name: max only
+    assertEquals(/name:\s*\(schema\)\s*=>\s*schema\.max\(50\)/.test(schema), true);
+    // tags (array): excluded from refinements entirely
+    assertEquals(/tags:\s*\(schema\)/.test(schema), false);
+  } finally {
+    await cleanupLength();
+  }
+});
+
 const SD_MODELS = './test/test-sd-models';
 const SD_OUTPUT = './test/test-sd-generated';
 

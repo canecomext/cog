@@ -1019,6 +1019,29 @@ async function runTests(): Promise<void> {
   createdIds.acceptanceTestEntities.push(timestampTestEntity.id);
   logSuccess('✓ Timestamps automatically set by database, not from input');
 
+  // 15.5 Verify minLength validation (Zod) rejects too-short values with HTTP 400
+  logStep('15.5 Create with too-short normalField - verify minLength rejected (400)');
+  const tooShortCreate = await REQUEST('POST', '/api/acceptancetestentity', {
+    normalField: 'ab', // minLength is 3 - must be rejected
+  });
+  assertEquals(tooShortCreate.status, 400, 'POST with normalField shorter than minLength should return HTTP 400');
+
+  // 15.6 Verify minLength validation also enforced on update
+  logStep('15.6 Update with too-short normalField - verify minLength rejected (400)');
+  const tooShortUpdate = await REQUEST('PUT', `/api/acceptancetestentity/${acceptanceEntity.id}`, {
+    normalField: 'x', // minLength is 3 - must be rejected
+  });
+  assertEquals(tooShortUpdate.status, 400, 'PUT with normalField shorter than minLength should return HTTP 400');
+
+  // 15.7 Verify a value at the minLength boundary is accepted
+  logStep('15.7 Create with boundary-length normalField - verify accepted');
+  const boundaryEntity = await POST('/api/acceptancetestentity', {
+    normalField: 'abc', // exactly minLength 3 - must be accepted
+  }) as AcceptanceTestEntity;
+  assertEquals(boundaryEntity.normalField, 'abc', 'normalField at minLength boundary should be accepted');
+  createdIds.acceptanceTestEntities.push(boundaryEntity.id);
+  logSuccess('✓ minLength validation: too-short rejected (400) on create/update, boundary value accepted');
+
   logSuccess('All field acceptance tests passed!');
 
   // ========================================
